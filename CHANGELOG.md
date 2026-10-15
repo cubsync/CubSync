@@ -8,6 +8,24 @@ with the pre-1.0 rules described in [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ## [Unreleased]
 
+### Added
+
+- **Saved configurations.** `cubsync config new | list | show | add-pair | export |
+  import` and `cubsync run <config>`. A configuration is global policy plus a list
+  of folder pairs, and a pair names its sides independently, so one run can cover
+  a local folder, one peer and another peer at once.
+- **Per-pair backend resolution.** The engine resolves every endpoint through a
+  resolver instead of holding one fixed pair of backends, which is what makes a
+  multi-peer configuration expressible. Two pairs pointing at the same peer share
+  one session.
+
+### Changed
+
+- Importing a configuration whose id is already in use now saves it under a new id
+  and says so, instead of silently replacing the existing one.
+- CLI output is ASCII: an em dash rendered as mojibake in a console with a
+  non-UTF-8 code page is worse than a hyphen.
+
 ## [0.1.0] - 2026-10-16
 
 The first working slice: the protocol the project owns, the synchronisation

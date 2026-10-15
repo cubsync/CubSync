@@ -22,7 +22,7 @@ object Output {
     """.trimIndent()
 
     fun usage(): String = """
-        cubsync — file synchronisation, one engine, many backends
+        cubsync - file synchronisation, one engine, many backends
 
         Usage:
           cubsync serve   --root DIR [--root DIR ...] [--port N] [--bind ADDR] [--name NAME]
@@ -30,6 +30,14 @@ object Output {
           cubsync push    --to HOST:PORT --remote DIR --from DIR [options]
           cubsync pull    --from HOST:PORT --remote DIR --to DIR [options]
           cubsync compare --to HOST:PORT --remote DIR --from DIR [options]
+          cubsync run     CONFIG [--pair NAME] [--dry-run] [--json]
+          cubsync config  new|list|show|add-pair|export|import ...
+
+        Configurations:
+          cubsync config new --name NAME [--direction D] [--compare C] [--delete P]
+          cubsync config add-pair ID --left local --left-root DIR \
+                                    --right HOST:PORT --right-root DIR [--name N]
+          cubsync config list | show ID | export ID --out FILE | import FILE
 
         Common options:
           --direction two-way|mirror-to|mirror-from|update-to|update-from   (default: update-to)
@@ -39,10 +47,10 @@ object Output {
           --parallel  N                                                      (default: 1)
           --filter    GLOB                                                   (repeatable)
           --include-hidden
-          --exclude-symlinks
           --dry-run
-          --state-dir DIR                                                    (default: ~/.cubsync)
+          --state-dir DIR            configurations and snapshots (default: ~/.cubsync)
           --json
+          --quiet | --verbose
 
         Exit codes:
           0 every pair finished   1 something did not   2 the command line was wrong
@@ -52,7 +60,7 @@ object Output {
         if (json) return jsonSummary(result)
         val out = StringBuilder()
         val stats = result.stats
-        out.append("job ${result.jobId} — ${result.status.name.lowercase()} in ${result.durationMs} ms\n")
+        out.append("job ${result.jobId} - ${result.status.name.lowercase()} in ${result.durationMs} ms\n")
         out.append("pairs: ${result.pairs.size}\n\n")
         out.append(pad("PAIR", 24)).append(pad("STATUS", 14)).append(pad("FILES", 8))
             .append(pad("BYTES", 14)).append(pad("DEL", 6)).append(pad("CONFLICT", 10)).append("NOTE").append('\n')
@@ -84,7 +92,7 @@ object Output {
 
     fun pairDetail(pair: PairOutcome): String {
         val out = StringBuilder()
-        out.append("pair ${pair.pairId} (${pair.pairName}) — ${pair.status.name.lowercase()}\n")
+        out.append("pair ${pair.pairId} (${pair.pairName}) - ${pair.status.name.lowercase()}\n")
         for (item in pair.items.take(50)) {
             out.append("  ").append(pad(item.relPath.take(60), 62))
                 .append(pad(item.action.name.lowercase(), 22))
