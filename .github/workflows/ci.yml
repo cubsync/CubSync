@@ -116,7 +116,7 @@ jobs:
 
       - name: Test
         if: steps.detect.outputs.gradle == 'true'
-        run: ./gradlew --no-daemon --stacktrace test
+        run: ./gradlew --no-daemon --stacktrace check
 
       - name: Upload test reports
         if: always() && steps.detect.outputs.gradle == 'true'
