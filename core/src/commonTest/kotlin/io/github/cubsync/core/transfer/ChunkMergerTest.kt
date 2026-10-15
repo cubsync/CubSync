@@ -144,4 +144,20 @@ class ChunkMergerTest {
         assertTrue(merger.finished)
         assertEquals(3L, merger.nextOffset)
     }
+
+    @Test
+    fun a_merger_can_start_in_the_middle_of_a_stream() {
+        // A resumed transfer picks up where the staging file ended, so the indices
+        // and offsets have to continue from there rather than from zero.
+        val merger = ChunkMerger.startingAt(offset = 8, chunkSize = 4)
+        assertEquals(2, merger.nextIndex)
+        assertEquals(8L, merger.nextOffset)
+
+        assertTrue(merger.accept(3, "dddd".encodeToByteArray(), 4, isFinal = true).isEmpty())
+        val released = merger.accept(2, "cccc".encodeToByteArray(), 4, false)
+        assertEquals(listOf(8L, 12L), released.map { it.offset })
+        assertEquals(listOf("cccc", "dddd"), released.map { it.data.decodeToString() })
+        assertTrue(released.last().isFinal)
+        assertTrue(merger.finished)
+    }
 }
