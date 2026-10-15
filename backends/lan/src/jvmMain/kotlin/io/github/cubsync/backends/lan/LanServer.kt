@@ -49,6 +49,8 @@ class LanServer(
     val nodeName: String = defaultNodeName(),
     private val platform: String = System.getProperty("os.name") ?: "jvm",
     private val appVersion: String = "0.1.0",
+    /** How long a write may stay open after the last chunk before it is refused. */
+    private val writeCloseTimeoutMs: Long = 120_000,
 ) : AutoCloseable {
 
     private var serverSocket: ServerSocket? = null
@@ -216,7 +218,12 @@ class LanServer(
             control = session.control,
             data = data,
             scope = session.scope,
-            handler = ServerCommandHandler(backend, exposedRoots, nodeName),
+            handler = ServerCommandHandler(
+                backend = backend,
+                exposedRoots = exposedRoots,
+                nodeName = nodeName,
+                writeCloseTimeoutMs = writeCloseTimeoutMs,
+            ),
         )
         sessions[token] = connection
         connection.start()

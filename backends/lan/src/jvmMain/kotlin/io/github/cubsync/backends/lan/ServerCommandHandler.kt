@@ -37,6 +37,7 @@ import io.github.cubsync.core.spi.SimpleRoot
 import io.github.cubsync.core.spi.WriteStream
 import io.github.cubsync.core.transfer.ChunkMerger
 import io.github.cubsync.core.transfer.ChunkPlan
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
@@ -76,6 +77,8 @@ class ServerCommandHandler(
         val consumer: Job,
         val failure: AtomicReference<Throwable?>,
         val mtimeMs: Long,
+        /** Completed once every chunk up to and including the final one has been written. */
+        val merged: CompletableDeferred<Unit>,
     ) : OpenStream
 
     private val streams = ConcurrentHashMap<Long, OpenStream>()
@@ -231,6 +234,7 @@ class ServerCommandHandler(
         )
         val queue = connection.registerStream(streamId)
         val failure = AtomicReference<Throwable?>(null)
+        val merged = CompletableDeferred<Unit>()
         val merger = ChunkMerger.startingAt(stream.startOffset, chunk)
 
         // Chunks may arrive out of order; the merger releases them in order and the
@@ -253,11 +257,16 @@ class ServerCommandHandler(
             } catch (failure0: Throwable) {
                 failure.set(failure0)
             } finally {
+                // The close handler waits on this rather than on the queue being
+                // empty: chunks travel on the data connection and the close request
+                // on the control connection, and those two have no ordering
+                // between them.
+                if (merger.finished) merged.complete(Unit)
                 queue.close()
             }
         }
 
-        streams[streamId] = WriteSession(streamId, stream, queue, consumer, failure, request.mtimeMs)
+        streams[streamId] = WriteSession(streamId, stream, queue, consumer, failure, request.mtimeMs, merged)
         connection.respond(
             reqNo,
             command,
@@ -268,14 +277,27 @@ class ServerCommandHandler(
     /**
      * Finishes a write.
      *
-     * The consumer is joined before committing, because the client may send the last
-     * chunk and the close request back to back and the chunks still have to be
-     * applied in order. The commit itself is the backend's business: durable, then
-     * renamed, then timestamped.
+     * The chunks arrive on the data connection and the close request on the control
+     * connection, and TCP gives no ordering between two connections — so the close
+     * can be processed while the last chunk is still in flight. Waiting for the
+     * merger to report that it released everything is what makes the difference
+     * between a completed file and a silently truncated one, and a write that never
+     * announces its end is failed rather than committed.
      */
     private suspend fun closeWrite(connection: LanConnection, reqNo: Int, command: Int, request: WriteCloseRequest) {
         val session = streams.remove(request.streamId) as? WriteSession
             ?: throw BackendException(ErrorCode.NOT_FOUND, "no open write stream ${request.streamId}")
+
+        val complete = withTimeoutOrNull(writeCloseTimeoutMs) { session.merged.await() } != null
+        if (!complete) {
+            session.queue.close()
+            runCatching { session.stream.abort() }
+            throw BackendException(
+                ErrorCode.IO_ERROR,
+                "the write was closed before the last chunk arrived (stream ${request.streamId})",
+            )
+        }
+
         session.queue.close()
         withTimeoutOrNull(writeCloseTimeoutMs) { session.consumer.join() }
         session.failure.get()?.let { failure ->
