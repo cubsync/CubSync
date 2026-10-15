@@ -183,6 +183,24 @@ class JobRunner(
             listOf(PairRoots(pair.pairId, left.id, pair.left.rootPath, pair.right.rootPath)),
             caseSensitive,
         )
+        if (issues.isNotEmpty()) {
+            // Checked before any IO: a pair whose roots nest cannot converge, so
+            // there is nothing to learn from reading either tree.
+            val reason = issues.joinToString("; ") { it.message }
+            val blocked = PairOutcome(
+                pairId = pair.pairId,
+                pairName = displayName(pair),
+                status = PairStatus.BLOCKED,
+                items = emptyList(),
+                stats = TransferStats(failures = 1),
+                plan = PairPlan(pair.pairId, direction, emptyList(), blocked = true, blockReason = reason),
+                error = reason,
+                startedAtMs = started,
+                finishedAtMs = utcClock.nowMs(),
+            )
+            listener.onPairPlanned(blocked)
+            return blocked
+        }
 
         val leftTree = listFiltered(left, leftRoot, matcher)
         val rightTree = listFiltered(right, rightRoot, matcher)
@@ -194,31 +212,7 @@ class JobRunner(
 
         val comparator = TreeComparator(config.compare, config.mtimeToleranceMs, caseSensitive)
         val diffs = comparator.compare(leftTree, rightTree, leftHashes, rightHashes, snapshot)
-        var plan = Planner.plan(pair.pairId, diffs, direction, config.conflict, config.delete, snapshot)
-
-        if (issues.isNotEmpty()) {
-            plan = plan.copy(
-                blocked = true,
-                blockReason = issues.joinToString("; ") { it.message },
-                actions = emptyList(),
-            )
-        }
-
-        if (plan.blocked) {
-            val outcome = PairOutcome(
-                pairId = pair.pairId,
-                pairName = displayName(pair),
-                status = PairStatus.BLOCKED,
-                items = diffs.map { JobItem(it.relPath, ActionKind.NONE, skippedReason = "blocked: ${plan.blockReason}") },
-                stats = TransferStats(skipped = diffs.size, failures = 1),
-                plan = plan,
-                error = plan.blockReason,
-                startedAtMs = started,
-                finishedAtMs = utcClock.nowMs(),
-            )
-            listener.onPairPlanned(outcome)
-            return outcome
-        }
+        val plan = Planner.plan(pair.pairId, diffs, direction, config.conflict, config.delete, snapshot)
 
         if (config.dryRun) {
             val items = plan.actions.map { action ->
@@ -249,10 +243,10 @@ class JobRunner(
         // Directories first: a file copy must never depend on a backend creating
         // its own parent chain implicitly.
         for (action in plan.actions.filter { it.kind == ActionKind.COPY_LEFT_TO_RIGHT && it.diff.isDirectory }) {
-            items.add(createDirectory(right, rightRoot, action.relPath, ActionKind.COPY_LEFT_TO_RIGHT, failures))
+            items.add(createDirectory(right, rightRoot, action.relPath, failures))
         }
         for (action in plan.actions.filter { it.kind == ActionKind.COPY_RIGHT_TO_LEFT && it.diff.isDirectory }) {
-            items.add(createDirectory(left, leftRoot, action.relPath, ActionKind.COPY_RIGHT_TO_LEFT, failures))
+            items.add(createDirectory(left, leftRoot, action.relPath, failures))
         }
 
         val copies = plan.actions.filter {
@@ -383,14 +377,13 @@ class JobRunner(
         backend: RemoteBackend,
         root: RootRef,
         relPath: String,
-        kind: ActionKind,
         failures: MutableList<String>,
     ): JobItem = try {
         backend.mkdir(root, relPath, createParents = true)
-        JobItem(relPath, kind, ok = true)
+        JobItem(relPath, ActionKind.MKDIR, ok = true)
     } catch (failure: Throwable) {
         failures.add("$relPath: ${failure.message}")
-        JobItem(relPath, kind, ok = false, error = failure.message ?: "mkdir failed")
+        JobItem(relPath, ActionKind.MKDIR, ok = false, error = failure.message ?: "mkdir failed")
     }
 
     private suspend fun executeCopy(
@@ -629,9 +622,11 @@ class JobRunner(
         for (action in plan.actions) {
             when (action.kind) {
                 ActionKind.COPY_LEFT_TO_RIGHT, ActionKind.CONFLICT_KEEP_BOTH ->
-                    action.diff.left?.let { merged[action.relPath] = it }
+                    action.diff.left?.takeIf { !it.isDirectory }?.let { merged[action.relPath] = it }
 
-                ActionKind.COPY_RIGHT_TO_LEFT -> action.diff.right?.let { merged[action.relPath] = it }
+                ActionKind.COPY_RIGHT_TO_LEFT ->
+                    action.diff.right?.takeIf { !it.isDirectory }?.let { merged[action.relPath] = it }
+
                 ActionKind.DELETE_LEFT, ActionKind.DELETE_RIGHT -> merged.remove(action.relPath)
                 else -> Unit
             }
