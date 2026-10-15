@@ -1,0 +1,78 @@
+# Gradle / Android
+.gradle/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+local.properties
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+release/
+output.json
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Signing material — NEVER commit
+*.jks
+*.keystore
+*.p12
+*.pfx
+keystore.properties
+signing.properties
+*.pepk
+*.pem
+*.key
+
+# Secrets / environment
+.env
+.env.*
+!.env.example
+secrets.properties
+*.secret
+
+# Local tooling / workspace state
+.workbuddy/
+.cr-*
+!tmp/
+!tmp*/
+
+# Kotlin / KMP
+.kotlin/
+kotlin-js-store/
+
+# Test and coverage output
+*.hprof
+jacoco.exec
+coverage/
+
+# Packaging output
+dist/
+out/
+*.tar.gz
+*.zip
+
+# Logs and temp
+*.log
+*.tmp
+*.cubtmp/
+.cub_trash/

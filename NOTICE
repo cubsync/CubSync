@@ -1,0 +1,90 @@
+CubSync
+Copyright 2026 CubSync
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+================================================================================
+NOTICE — Prior Art and Third-Party Components
+================================================================================
+
+1. Credits and Prior Art
+--------------------------------------------------------------------------------
+
+CubSync is an independent, from-scratch implementation. It contains no source
+code copied from any other project.
+
+Its design was informed by the following prior work, which the authors
+acknowledge with respect and gratitude:
+
+  * HybridFileXfer
+    https://github.com/weixiansen574/HybridFileXfer
+    Licensed under GNU GPL-3.0.
+    CubSync learns from HybridFileXfer's user-facing concept: transferring
+    files between Android devices and desktop computers over a local network,
+    including its dual-pane browsing model and its approach to mounting /
+    accessing device storage.
+
+    CubSync does NOT contain any code from HybridFileXfer. No files have been
+    copied, ported, translated, or mechanically derived from it. CubSync's
+    protocol, wire format, engine, and UI are original work. As a result,
+    CubSync is not a derivative work of HybridFileXfer and is not subject to
+    GPL-3.0 obligations. CubSync is licensed under Apache-2.0 (see LICENSE).
+
+  * Authoring method
+    CubSync's implementation is produced by its maintainers using a
+    combination of manual engineering and AI-assisted authoring tools. All
+    code is reviewed, tested, and integrated by the maintainers, who take
+    responsibility for its correctness and licensing. Generative tooling does
+    not affect the copyright status of the work.
+
+  * FolderSync Pro
+    Design inspiration only, with respect to information architecture for
+    multi-pair synchronization configuration and job history presentation.
+    No code, assets, text, or visual design has been reproduced.
+
+  * Material Files
+    Design inspiration only, with respect to Android file-browser interaction
+    conventions. No code or assets have been reproduced.
+
+2. Trademarks
+--------------------------------------------------------------------------------
+
+"HybridFileXfer", "FolderSync", "Material Files", "Android", "Google Play",
+"GitHub" and all other product names, logos, and brands referenced in this
+repository are the property of their respective owners. Their use here is for
+identification and attribution purposes only and does not imply any
+affiliation with or endorsement by the trademark holders.
+
+3. Runtime and Build Dependencies
+--------------------------------------------------------------------------------
+
+Third-party dependencies (libraries, Gradle plugins, Kotlin/Compose
+artifacts, etc.) are declared in the build files of each module. Each
+dependency is distributed under its own license; the applicable license text
+and copyright notice for each is available from the respective project.
+A generated dependency-license report, when present, is located under
+`docs/` or produced by the corresponding Gradle task.
+
+Dependencies are distributed under licenses compatible with Apache-2.0.
+No dependency is included under terms that would impose copyleft obligations
+on CubSync's own source code.
+
+4. Bundled Assets
+--------------------------------------------------------------------------------
+
+Unless stated otherwise in the directory containing them, bundled assets
+(icons, fonts, sounds, sample files) are original works created for CubSync
+and are licensed under the same terms as the rest of this repository.
+
+Any third-party asset is accompanied by its own license notice in the
+directory where it resides.
+
+5. Reporting an Attribution Issue
+--------------------------------------------------------------------------------
+
+If you believe this NOTICE is incomplete or inaccurate, or that CubSync
+improperly uses your work, please open an issue at:
+
+    https://github.com/cubsync/CubSync/issues
+
+We will respond and correct the record promptly.

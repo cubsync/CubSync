@@ -1,0 +1,26 @@
+# Repository ownership
+#
+# Bracket rules are evaluated in order; repo-wide it is deny-by-default, so the
+# final "*" entry names the required reviewer.
+#
+# The branch ruleset on `main` requires a pull request. It does not require an
+# approval count above zero, because the project currently has a single active
+# maintainer and self-approval is not possible. When a second maintainer joins,
+# raise the required approvals to 1 and drop the repository-admin bypass.
+
+*                       @huxc573
+
+# Synchronization engine, protocol, backend SPI — changes here need care.
+/core/                  @huxc573
+/backends/              @huxc573
+/protocol/              @huxc573
+
+# Build, CI and release plumbing.
+/.github/               @huxc573
+/build-logic/           @huxc573
+
+# Legal and provenance documents.
+/LICENSE                @huxc573
+/NOTICE                 @huxc573
+/SECURITY.md            @huxc573
+/CONTRIBUTING.md        @huxc573

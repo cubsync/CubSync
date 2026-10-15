@@ -1,0 +1,161 @@
+name: CI
+
+# Bootstrap-stage CI: the build system does not exist yet, so these jobs detect
+# the toolchain and skip cleanly instead of failing on a missing Gradle wrapper.
+# Each job starts running real work on its own once the relevant files appear.
+#
+# Nothing here touches secrets, so this workflow is safe to run on pull requests
+# from forks.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    name: Guard (generated files, large files)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reject committed build output
+        run: |
+          set -eu
+          bad=$(git ls-files \
+            | grep -E '(^|/)(build|\.gradle|\.kotlin|node_modules)/' \
+            || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Generated directories are committed:"
+            echo "$bad"
+            exit 1
+          fi
+          echo "ok: no generated directories tracked"
+
+      - name: Reject signing material and secrets
+        run: |
+          set -eu
+          bad=$(git ls-files \
+            | grep -E '\.(jks|keystore|p12|pfx|pepk|pem|key)$|(^|/)(keystore|signing)\.properties$|(^|/)\.env(\..*)?$' \
+            || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Signing material or secret files are tracked:"
+            echo "$bad"
+            exit 1
+          fi
+          echo "ok: no signing material or secret files tracked"
+
+      - name: Reject files over 5 MiB
+        run: |
+          set -eu
+          fail=0
+          while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            size=$(wc -c < "$f")
+            if [ "$size" -gt 5242880 ]; then
+              echo "::error file=$f::File is $((size / 1048576)) MiB (limit 5 MiB). Use Git LFS or an external host."
+              fail=1
+            fi
+          done < <(git ls-files)
+          [ "$fail" -eq 0 ]
+          echo "ok: no tracked file over 5 MiB"
+
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect build system
+        id: detect
+        run: |
+          set -eu
+          if [ -f gradlew ]; then
+            echo "gradle=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "gradle=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -f gradle/wrapper/gradle-wrapper.properties ]; then
+            echo "wrapper=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wrapper=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Explanation
+        if: steps.detect.outputs.gradle == 'false'
+        run: |
+          echo "::notice title=CI skipped::No Gradle wrapper found yet. The build job starts running once ./gradlew is committed."
+
+      - name: Set up JDK
+        if: steps.detect.outputs.gradle == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        if: steps.detect.outputs.wrapper == 'true'
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile
+        if: steps.detect.outputs.gradle == 'true'
+        run: ./gradlew --no-daemon --stacktrace assemble
+
+      - name: Test
+        if: steps.detect.outputs.gradle == 'true'
+        run: ./gradlew --no-daemon --stacktrace test
+
+      - name: Upload test reports
+        if: always() && steps.detect.outputs.gradle == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: '**/build/reports/tests/'
+          if-no-files-found: ignore
+          retention-days: 7
+
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Required files present
+        run: |
+          set -eu
+          missing=0
+          for f in LICENSE NOTICE README.md CONTRIBUTING.md SECURITY.md .gitignore .editorconfig; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Required file missing: $f"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ]
+          echo "ok: all required files present"
+
+      - name: No trailing whitespace in tracked text files
+        run: |
+          set -eu
+          files=$(git ls-files '*.md' '*.kt' '*.kts' '*.java' '*.yml' '*.yaml' '*.json' || true)
+          [ -n "$files" ] || { echo "no text files yet"; exit 0; }
+          bad=$(echo "$files" | xargs grep -lE '[ \t]+$' 2>/dev/null || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Trailing whitespace found in:"
+            echo "$bad"
+            exit 1
+          fi
+          echo "ok: no trailing whitespace"

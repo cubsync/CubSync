@@ -1,0 +1,51 @@
+* text=auto eol=lf
+
+# Shell scripts must keep LF even on Windows checkouts
+*.sh            text eol=lf
+*.bash          text eol=lf
+gradlew         text eol=lf
+
+# Windows batch files must keep CRLF
+*.bat           text eol=crlf
+*.cmd           text eol=crlf
+
+# Kotlin / Java / Gradle
+*.kt            text eol=lf
+*.kts           text eol=lf
+*.java          text eol=lf
+*.gradle        text eol=lf
+*.properties    text eol=lf
+
+# Config and docs
+*.md            text eol=lf
+*.json          text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+*.toml          text eol=lf
+*.xml           text eol=lf
+
+# Binary — never touch
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.gif           binary
+*.webp          binary
+*.ico           binary
+*.ttf           binary
+*.otf           binary
+*.woff          binary
+*.woff2         binary
+*.jar           binary
+*.aar           binary
+*.so            binary
+*.dll           binary
+*.dylib         binary
+*.exe           binary
+*.zip           binary
+*.gz            binary
+*.apk           binary
+*.aab           binary
+
+# Keep generated and vendored trees out of diffs
+build/**        -diff
+.gradle/**      -diff
