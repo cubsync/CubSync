@@ -69,9 +69,17 @@ class LocalBackend(
         Capabilities.FREE_SPACE or Capabilities.RANDOM_WRITE or Capabilities.RESUME or Capabilities.BATCH_HASH or
         Capabilities.TREE_AT_ONCE or Capabilities.SYMLINK or Capabilities.PERMISSIONS or Capabilities.TRASH
 
-    /** Declares a folder tree this backend may be asked to serve. */
+    /**
+     * Declares a folder this backend may serve.
+     *
+     * Stored with forward slashes because the same string travels over the protocol
+     * and is written into a configuration. A root that comes back as `D:\photos`
+     * from one machine and `D:/photos` from an address box would otherwise look
+     * like two different folders to everything that compares them.
+     */
     fun registerRoot(path: String): LocalBackend = apply {
-        registeredRoots.add(Paths.get(path).toAbsolutePath().normalize().toString())
+        val absolute = Paths.get(path).toAbsolutePath().normalize().toString()
+        registeredRoots.add(absolute.replace('\\', '/'))
     }
 
     override suspend fun roots(): List<RootRef> = registeredRoots.map { SimpleRoot(id, it) }
