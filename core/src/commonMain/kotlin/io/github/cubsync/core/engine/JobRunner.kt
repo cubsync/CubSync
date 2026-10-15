@@ -113,6 +113,33 @@ interface JobListener {
 }
 
 /**
+ * Finds the backend an endpoint refers to.
+ *
+ * A configuration can pair folders on several machines — the left side of one pair
+ * may be a phone while the right side of the next is a NAS — so the runner resolves
+ * every endpoint through this rather than holding one fixed pair of backends. The
+ * implementations are expected to cache, so two pairs talking to the same peer share
+ * one session instead of opening a second connection to the same machine.
+ */
+fun interface BackendResolver {
+    suspend fun resolve(backendId: String): RemoteBackend
+
+    companion object {
+        /** The single-pair case, for tests and for a one-off transfer. */
+        fun of(left: RemoteBackend, right: RemoteBackend): BackendResolver = BackendResolver { backendId ->
+            when (backendId) {
+                left.id -> left
+                right.id -> right
+                else -> throw BackendException(
+                    ErrorCode.INTERNAL,
+                    "no backend is registered as '$backendId' (have '${left.id}' and '${right.id}')",
+                )
+            }
+        }
+    }
+}
+
+/**
  * Runs a configuration.
  *
  * Pairs run one after another — a failing pair must not take the others down with
@@ -122,8 +149,7 @@ interface JobListener {
  * successful run left behind.
  */
 class JobRunner(
-    private val left: RemoteBackend,
-    private val right: RemoteBackend,
+    private val backends: BackendResolver,
     private val snapshots: SnapshotStore = InMemorySnapshotStore(),
     private val listener: JobListener = JobListener.NOOP,
     private val utcClock: UtcClock = systemUtcClock(),
@@ -175,6 +201,10 @@ class JobRunner(
         val started = utcClock.nowMs()
         listener.onPairStarted(pair)
 
+        // Resolved per pair, so one configuration can mix a local folder with
+        // several peers without the runner needing a fixed left and right.
+        val left = backends.resolve(pair.left.backendId)
+        val right = backends.resolve(pair.right.backendId)
         val leftRoot: RootRef = SimpleRoot(left.id, pair.left.rootPath)
         val rightRoot: RootRef = SimpleRoot(right.id, pair.right.rootPath)
         val direction = pair.directionOverride ?: config.direction
@@ -255,7 +285,7 @@ class JobRunner(
         val permits = Semaphore(config.parallelism.coerceAtLeast(1))
         val copied = coroutineScope {
             copies.map { action ->
-                async { permits.withPermit { executeCopy(action, leftRoot, rightRoot, pair) } }
+                async { permits.withPermit { executeCopy(action, leftRoot, rightRoot, left, right, pair) } }
             }.awaitAll()
         }
         items.addAll(copied)
@@ -267,7 +297,7 @@ class JobRunner(
         for (action in plan.actions) {
             when (action.kind) {
                 ActionKind.CONFLICT_KEEP_BOTH ->
-                    items.add(keepBoth(action, leftRoot, rightRoot, pair, timestamp, failures))
+                    items.add(keepBoth(action, leftRoot, rightRoot, left, right, pair, timestamp, failures))
 
                 ActionKind.CONFLICT_SKIP, ActionKind.CONFLICT_ASK ->
                     items.add(
@@ -285,7 +315,7 @@ class JobRunner(
         val deletes = plan.actions.filter { it.kind == ActionKind.DELETE_LEFT || it.kind == ActionKind.DELETE_RIGHT }
             .sortedByDescending { action -> action.relPath.count { it == '/' } }
         for (action in deletes) {
-            items.add(executeDelete(action, leftRoot, rightRoot, config, pair, timestamp, failures))
+            items.add(executeDelete(action, leftRoot, rightRoot, left, right, config, pair, timestamp, failures))
         }
 
         for (action in plan.actions) {
@@ -390,6 +420,8 @@ class JobRunner(
         action: SyncAction,
         leftRoot: RootRef,
         rightRoot: RootRef,
+        left: RemoteBackend,
+        right: RemoteBackend,
         pair: FolderPair,
     ): JobItem {
         val leftToRight = action.kind == ActionKind.COPY_LEFT_TO_RIGHT
@@ -501,6 +533,8 @@ class JobRunner(
         action: SyncAction,
         leftRoot: RootRef,
         rightRoot: RootRef,
+        left: RemoteBackend,
+        right: RemoteBackend,
         config: SyncConfig,
         pair: FolderPair,
         timestamp: Long,
@@ -576,6 +610,8 @@ class JobRunner(
         action: SyncAction,
         leftRoot: RootRef,
         rightRoot: RootRef,
+        left: RemoteBackend,
+        right: RemoteBackend,
         pair: FolderPair,
         timestamp: Long,
         failures: MutableList<String>,
@@ -638,5 +674,25 @@ class JobRunner(
 
     companion object {
         fun supportsDirection(direction: SyncDirection): Boolean = direction.supported
+
+        /** The single-pair case: one backend on the left, one on the right. */
+        fun of(
+            left: RemoteBackend,
+            right: RemoteBackend,
+            snapshots: SnapshotStore = InMemorySnapshotStore(),
+            listener: JobListener = JobListener.NOOP,
+            utcClock: UtcClock = systemUtcClock(),
+            chunkSize: Int = ChunkPlan.DEFAULT_CHUNK_SIZE,
+            verifyCopies: Boolean = true,
+            caseSensitive: Boolean = true,
+        ): JobRunner = JobRunner(
+            backends = BackendResolver.of(left, right),
+            snapshots = snapshots,
+            listener = listener,
+            utcClock = utcClock,
+            chunkSize = chunkSize,
+            verifyCopies = verifyCopies,
+            caseSensitive = caseSensitive,
+        )
     }
 }

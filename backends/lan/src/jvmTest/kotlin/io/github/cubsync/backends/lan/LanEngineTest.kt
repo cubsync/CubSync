@@ -64,7 +64,7 @@ class LanEngineTest {
             local.putFile("/local", "docs/report.bin", payload, mtimeMs = 5_000)
             local.putFile("/local", "notes.txt", "hello", mtimeMs = 5_000)
 
-            val result = JobRunner(local, peer, chunkSize = 262_144)
+            val result = JobRunner.of(local, peer, chunkSize = 262_144)
                 .run(config(local.id, "/local", peer.id, "/remote"))
 
             assertEquals(PairStatus.COMPLETED, result.pairs.single().status, result.pairs.single().error)
@@ -92,7 +92,7 @@ class LanEngineTest {
         try {
             remoteStore.putFile("/remote", "from-peer.bin", "remote content", mtimeMs = 3_000)
 
-            val result = JobRunner(local, peer, chunkSize = 262_144)
+            val result = JobRunner.of(local, peer, chunkSize = 262_144)
                 .run(config(local.id, "/local", peer.id, "/remote"))
 
             assertEquals(PairStatus.COMPLETED, result.pairs.single().status, result.pairs.single().error)
@@ -117,7 +117,7 @@ class LanEngineTest {
             local.putFile("/local", "keep.txt", "k", mtimeMs = 1_000)
             remoteStore.putFile("/remote", "gone.txt", "g", mtimeMs = 1_000)
 
-            val result = JobRunner(local, peer, chunkSize = 262_144)
+            val result = JobRunner.of(local, peer, chunkSize = 262_144)
                 .run(config(local.id, "/local", peer.id, "/remote", SyncDirection.MIRROR_LEFT_TO_RIGHT))
 
             assertEquals(PairStatus.COMPLETED, result.pairs.single().status, result.pairs.single().error)
@@ -149,7 +149,7 @@ class LanEngineTest {
             }
             val settings = config(local.id, "/local", peer.id, "/remote").copy(parallelism = 3)
 
-            val result = JobRunner(local, peer, chunkSize = 131_072).run(settings)
+            val result = JobRunner.of(local, peer, chunkSize = 131_072).run(settings)
 
             assertEquals(PairStatus.COMPLETED, result.pairs.single().status, result.pairs.single().error)
             assertEquals(6, result.stats.copiedFiles)
