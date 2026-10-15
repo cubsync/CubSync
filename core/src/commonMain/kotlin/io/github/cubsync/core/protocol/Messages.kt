@@ -96,6 +96,29 @@ data class HelloReply(
     }
 }
 
+/**
+ * Binds a freshly opened connection to an existing session.
+ *
+ * The handshake happens on the control connection and produces a session token;
+ * the data connection then presents that token so the two sockets are known to
+ * belong together. Without it, a second connection could attach itself to another
+ * peer's session.
+ */
+data class Bind(val role: Int, val token: Long) : Message {
+    override val msgId: Int get() = MsgId.BIND
+
+    override fun write(writer: BinWriter) {
+        writer.i32(role).i64(token)
+    }
+
+    companion object {
+        const val ROLE_CONTROL: Int = 1
+        const val ROLE_DATA: Int = 2
+
+        fun read(reader: BinReader): Bind = Bind(reader.i32(), reader.i64())
+    }
+}
+
 /** Sent on the control channel every [Protocol.HEARTBEAT_INTERVAL_MS]. */
 data class Keepalive(val monotonicMs: Long) : Message {
     override val msgId: Int get() = MsgId.KEEPALIVE
@@ -443,6 +466,44 @@ data class DataChunkHeader(
     }
 }
 
+/**
+ * Asks a peer which trees it is willing to serve.
+ *
+ * A client cannot guess another machine's folder layout, so a connection that
+ * presents nothing but an address has to be able to ask. The daemon and the desktop
+ * app both use this to populate their browse view.
+ */
+data class RootsRequest(val unused: Int = 0) : Message {
+    override val msgId: Int get() = MsgId.ROOTS_REQUEST
+
+    override fun write(writer: BinWriter) {
+        writer.i32(unused)
+    }
+
+    companion object {
+        fun read(reader: BinReader): RootsRequest = RootsRequest(reader.i32())
+    }
+}
+
+data class RootsReply(val roots: List<String>) : Message {
+    override val msgId: Int get() = MsgId.ROOTS_REPLY
+
+    override fun write(writer: BinWriter) {
+        writer.i32(roots.size)
+        roots.forEach { writer.string(it) }
+    }
+
+    companion object {
+        fun read(reader: BinReader): RootsReply {
+            val count = reader.i32()
+            if (count < 0) throw ProtocolException(ErrorCode.MALFORMED_PAYLOAD, "negative root count $count")
+            val roots = ArrayList<String>(minOf(count, 256))
+            repeat(count) { roots.add(reader.string()) }
+            return RootsReply(roots)
+        }
+    }
+}
+
 data class ErrorMessage(
     val code: Int,
     val command: Int,
@@ -467,6 +528,7 @@ object MsgId {
     const val HELLO_REPLY: Int = 1_001
     const val KEEPALIVE: Int = 1_002
     const val CANCEL: Int = 1_003
+    const val BIND: Int = 1_004
     const val STAT_REQUEST: Int = 1_010
     const val STAT_REPLY: Int = 1_011
     const val LIST_REQUEST: Int = 1_020
@@ -486,6 +548,8 @@ object MsgId {
     const val WRITE_CLOSE_REQUEST: Int = 1_073
     const val CLOSE_STREAM_REQUEST: Int = 1_074
     const val STREAM_OPENED: Int = 1_061
+    const val ROOTS_REQUEST: Int = 1_090
+    const val ROOTS_REPLY: Int = 1_091
     const val ERROR: Int = 1_080
 }
 
@@ -570,6 +634,7 @@ object Messages {
         MsgId.HELLO_REPLY -> HelloReply.read(reader)
         MsgId.KEEPALIVE -> Keepalive.read(reader)
         MsgId.CANCEL -> Cancel.read(reader)
+        MsgId.BIND -> Bind.read(reader)
         MsgId.STAT_REQUEST -> StatRequest.read(reader)
         MsgId.STAT_REPLY -> StatReply.read(reader)
         MsgId.LIST_REQUEST -> ListRequest.read(reader)
@@ -589,6 +654,8 @@ object Messages {
         MsgId.WRITE_CLOSE_REQUEST -> WriteCloseRequest.read(reader)
         MsgId.CLOSE_STREAM_REQUEST -> CloseStreamRequest.read(reader)
         MsgId.STREAM_OPENED -> StreamOpened.read(reader)
+        MsgId.ROOTS_REQUEST -> RootsRequest.read(reader)
+        MsgId.ROOTS_REPLY -> RootsReply.read(reader)
         MsgId.ERROR -> ErrorMessage.read(reader)
         else -> throw ProtocolException(
             ErrorCode.UNKNOWN_COMMAND,

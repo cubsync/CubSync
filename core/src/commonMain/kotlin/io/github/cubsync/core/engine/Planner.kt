@@ -11,6 +11,14 @@ enum class ActionKind {
     COPY_RIGHT_TO_LEFT,
     DELETE_LEFT,
     DELETE_RIGHT,
+
+    /**
+     * Created by the executor, never by the planner: a folder that has to exist
+     * before the files going into it can be written. Counting these as transfers
+     * would inflate every file count in the job summary.
+     */
+    MKDIR,
+
     /** Both sides changed; the policy says the user has to decide. */
     CONFLICT_ASK,
     /** Both sides changed; [ConflictPolicy.KEEP_BOTH] keeps the loser as a copy. */
@@ -111,8 +119,11 @@ object Planner {
             }
 
             DiffKind.LEFT_ONLY -> when (direction) {
+                // The snapshot remembers this path, and the left still looks the way
+                // it did then: the right side deleted it, so the deletion propagates
+                // to the left. Without that evidence it is a new file.
                 SyncDirection.TWO_WAY -> if (deletions.contains(diff.relPath)) {
-                    SyncAction(diff.relPath, ActionKind.DELETE_RIGHT, diff, recycle, note = "deleted on the right")
+                    SyncAction(diff.relPath, ActionKind.DELETE_LEFT, diff, recycle, note = "deleted on the right")
                 } else {
                     SyncAction(diff.relPath, ActionKind.COPY_LEFT_TO_RIGHT, diff)
                 }
@@ -133,7 +144,7 @@ object Planner {
 
             DiffKind.RIGHT_ONLY -> when (direction) {
                 SyncDirection.TWO_WAY -> if (deletions.contains(diff.relPath)) {
-                    SyncAction(diff.relPath, ActionKind.DELETE_LEFT, diff, recycle, note = "deleted on the left")
+                    SyncAction(diff.relPath, ActionKind.DELETE_RIGHT, diff, recycle, note = "deleted on the left")
                 } else {
                     SyncAction(diff.relPath, ActionKind.COPY_RIGHT_TO_LEFT, diff)
                 }
@@ -209,9 +220,10 @@ object Planner {
      * Paths whose disappearance from one side is a deletion rather than a new file.
      *
      * The snapshot is the only evidence that can tell the two apart: if the path is
-     * remembered from the last agreed state and the surviving side still looks
-     * exactly like it did then, the other side deleted it. Without a snapshot the
-     * engine assumes an addition, which is the guess that cannot lose data.
+     * remembered from the last agreed state and the side that still has it looks
+     * exactly like it did then, the other side deleted it — and the deletion spreads
+     * to the side that still has the file. Without a snapshot the engine assumes an
+     * addition, which is the guess that cannot lose data.
      */
     private fun detectDeletions(diffs: List<DiffEntry>, snapshot: PairSnapshot?): Set<String> {
         if (snapshot == null || snapshot.entries.isEmpty()) return emptySet()

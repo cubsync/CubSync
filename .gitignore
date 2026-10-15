@@ -74,5 +74,5 @@ out/
 # Logs and temp
 *.log
 *.tmp
-*.cubtmp/
+*.cubtmp
 .cub_trash/

@@ -18,4 +18,5 @@ include(
     ":backends:local",
     ":backends:lan",
     ":cli",
+    ":testing",
 )

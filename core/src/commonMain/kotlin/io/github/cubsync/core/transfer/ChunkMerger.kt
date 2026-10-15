@@ -12,16 +12,20 @@ package io.github.cubsync.core.transfer
  *
  * Not thread-safe by design; one instance belongs to one stream on one thread.
  */
-class ChunkMerger(private val expectedChunkSize: Int) {
+class ChunkMerger(
+    private val expectedChunkSize: Int,
+    initialIndex: Int = 0,
+    initialOffset: Long = 0,
+) {
 
     private val held = LinkedHashMap<Int, ByteArray>()
 
     /** Index of the next chunk that may be released. */
-    var nextIndex: Int = 0
+    var nextIndex: Int = initialIndex
         private set
 
     /** Stream offset that [nextIndex] corresponds to. */
-    var nextOffset: Long = 0
+    var nextOffset: Long = initialOffset
         private set
 
     /** Index flagged as the last chunk of the stream, or -1 while unknown. */
@@ -103,6 +107,12 @@ class ChunkMerger(private val expectedChunkSize: Int) {
         finished = false
         acceptedCount = 0
         releasedCount = 0
+    }
+
+    /** Indices are derived from a uniform chunk size, so a resume starts mid-sequence. */
+    companion object {
+        fun startingAt(offset: Long, chunkSize: Int): ChunkMerger =
+            ChunkMerger(chunkSize, initialIndex = (offset / chunkSize).toInt(), initialOffset = offset)
     }
 
     data class Released(val offset: Long, val data: ByteArray, val length: Int, val isFinal: Boolean)

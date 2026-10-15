@@ -90,6 +90,7 @@ object Command {
     const val CLOSE_STREAM: Int = 114
     const val KEEPALIVE: Int = 115
     const val CANCEL: Int = 116
+    const val ROOTS: Int = 117
 
     private val NAMES: Map<Int, String> = mapOf(
         HELLO to "HELLO",
@@ -109,6 +110,7 @@ object Command {
         CLOSE_STREAM to "CLOSE_STREAM",
         KEEPALIVE to "KEEPALIVE",
         CANCEL to "CANCEL",
+        ROOTS to "ROOTS",
     )
 
     val ALL: Set<Int> = NAMES.keys
@@ -171,6 +173,34 @@ class Frame(
 }
 
 /**
+ * The fixed 24-byte prefix of a frame, parsed and validated on its own.
+ *
+ * A streaming reader needs the payload length before it knows how much to read,
+ * and validating the header first means an unvalidated number can never drive an
+ * allocation.
+ */
+class FrameHeader(
+    val type: Int,
+    val flags: Int,
+    val streamId: Long,
+    val reqNo: Int,
+    val payloadLength: Int,
+) {
+    fun toFrame(payload: ByteArray): Frame {
+        if (payload.size != payloadLength) {
+            throw ProtocolException(
+                ErrorCode.TRUNCATED_PAYLOAD,
+                "frame declared $payloadLength payload byte(s) but ${payload.size} were supplied",
+            )
+        }
+        return Frame(type, flags, streamId, reqNo, payload)
+    }
+
+    override fun toString(): String =
+        "FrameHeader(${FrameType.name(type)}, flags=$flags, stream=$streamId, req=$reqNo, len=$payloadLength)"
+}
+
+/**
  * Frame encoding and decoding.
  *
  * Decoding never reads past the buffer it was given and never allocates based on
@@ -211,6 +241,32 @@ object FrameCodec {
      * a peer that sends garbage gets a diagnostic, not a desynchronised stream.
      */
     fun decode(bytes: ByteArray, offset: Int = 0, length: Int = bytes.size - offset): Frame {
+        val header = readHeader(bytes, offset, length)
+        if (length - Protocol.HEADER_SIZE < header.payloadLength) {
+            throw ProtocolException(
+                ErrorCode.TRUNCATED_PAYLOAD,
+                "declared payload ${header.payloadLength} but only ${length - Protocol.HEADER_SIZE} byte(s) present",
+            )
+        }
+        val payload = bytes.copyOfRange(
+            offset + Protocol.HEADER_SIZE,
+            offset + Protocol.HEADER_SIZE + header.payloadLength,
+        )
+        return header.toFrame(payload)
+    }
+
+    /**
+     * Parses and validates just the fixed header.
+     *
+     * A streaming reader needs the payload length before it can decide how much to
+     * read; validating the header first means a peer cannot make the receiver
+     * allocate on the strength of an unvalidated number.
+     */
+    fun readHeader(
+        bytes: ByteArray,
+        offset: Int = 0,
+        length: Int = bytes.size - offset,
+    ): FrameHeader {
         if (length < Protocol.HEADER_SIZE) {
             throw ProtocolException(
                 ErrorCode.TRUNCATED_FRAME,
@@ -236,9 +292,6 @@ object FrameCodec {
         if (!FrameType.ALL.contains(type)) {
             throw ProtocolException(ErrorCode.UNKNOWN_FRAME_TYPE, "unknown frame type $type")
         }
-        val flags = readInt(bytes, offset + 4)
-        val streamId = readLong(bytes, offset + 8)
-        val reqNo = readInt(bytes, offset + 16)
         val payloadLength = readInt(bytes, offset + 20)
         if (payloadLength < 0 || payloadLength > Protocol.MAX_PAYLOAD) {
             throw ProtocolException(
@@ -246,14 +299,13 @@ object FrameCodec {
                 "declared payload $payloadLength outside 0..${Protocol.MAX_PAYLOAD}",
             )
         }
-        if (length - Protocol.HEADER_SIZE < payloadLength) {
-            throw ProtocolException(
-                ErrorCode.TRUNCATED_PAYLOAD,
-                "declared payload $payloadLength but only ${length - Protocol.HEADER_SIZE} byte(s) present",
-            )
-        }
-        val payload = bytes.copyOfRange(offset + Protocol.HEADER_SIZE, offset + Protocol.HEADER_SIZE + payloadLength)
-        return Frame(type, flags, streamId, reqNo, payload)
+        return FrameHeader(
+            type = type,
+            flags = readInt(bytes, offset + 4),
+            streamId = readLong(bytes, offset + 8),
+            reqNo = readInt(bytes, offset + 16),
+            payloadLength = payloadLength,
+        )
     }
 
     /**

@@ -128,7 +128,7 @@ class PlannerTest {
     }
 
     @Test
-    fun a_new_file_is_copied_but_a_vanished_one_is_deleted() {
+    fun a_new_file_is_copied_but_a_vanished_one_is_deleted_on_the_side_that_still_has_it() = kotlinx.coroutines.test.runTest {
         val snapshot = PairSnapshot(pairId = "p", entries = mapOf("gone" to SnapshotEntry("gone", 10, 10_000)))
 
         val plan = Planner.plan(
@@ -139,8 +139,35 @@ class PlannerTest {
             delete = DeletePolicy.RECYCLE,
             snapshot = snapshot,
         )
-        assertEquals(ActionKind.DELETE_RIGHT, plan.actions.first { it.relPath == "gone" }.kind)
+        // The right side no longer has it, so the left — which still does — is where
+        // the deletion is applied.
+        assertEquals(ActionKind.DELETE_LEFT, plan.actions.first { it.relPath == "gone" }.kind)
         assertEquals(ActionKind.COPY_LEFT_TO_RIGHT, plan.actions.first { it.relPath == "fresh" }.kind)
+    }
+
+    @Test
+    fun a_deletion_is_applied_on_whichever_side_still_holds_the_file() = kotlinx.coroutines.test.runTest {
+        val snapshot = PairSnapshot(pairId = "p", entries = mapOf("x" to SnapshotEntry("x", 10, 10_000)))
+
+        val leftExtra = Planner.plan(
+            "p",
+            listOf(diff("x", DiffKind.LEFT_ONLY)),
+            SyncDirection.TWO_WAY,
+            ConflictPolicy.ASK,
+            DeletePolicy.RECYCLE,
+            snapshot,
+        )
+        assertEquals(ActionKind.DELETE_LEFT, leftExtra.actions.single().kind)
+
+        val rightExtra = Planner.plan(
+            "p",
+            listOf(diff("x", DiffKind.RIGHT_ONLY)),
+            SyncDirection.TWO_WAY,
+            ConflictPolicy.ASK,
+            DeletePolicy.RECYCLE,
+            snapshot,
+        )
+        assertEquals(ActionKind.DELETE_RIGHT, rightExtra.actions.single().kind)
     }
 
     @Test

@@ -73,7 +73,7 @@ class TreeComparator(
             out.add(classify(key, l, r, leftHashes, rightHashes, snapshot))
         }
 
-        val renamedFrom = detectRenames(out, snapshot)
+        val renamedFrom = detectRenames(out, snapshot, leftMap.keys, rightMap.keys)
         val resolved = if (renamedFrom.isEmpty()) {
             out
         } else {
@@ -199,30 +199,45 @@ class TreeComparator(
     /**
      * Maps a one-sided path onto the snapshot path it appears to have moved from.
      *
-     * A rename is only claimed when the old path is gone from *both* sides and the
-     * snapshot remembers it, because otherwise "new file here, deleted file there"
-     * is the more likely explanation.
+     * The evidence is: a path that appears on one side only, a snapshot entry with
+     * exactly the same signature, and the side that gained the file no longer having
+     * the old path. The last condition is what separates a rename from "a new file
+     * here and an unrelated deletion there"; it does not require the *other* side to
+     * have caught up yet, because a rename made on one device is normally still
+     * visible under its old name on the other.
      */
-    private fun detectRenames(diffs: List<DiffEntry>, snapshot: PairSnapshot?): Map<String, String> {
+    private fun detectRenames(
+        diffs: List<DiffEntry>,
+        snapshot: PairSnapshot?,
+        leftKeys: Set<String>,
+        rightKeys: Set<String>,
+    ): Map<String, String> {
         if (snapshot == null || snapshot.entries.isEmpty()) return emptyMap()
         val oneSided = diffs.filter { it.kind == DiffKind.LEFT_ONLY || it.kind == DiffKind.RIGHT_ONLY }
         if (oneSided.isEmpty()) return emptyMap()
-        val present = diffs.mapTo(HashSet()) { it.relPath }
-        val vanished = snapshot.entries.values.filter { !present.contains(it.relPath) }
-        if (vanished.isEmpty()) return emptyMap()
 
         val out = LinkedHashMap<String, String>()
+        val claimed = HashSet<String>()
         for (diff in oneSided) {
             val side = diff.left ?: diff.right ?: continue
-            val match = vanished.firstOrNull { candidate ->
-                !out.values.contains(candidate.relPath) &&
+            val sideKeys = if (diff.kind == DiffKind.LEFT_ONLY) leftKeys else rightKeys
+            val match = snapshot.entries.values.firstOrNull { candidate ->
+                val key = keyOf(candidate.relPath)
+                !claimed.contains(candidate.relPath) &&
+                    !sideKeys.contains(key) &&
                     candidate.size == side.size &&
-                    (candidate.hash != null && diff.let { it.leftHash ?: it.rightHash } == candidate.hash ||
+                    (candidate.hash != null && (diff.leftHash ?: diff.rightHash) == candidate.hash ||
                         kotlin.math.abs(candidate.mtimeMs - side.mtimeMs) <= toleranceMs)
             } ?: continue
             out[diff.relPath] = match.relPath
+            claimed.add(match.relPath)
         }
         return out
+    }
+
+    private fun keyOf(relPath: String): String {
+        val normalized = normalize(relPath)
+        return if (caseSensitive) normalized else normalized.lowercase()
     }
 
     companion object {
