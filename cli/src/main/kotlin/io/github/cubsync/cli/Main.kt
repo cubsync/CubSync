@@ -1,13 +1,6 @@
 package io.github.cubsync.cli
 
-import io.github.cubsync.backends.lan.LanBackend
 import io.github.cubsync.backends.lan.LanServer
-import io.github.cubsync.backends.local.LocalBackend
-import io.github.cubsync.core.engine.InMemorySnapshotStore
-import io.github.cubsync.core.engine.JobListener
-import io.github.cubsync.core.engine.JobRunner
-import io.github.cubsync.core.engine.PairOutcome
-import io.github.cubsync.core.engine.SnapshotStore
 import io.github.cubsync.core.model.CompareMode
 import io.github.cubsync.core.model.ConflictPolicy
 import io.github.cubsync.core.model.DeletePolicy
@@ -19,10 +12,16 @@ import io.github.cubsync.core.model.SyncConfig
 import io.github.cubsync.core.model.SyncDirection
 import io.github.cubsync.core.protocol.Protocol
 import io.github.cubsync.core.spi.SimpleRoot
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import io.github.cubsync.service.AppLog
+import io.github.cubsync.service.BackendPool
+import io.github.cubsync.service.BuildInfo
+import io.github.cubsync.service.ConfigStore
+import io.github.cubsync.service.EndpointId
+import io.github.cubsync.service.PathTools
+import io.github.cubsync.service.ServerController
+import io.github.cubsync.service.ServerState
+import io.github.cubsync.service.SyncObserver
+import io.github.cubsync.service.SyncService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
@@ -63,6 +62,12 @@ internal fun run(arguments: List<String>): Int {
         System.err.println("error: ${usage.message}")
         System.err.println("run `cubsync --help` for usage")
         EXIT_USAGE
+    } catch (failure: NoSuchElementException) {
+        System.err.println("error: ${failure.message ?: failure::class.simpleName}")
+        EXIT_FAILURE
+    } catch (usage: IllegalArgumentException) {
+        System.err.println("error: ${usage.message}")
+        EXIT_USAGE
     } catch (failure: Throwable) {
         System.err.println("error: ${failure.message ?: failure::class.simpleName}")
         EXIT_FAILURE
@@ -72,87 +77,73 @@ internal fun run(arguments: List<String>): Int {
 /**
  * Serves one or more folders until interrupted.
  *
- * The log lines are printed after the socket is bound, so they reflect a server
- * that is really listening rather than one that is about to be.
+ * The same controller the desktop window uses, so a folder served from a terminal
+ * and a folder served from a button behave the same way. The lines are printed
+ * after the socket is bound, so they describe a server that is really listening
+ * rather than one that is about to be.
  */
 private fun serve(args: Args): Int = runBlocking {
     val roots = args.stringList("root").ifEmpty {
         throw UsageException("--root is required (repeat the flag to expose several folders)")
-    }.map { Paths.get(expand(it)).toAbsolutePath().normalize().toString() }
-
-    for (root in roots) {
-        if (!Files.isDirectory(Paths.get(root))) throw CommandFailedException("not a folder: $root")
     }
-
-    val backend = LocalBackend(displayName = LanServer.defaultNodeName())
-    roots.forEach { backend.registerRoot(it) }
-
-    val server = LanServer(
-        backend = backend,
-        exposedRoots = roots,
+    val controller = ServerController()
+    val state = controller.start(
+        roots = roots,
         port = args.int("port", Protocol.DEFAULT_PORT),
-        bindAddress = args.string("bind") ?: "0.0.0.0",
+        bindAddress = args.string("bind") ?: ServerState.DEFAULT_BIND,
         nodeName = args.string("name") ?: LanServer.defaultNodeName(),
-        appVersion = BuildInfo.VERSION,
     )
-    val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    val port = server.bind()
-    server.start(scope)
+    if (!state.running) throw CommandFailedException(state.error)
 
-    println("cubsync ${BuildInfo.VERSION} - ${server.nodeName}")
-    println(LanServer.describe(port, server.capabilities))
-    for (root in roots) println("  exposing $root")
+    println("cubsync ${BuildInfo.VERSION} - ${state.nodeName}")
+    println("sharing ${state.roots.size} folder(s) on port ${state.port}")
+    state.roots.forEach { println("  exposing $it") }
+    if (state.endpoints.isEmpty()) {
+        println("  reachable at <this machine> :${state.port}")
+    } else {
+        state.endpoints.forEach { println("  reachable at $it") }
+    }
     println("press Ctrl-C to stop")
 
     try {
         while (true) delay(1_000)
-    } catch (interrupted: InterruptedException) {
-        println("stopping")
     } finally {
-        scope.cancel()
-        server.close()
+        controller.stop()
     }
     0
 }
 
 private fun listPeer(args: Args): Int = runBlocking {
-    val target = EndpointId.parse(args.positional.firstOrNull() ?: args.requireString("to"))
+    val target = parseEndpoint(args.positional.firstOrNull() ?: args.requireString("to"))
     if (target.isLocal) throw UsageException("ls needs a peer, not 'local'")
     val path = args.positional.getOrNull(1) ?: args.string("path")
-    val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    // The same pool a run uses, so a peer that a listing proved reachable is not
+    // handshaken a second time when a job follows.
+    val pool = BackendPool(nodeName = "cubsync cli")
     try {
-        val peer = LanBackend.connect(
-            target.host!!,
-            target.port!!,
-            scope,
-            nodeName = "cubsync cli",
-            appVersion = BuildInfo.VERSION,
-        )
-        try {
-            println("${peer.displayName} (${peer.remoteAddress})")
-            val roots = peer.roots()
-            if (path == null) {
-                // A client cannot guess another machine's folder layout, so it asks.
-                println("exposed folders (${roots.size}):")
-                roots.forEach { println("  dir  ${it.path}") }
-                return@runBlocking 0
-            }
-            val matchesARoot = roots.any { root ->
-                val base = root.path.trimEnd('/', '\\')
-                path == root.path || path.startsWith("$base/") || path.startsWith("$base\\")
-            }
-            if (!matchesARoot) println("note: $path is not one of this peer's exposed folders")
-            val entries = peer.list(SimpleRoot(peer.id, path), "", recursive = false)
-            println("${entries.size} entries in $path")
-            for (entry in entries.sortedBy { it.relPath }) {
-                val kind = if (entry.isDirectory) "dir " else "file"
-                println("  $kind ${entry.relPath.padEnd(60)} ${Output.humanBytes(entry.size).padStart(10)}")
-            }
-        } finally {
-            peer.close()
+        val session = pool.probe(target.host!!, target.port!!)
+        println("${session.nodeName} (${session.host}:${session.port}) version ${session.appVersion.ifBlank { "?" }}")
+        if (path == null) {
+            // A client cannot guess another machine's folder layout, so it asks.
+            println("exposed folders (${session.roots.size}):")
+            session.roots.forEach { println("  dir  $it") }
+            return@runBlocking 0
+        }
+        val matchesARoot = session.roots.any { root ->
+            val base = root.trimEnd('/', '\\')
+            path == root || path.startsWith("$base/") || path.startsWith("$base\\")
+        }
+        if (!matchesARoot) println("note: $path is not one of this peer's exposed folders")
+        val entries = pool.peer(target.host!!, target.port!!)
+            .list(SimpleRoot(target.backendId, path), "", recursive = false)
+        println("${entries.size} entries in $path")
+        for (entry in entries.sortedBy { it.relPath }) {
+            val kind = if (entry.isDirectory) "dir " else "file"
+            println("  $kind ${entry.relPath.padEnd(60)} ${Output.humanBytes(entry.size).padStart(10)}")
         }
     } finally {
-        scope.cancel()
+        pool.close()
     }
     0
 }
@@ -160,17 +151,15 @@ private fun listPeer(args: Args): Int = runBlocking {
 /**
  * Pushes, pulls or (with `--dry-run`) compares one local folder with one peer folder.
  *
- * The flags build a one-pair configuration and hand it to the same runner a saved
+ * The flags build a one-pair configuration and hand it to the same service a saved
  * configuration uses, so there is exactly one code path that synchronises.
  */
 private fun transfer(args: Args, push: Boolean, forceDryRun: Boolean = false): Int = runBlocking {
-    val remoteId = EndpointId.parse(if (push) args.requireString("to") else args.requireString("from"))
+    val remoteId = parseEndpoint(if (push) args.requireString("to") else args.requireString("from"))
     if (remoteId.isLocal) throw UsageException("this command needs a peer, not 'local'")
     val remoteDir = args.requireString("remote")
-    val localDir = Paths.get(expand(if (push) args.requireString("from") else args.requireString("to")))
-        .toAbsolutePath()
-        .normalize()
-    if (!Files.isDirectory(localDir)) throw CommandFailedException("not a folder: $localDir")
+    val localDir = PathTools.absolute(if (push) args.requireString("from") else args.requireString("to"))
+    if (!PathTools.isDirectory(localDir)) throw CommandFailedException("not a folder: $localDir")
 
     val config = SyncConfig(
         configId = "cli-${if (push) "push" else "pull"}",
@@ -190,19 +179,19 @@ private fun transfer(args: Args, push: Boolean, forceDryRun: Boolean = false): I
                 pairId = "cli",
                 order = 0,
                 left = if (push) {
-                    Endpoint(EndpointId.LOCAL, localDir.toString())
+                    Endpoint(EndpointId.LOCAL, localDir)
                 } else {
                     Endpoint(remoteId.backendId, remoteDir)
                 },
                 right = if (push) {
                     Endpoint(remoteId.backendId, remoteDir)
                 } else {
-                    Endpoint(EndpointId.LOCAL, localDir.toString())
+                    Endpoint(EndpointId.LOCAL, localDir)
                 },
             ),
         ),
     )
-    execute(config, args, ConfigStore.at(args.string("state-dir")))
+    execute(config, args)
 }
 
 private fun runConfig(args: Args, store: ConfigStore): Int {
@@ -216,7 +205,7 @@ private fun runConfig(args: Args, store: ConfigStore): Int {
         if (selected.isEmpty()) throw CommandFailedException("no pair called '$only' in ${config.name}")
         config = config.copy(pairs = selected)
     }
-    return execute(config, args, store)
+    return execute(config, args)
 }
 
 /**
@@ -227,27 +216,17 @@ private fun runConfig(args: Args, store: ConfigStore): Int {
  * a scheduled job would call, and a scheduled two-way sync that forgot every run
  * would keep resurrecting deleted files.
  */
-private fun execute(config: SyncConfig, args: Args, store: ConfigStore): Int = runBlocking {
-    val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    val pool = BackendPool(scope)
+private fun execute(config: SyncConfig, args: Args): Int = runBlocking {
+    val quiet = args.flag("quiet") || args.flag("json")
+    val service = SyncService(
+        stateDirectory = ConfigStore.at(args.string("state-dir")).baseDirectory,
+        log = if (quiet) AppLog() else ConsoleLog,
+    )
     try {
-        for (pair in config.pairs) {
-            for (endpoint in listOf(pair.left, pair.right)) {
-                if (EndpointId(endpoint.backendId).isLocal) pool.registerLocalRoot(endpoint.rootPath)
-            }
-        }
-
-        val snapshots: SnapshotStore =
-            if (config.dryRun && args.string("state-dir") == null) InMemorySnapshotStore() else store.snapshotStore()
-        val runner = JobRunner(
-            backends = pool.resolver,
-            snapshots = snapshots,
-            listener = if (args.flag("quiet") || args.flag("json")) JobListener.NOOP else ProgressPrinter(),
-        )
-        if (!args.flag("json") && !args.flag("quiet")) {
+        if (!quiet) {
             println("${if (config.dryRun) "comparing" else "syncing"} ${config.name} (${config.pairs.size} pair(s))")
         }
-        val result = runner.run(config)
+        val result = service.run(config, observer = if (quiet) SyncObserver.NONE else ProgressPrinter())
         if (args.flag("json")) {
             println(Output.jobSummary(result, json = true))
         } else {
@@ -257,12 +236,20 @@ private fun execute(config: SyncConfig, args: Args, store: ConfigStore): Int = r
         }
         Output.exitCodeFor(result.status)
     } finally {
-        pool.close()
-        scope.cancel()
+        service.close()
     }
 }
 
-private class ProgressPrinter : JobListener {
+/** Per-file detail is only interesting when something goes wrong, so it goes to the log. */
+private val ConsoleLog: AppLog = AppLog().also { log ->
+    log.subscribe { entry ->
+        if (entry.level >= io.github.cubsync.service.LogLevel.WARN) {
+            System.err.println("  ${entry.level.name.lowercase()}: ${entry.area}: ${entry.message}")
+        }
+    }
+}
+
+private class ProgressPrinter : SyncObserver {
     private var bytes = 0L
     private var lastPrint = 0L
 
@@ -270,8 +257,8 @@ private class ProgressPrinter : JobListener {
         println("  pair ${pair.name.ifEmpty { pair.pairId }} starting")
     }
 
-    override fun onBytesTransferred(pairId: String, relPath: String, delta: Long) {
-        bytes += delta
+    override fun onBytesTransferred(total: Long) {
+        bytes = total
         val now = System.currentTimeMillis()
         if (now - lastPrint > 1_000) {
             lastPrint = now
@@ -280,7 +267,7 @@ private class ProgressPrinter : JobListener {
         }
     }
 
-    override fun onPairFinished(outcome: PairOutcome) {
+    override fun onPairFinished(outcome: io.github.cubsync.core.engine.PairOutcome) {
         print("\r")
         System.out.flush()
         println("  pair ${outcome.pairName}: ${Output.pairStatusName(outcome.status)} - ${Output.statsLine(outcome.stats)}")
@@ -338,12 +325,12 @@ private fun configCommand(args: Args, store: ConfigStore): Int {
 
         "add-pair" -> {
             val config = store.resolve(rest.firstOrNull() ?: args.requireString("id"))
-            val leftId = EndpointId.parse(args.string("left") ?: EndpointId.LOCAL)
-            val rightId = EndpointId.parse(args.requireString("right"))
+            val leftId = parseEndpoint(args.string("left") ?: EndpointId.LOCAL)
+            val rightId = parseEndpoint(args.requireString("right"))
             val leftRoot = args.string("left-root") ?: throw UsageException("--left-root is required")
             val rightRoot = args.string("right-root") ?: throw UsageException("--right-root is required")
 
-            if (leftId == rightId && sameFolder(leftRoot, rightRoot)) {
+            if (leftId == rightId && isSameFolder(leftRoot, rightRoot)) {
                 throw CommandFailedException("a pair cannot have the same folder on both sides")
             }
 
@@ -360,8 +347,8 @@ private fun configCommand(args: Args, store: ConfigStore): Int {
                 pairId = args.string("id") ?: Ids.newPairId(),
                 order = config.pairs.size,
                 name = args.string("name") ?: "",
-                left = Endpoint(leftId.backendId, normalizeRoot(leftRoot)),
-                right = Endpoint(rightId.backendId, normalizeRoot(rightRoot)),
+                left = Endpoint(leftId.backendId, PathTools.normalizeRoot(leftRoot)),
+                right = Endpoint(rightId.backendId, PathTools.normalizeRoot(rightRoot)),
                 filterOverride = override,
                 directionOverride = args.string("direction")?.let { parseDirection(it, push = true) },
             )
@@ -373,14 +360,14 @@ private fun configCommand(args: Args, store: ConfigStore): Int {
 
         "export" -> {
             val config = store.resolve(rest.firstOrNull() ?: args.requireString("id"))
-            val destination = Paths.get(expand(args.requireString("out"))).toAbsolutePath()
+            val destination = Paths.get(PathTools.expand(args.requireString("out"))).toAbsolutePath()
             val written = store.export(config, destination)
             println("exported ${config.name} to $written")
             0
         }
 
         "import" -> {
-            val source = Paths.get(expand(rest.firstOrNull() ?: args.requireString("in"))).toAbsolutePath()
+            val source = Paths.get(PathTools.expand(rest.firstOrNull() ?: args.requireString("in"))).toAbsolutePath()
             if (!Files.isRegularFile(source)) throw CommandFailedException("no such file: $source")
             val imported = store.load(source)
             val named = args.string("name")?.let { imported.copy(name = it) } ?: imported
@@ -401,27 +388,14 @@ private fun configCommand(args: Args, store: ConfigStore): Int {
     }
 }
 
-private fun sameFolder(a: String, b: String): Boolean =
-    Paths.get(expand(a)).toAbsolutePath().normalize() == Paths.get(expand(b)).toAbsolutePath().normalize()
+private fun isSameFolder(a: String, b: String): Boolean =
+    PathTools.toPath(PathTools.expand(a)) == PathTools.toPath(PathTools.expand(b))
 
-private fun normalizeRoot(path: String): String {
-    val p = path.trim()
-    return if (p.isEmpty()) p else p.replace('\\', '/').trimEnd('/').ifEmpty { "/" }
-}
-
-/** `~` and a leading environment variable, so a configuration can be written portably. */
-private fun expand(path: String): String {
-    var expanded = path.trim()
-    if (expanded == "~" || expanded.startsWith("~/") || expanded.startsWith("~\\")) {
-        expanded = System.getProperty("user.home") + expanded.substring(1)
+/** `EndpointId` refuses a bad spec with an [IllegalArgumentException]; a CLI wants an exit code. */
+private fun parseEndpoint(spec: String): EndpointId =
+    runCatching { EndpointId.parse(spec) }.getOrElse { failure ->
+        throw UsageException(failure.message ?: "unreadable endpoint '$spec'")
     }
-    if (expanded.startsWith("$")) {
-        val name = expanded.substring(1).substringBefore('/').substringBefore('\\')
-        val value = System.getenv(name)
-        if (value != null) expanded = value + expanded.substring(1 + name.length)
-    }
-    return expanded
-}
 
 private fun parseDirection(value: String, push: Boolean): SyncDirection = when (value.lowercase()) {
     "two-way", "twoway", "both" -> SyncDirection.TWO_WAY

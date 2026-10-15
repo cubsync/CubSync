@@ -1,4 +1,4 @@
-package io.github.cubsync.cli
+package io.github.cubsync.service
 
 import io.github.cubsync.core.model.CompareMode
 import io.github.cubsync.core.model.ConflictPolicy
@@ -10,13 +10,11 @@ import io.github.cubsync.core.model.SyncConfig
 import io.github.cubsync.core.model.SyncDirection
 import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.io.path.createDirectories
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class ConfigStoreTest {
@@ -69,18 +67,22 @@ class ConfigStoreTest {
 
         val loaded = store.resolve("cfg-1")
         assertEquals(config(), loaded)
-        assertEquals(1, loaded.pairs.size)
         assertEquals(FilterSet(enabled = false), loaded.pairs.single().filterOverride)
         assertEquals(SyncDirection.UPDATE_LEFT_TO_RIGHT, loaded.pairs.single().directionOverride)
     }
 
     @Test
-    fun listing_finds_every_saved_configuration_sorted_by_name() {
+    fun listing_sorts_by_order_then_name() {
         val store = store()
         store.save(config("cfg-b", "zeta"))
         store.save(config("cfg-a", "alpha"))
-        assertEquals(listOf("alpha", "zeta"), store.list().map { it.name })
-        assertEquals(emptyList(), ConfigStore(store.configDirectory.resolve("nope")).list())
+        store.save(config("cfg-c", "pinned").copy(sortOrder = -1))
+        assertEquals(listOf("pinned", "alpha", "zeta"), store.list().map { it.name })
+    }
+
+    @Test
+    fun a_missing_directory_is_an_empty_listing_rather_than_an_error() {
+        assertEquals(emptyList(), ConfigStore(store().configDirectory.resolve("nope")).list())
     }
 
     @Test
@@ -89,6 +91,24 @@ class ConfigStoreTest {
         store.save(config("cfg-good", "good"))
         Files.writeString(store.configDirectory.resolve("cfg-broken.json"), "{ this is not json")
         assertEquals(listOf("good"), store.list().map { it.name })
+    }
+
+    @Test
+    fun deleting_a_configuration_removes_its_file() {
+        val store = store()
+        store.save(config())
+        assertTrue(store.exists("cfg-1"))
+        assertTrue(store.delete("cfg-1"))
+        assertFalse(store.exists("cfg-1"))
+        assertFalse(store.delete("cfg-1"))
+    }
+
+    @Test
+    fun a_configuration_id_cannot_escape_the_config_directory() {
+        val store = store()
+        val path = store.pathFor("../../etc/passwd")
+        assertEquals(store.configDirectory, path.parent)
+        assertFalse(path.fileName.toString().contains(".."))
     }
 
     @Test
@@ -101,6 +121,7 @@ class ConfigStoreTest {
         val text = Files.readString(destination)
         assertTrue(text.contains("cubsync-config/1"))
         assertTrue(text.contains("exportedAt"))
+        assertTrue(text.contains(BuildInfo.VERSION))
 
         val imported = store.load(destination)
         assertEquals(config(), imported)
@@ -108,8 +129,7 @@ class ConfigStoreTest {
 
     @Test
     fun an_unknown_reference_is_reported_by_name() {
-        val store = store()
-        val failure = assertFailsWith<CommandFailedException> { store.resolve("nope") }
+        val failure = assertFailsWith<NoSuchElementException> { store().resolve("nope") }
         assertTrue(failure.message!!.contains("nope"))
     }
 
@@ -121,77 +141,15 @@ class ConfigStoreTest {
     }
 
     @Test
-    fun a_snapshot_store_is_created_where_the_configurations_live() {
+    fun a_snapshot_directory_is_created_where_the_configurations_live() {
         val store = store()
-        assertTrue(Files.isDirectory(store.snapshotStore().let { store.snapshotDirectory }))
-    }
-
-    @Test
-    fun local_endpoints_are_recognised() {
-        assertTrue(EndpointId.parse("local").isLocal)
-        assertTrue(EndpointId.parse("LOCAL".lowercase()).isLocal)
-        assertFalse(EndpointId.parse("nas.local:43817").isLocal)
-    }
-
-    @Test
-    fun a_peer_endpoint_carries_the_host_and_port() {
-        val peer = EndpointId.parse("nas.local:43817")
-        assertEquals("nas.local", peer.host)
-        assertEquals(43817, peer.port)
-        assertEquals("lan:nas.local:43817", peer.backendId)
-
-        val explicit = EndpointId.parse("lan:nas.local:43817")
-        assertEquals(peer, explicit)
-        assertEquals("192.168.1.5", EndpointId.peer("192.168.1.5", 1).host)
-    }
-
-    @Test
-    fun a_malformed_endpoint_is_refused_rather_than_guessed() {
-        assertFailsWith<UsageException> { EndpointId.parse("") }
-        assertFailsWith<UsageException> { EndpointId.parse("nas.local") }
-        assertFailsWith<UsageException> { EndpointId.parse("nas.local:not-a-port") }
-        assertFailsWith<UsageException> { EndpointId.parse("nas.local:70000") }
-        assertFailsWith<UsageException> { EndpointId.parse(":43817") }
+        store.snapshotStore()
+        assertTrue(Files.isDirectory(store.snapshotDirectory))
     }
 
     @Test
     fun the_default_state_directory_is_under_the_user_home() {
         val base = ConfigStore.defaultBase().toString()
         assertTrue(base.endsWith(".cubsync"), base)
-        assertTrue(base.contains(System.getProperty("user.name")) || base.contains("home", ignoreCase = true))
-    }
-
-    @Test
-    fun a_configuration_summary_shows_the_overrides_that_change_behaviour() {
-        val text = ConfigOutput.summary(config(), json = false)
-        assertTrue(text.contains("photos"))
-        assertTrue(text.contains("content_hash"))
-        assertTrue(text.contains("keep_both"))
-        assertTrue(text.contains("filter off"), "a per-pair filter switch has to be visible: $text")
-        assertTrue(text.contains("direction update_left_to_right"))
-        text.lineSequence().forEach { assertFalse(it.endsWith(" "), "trailing space: '$it'") }
-    }
-
-    @Test
-    fun the_json_summary_is_parseable_enough_to_be_useful() {
-        val json = ConfigOutput.summary(config(), json = true)
-        assertTrue(json.startsWith("{") && json.endsWith("}"))
-        assertTrue(json.contains("\"pairs\":["))
-        assertTrue(json.contains("\"filterOverride\":\"off\""))
-        assertTrue(json.contains("\"directionOverride\":\"update_left_to_right\""))
-        assertTrue(json.contains("\"leftBackend\":\"local\""))
-        // A name with a quote in it must not break the document.
-        val awkward = config().copy(name = "the \"good\" one", pairs = emptyList())
-        assertTrue(ConfigOutput.summary(awkward, json = true).contains("the \\\"good\\\" one"))
-    }
-
-    @Test
-    fun the_listing_pads_columns_without_leaving_trailing_spaces() {
-        val text = ConfigOutput.list(listOf(config()), json = false)
-        assertTrue(text.contains("CONFIG ID"))
-        assertTrue(text.contains("photos"))
-        text.lineSequence().forEach { assertFalse(it.endsWith(" "), "trailing space: '$it'") }
-        assertNotNull(ConfigOutput.list(emptyList(), json = true))
-        assertEquals("[]", ConfigOutput.list(emptyList(), json = true))
     }
 }

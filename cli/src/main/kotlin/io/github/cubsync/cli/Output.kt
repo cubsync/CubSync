@@ -5,6 +5,7 @@ import io.github.cubsync.core.engine.JobStatus
 import io.github.cubsync.core.engine.PairOutcome
 import io.github.cubsync.core.engine.PairStatus
 import io.github.cubsync.core.engine.TransferStats
+import io.github.cubsync.service.BuildInfo
 
 /**
  * Human-readable output.
@@ -149,19 +150,4 @@ object Output {
         "${stats.copiedFiles} copied, ${humanBytes(stats.copiedBytes)}, ${stats.deletedFiles} deleted"
 
     fun pairStatusName(status: PairStatus): String = status.name.lowercase()
-}
-
-/** Build facts that the CLI prints and that the protocol reports during a handshake. */
-object BuildInfo {
-    val VERSION: String = readVersion()
-    val PROTOCOL_VERSION: Int = io.github.cubsync.core.protocol.Protocol.VERSION
-    val PLATFORM: String = "${System.getProperty("os.name")} ${System.getProperty("os.arch")}"
-
-    private fun readVersion(): String {
-        val fromJar = Output::class.java.`package`?.implementationVersion
-        return fromJar ?: DEFAULT_VERSION
-    }
-
-    /** Kept in step with the repository's version by the release procedure. */
-    const val DEFAULT_VERSION: String = "0.2.0"
 }
