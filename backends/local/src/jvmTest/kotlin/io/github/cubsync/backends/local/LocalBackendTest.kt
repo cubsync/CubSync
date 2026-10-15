@@ -205,7 +205,7 @@ class LocalBackendTest {
             ),
         )
 
-        val result = JobRunner(left, right).run(config)
+        val result = JobRunner.of(left, right).run(config)
 
         assertEquals(PairStatus.COMPLETED, result.pairs.single().status, result.pairs.single().error)
         assertEquals("k", Files.readString(rightDir.resolve("keep.txt")))
@@ -221,8 +221,11 @@ class LocalBackendTest {
     fun a_local_run_resumes_after_an_injected_failure() = runBlocking {
         val leftDir = tempDir("left-resume")
         val rightDir = tempDir("right-resume")
-        val left = backend()
-        val right = backend()
+        // Distinct ids, because the fault injector wraps only one side and the
+        // resolver picks a backend by id. Two folders on one machine normally share
+        // a single backend, and the folder is chosen by the endpoint's root path.
+        val left = LocalBackend(id = "local-left", displayName = "left")
+        val right = LocalBackend(id = "local-right", displayName = "right")
         val payload = ByteArray(900_000) { (it * 17 and 0xFF).toByte() }
         Files.write(leftDir.resolve("big.bin"), payload)
 
@@ -241,14 +244,14 @@ class LocalBackendTest {
         )
 
         val faulty = FaultInjectingBackend(right).failAfterWrite(1)
-        val interrupted = JobRunner(left, faulty, chunkSize = 262_144).run(config)
+        val interrupted = JobRunner.of(left, faulty, chunkSize = 262_144).run(config)
 
         assertEquals(PairStatus.FAILED, interrupted.pairs.single().status)
         assertFalse(Files.exists(rightDir.resolve("big.bin")))
         assertTrue(Files.exists(rightDir.resolve("big.bin.cubtmp")))
 
         faulty.heal()
-        val resumed = JobRunner(left, right, chunkSize = 262_144).run(config)
+        val resumed = JobRunner.of(left, right, chunkSize = 262_144).run(config)
 
         assertEquals(PairStatus.COMPLETED, resumed.pairs.single().status, resumed.pairs.single().error)
         assertContentEquals(payload, Files.readAllBytes(rightDir.resolve("big.bin")))
@@ -281,7 +284,7 @@ class LocalBackendTest {
             ),
         )
 
-        JobRunner(left, right).run(config)
+        JobRunner.of(left, right).run(config)
 
         assertTrue(Files.exists(rightDir.resolve("keep.txt")))
         assertFalse(Files.exists(rightDir.resolve("cache")))

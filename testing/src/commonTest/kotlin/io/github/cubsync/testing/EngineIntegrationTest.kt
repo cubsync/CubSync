@@ -84,7 +84,7 @@ class EngineIntegrationTest {
         leftBackend: RemoteBackend = left,
         rightBackend: RemoteBackend = right,
         chunkSize: Int = ChunkPlan.DEFAULT_CHUNK_SIZE,
-    ) = JobRunner(leftBackend, rightBackend, snapshots, chunkSize = chunkSize)
+    ) = JobRunner.of(leftBackend, rightBackend, snapshots, chunkSize = chunkSize)
 
     private fun snapshotOf(entries: Map<String, SnapshotEntry>) = PairSnapshot(
         pairId = "p1",
@@ -286,7 +286,7 @@ class EngineIntegrationTest {
         left.putFile("/left", "big.bin", payload, mtimeMs = 4_242)
 
         val faulty = FaultInjectingBackend(right).failAfterWrite(1)
-        val interrupted = JobRunner(left, faulty, snapshots, chunkSize = 262_144).run(config())
+        val interrupted = JobRunner.of(left, faulty, snapshots, chunkSize = 262_144).run(config())
 
         assertEquals(PairStatus.FAILED, interrupted.pairs.single().status)
         assertEquals(1, faulty.injectedFailures)

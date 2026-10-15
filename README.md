@@ -96,9 +96,28 @@ The direction defaults to update-only, so a first run cannot delete anything on 
 peer; mirroring has to be asked for. Deletions default to `recycle`, which moves the
 file into `.cub_trash` inside the root it came from.
 
-`cubsync --help` lists every option. `--json` prints a machine-readable summary build
+A one-off transfer is fine, but the point of the tool is a saved configuration:
+several folder pairs, one policy, and a history per pair so a two-way run can tell a
+deletion from a new file.
+
+```
+cubsync config new --name "photos and docs" --direction two-way
+cubsync config add-pair <id> --left local --left-root ~/photos \
+                             --right nas.local:43817 --right-root /srv/photos
+cubsync config add-pair <id> --left local --left-root ~/docs \
+                             --right phone.local:43817 --right-root /sdcard/Docs \
+                             --filter '*.tmp' --name "documents"
+cubsync config show <id>
+cubsync run <id>
+```
+
+`cubsync --help` lists every option. `--json` prints a machine-readable summary built
 from the same result the text output shows, and the exit code is 0 when every pair
 finished, 1 when something did not, and 2 when the command line was wrong.
+
+Configurations and their per-pair snapshots live under `~/.cubsync` by default and
+can be moved with `--state-dir`; `cubsync config export` writes a `.cubcfg` that can
+be imported on another machine.
 
 ## Testing
 
