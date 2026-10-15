@@ -8,6 +8,8 @@ with the pre-1.0 rules described in [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-16
+
 ### Added
 
 - **Saved configurations.** `cubsync config new | list | show | add-pair | export |
@@ -87,5 +89,6 @@ versions.
 - Credentials and encryption: the protocol is plaintext and intends to run over
   a trusted network until authentication is designed.
 
-[Unreleased]: https://github.com/cubsync/CubSync/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/cubsync/CubSync/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/cubsync/CubSync/releases/tag/v0.2.0
 [0.1.0]: https://github.com/cubsync/CubSync/releases/tag/v0.1.0

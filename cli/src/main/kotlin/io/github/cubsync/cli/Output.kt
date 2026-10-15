@@ -163,5 +163,5 @@ object BuildInfo {
     }
 
     /** Kept in step with the repository's version by the release procedure. */
-    const val DEFAULT_VERSION: String = "0.1.0"
+    const val DEFAULT_VERSION: String = "0.2.0"
 }
