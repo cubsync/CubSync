@@ -116,7 +116,7 @@ jobs:
 
       - name: Test
         if: steps.detect.outputs.gradle == 'true'
-        run: ./gradlew --no-daemon --stacktrace test
+        run: ./gradlew --no-daemon --stacktrace check
 
       - name: Upload test reports
         if: always() && steps.detect.outputs.gradle == 'true'
@@ -152,7 +152,9 @@ jobs:
           set -eu
           files=$(git ls-files '*.md' '*.kt' '*.kts' '*.java' '*.yml' '*.yaml' '*.json' || true)
           [ -n "$files" ] || { echo "no text files yet"; exit 0; }
-          bad=$(echo "$files" | xargs grep -lE '[ \t]+$' 2>/dev/null || true)
+          # -P, because inside a bracket expression `\t` is a literal backslash and
+          # a letter t, which would flag every line ending in "t".
+          bad=$(echo "$files" | xargs grep -lP '[ \t]+$' 2>/dev/null || true)
           if [ -n "$bad" ]; then
             echo "::error::Trailing whitespace found in:"
             echo "$bad"
