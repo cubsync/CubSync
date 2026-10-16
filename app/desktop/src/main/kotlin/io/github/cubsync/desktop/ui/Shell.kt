@@ -34,6 +34,7 @@ import io.github.cubsync.desktop.CubType
 import io.github.cubsync.desktop.Notice
 import io.github.cubsync.desktop.NoticeKind
 import io.github.cubsync.service.EndpointId
+import io.github.cubsync.service.IconPaths
 import io.github.cubsync.service.Section
 import io.github.cubsync.service.ServerState
 import io.github.cubsync.service.Words
@@ -103,7 +104,11 @@ private fun Rail(state: AppState, server: ServerState) {
                     .padding(horizontal = 8.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(sectionGlyph(section), style = CubType.label, color = if (selected) colors.accent else colors.textFaint)
+                CubIcon(
+                    sectionIcon(section),
+                    size = 17,
+                    tint = if (selected) colors.accent else colors.textFaint,
+                )
                 Spacer(Modifier.width(9.dp))
                 Text(
                     section.label,
@@ -123,14 +128,14 @@ private fun Rail(state: AppState, server: ServerState) {
 
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(Words.FAVOURITES, style = CubType.meta, color = colors.textFaint, modifier = Modifier.weight(1f))
-            GlyphButton("＋", size = 22) { state.toggleFavourite(io.github.cubsync.service.Side.LEFT) }
+            IconButton(IconPaths.PLUS, size = 22, mark = 14) { state.toggleFavourite(io.github.cubsync.service.Side.LEFT) }
         }
 
         val favourites = state.service.settings.favourites
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             if (favourites.isEmpty()) {
                 Text(
-                    "在传输页点 ☆ 收藏一个目录",
+                    "在传输页点星标收藏一个目录",
                     style = CubType.meta,
                     color = colors.textFaint,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
@@ -149,7 +154,7 @@ private fun Rail(state: AppState, server: ServerState) {
                         .padding(horizontal = 8.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("☆", style = CubType.meta, color = colors.textFaint)
+                    CubIcon(IconPaths.STAR, size = 13, tint = colors.textFaint)
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
                         Text(favourite.label, style = CubType.body, color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -236,15 +241,6 @@ private fun colourFor(notice: Notice, colors: io.github.cubsync.desktop.CubColor
 }
 
 /** The rail's glyph for a section. Short, because the rail is narrow. */
-fun sectionGlyph(section: Section): String = when (section) {
-    Section.CONNECT -> "⇄"
-    Section.TRANSFER -> "⇅"
-    Section.SYNC -> "▤"
-    Section.JOBS -> "▦"
-    Section.LOGS -> "≡"
-    Section.SETTINGS -> "⚙"
-}
-
 /** The label a pane's title uses. */
 fun paneTitle(state: AppState, side: io.github.cubsync.service.Side): String {
     val pane = state.browsing.current(side)

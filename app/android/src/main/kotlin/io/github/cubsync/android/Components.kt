@@ -1,5 +1,6 @@
 package io.github.cubsync.android
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -37,13 +38,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import io.github.cubsync.service.IconPaths
 import io.github.cubsync.service.JobTone
 import io.github.cubsync.service.LogLevel
 
@@ -53,40 +60,434 @@ import io.github.cubsync.service.LogLevel
  * Every tappable thing here is at least 34dp and the list rows are at least 56dp, because
  * these are hit with a thumb and the design says so. The desktop's versions of these are
  * smaller on purpose; the words they carry are the same, and those come from `UiSpec`.
+ *
+ * A card is a raised block with no border, a section label sits above a group of them, and
+ * a row inside one is a 40dp icon tile beside two lines of text. Those three things are
+ * what "consistent" means on this end, so they are only defined once.
  */
 
+// ---------------------------------------------------------------- cards
+
+/** A raised block of content — the shape almost every screen is made of. */
 @Composable
 fun Panel(
     modifier: Modifier = Modifier,
     title: String? = null,
     subtitle: String? = null,
     actions: @Composable RowScope.() -> Unit = {},
-    contentPadding: PaddingValues = PaddingValues(14.dp),
+    outlined: Boolean = false,
+    highlight: Boolean = false,
+    contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val colors = CubTheme.colors
+    val shape = RoundedCornerShape(20.dp)
+    val border = when {
+        highlight -> Modifier.border(1.5.dp, colors.accent, shape)
+        outlined -> Modifier.border(1.dp, colors.outline, shape)
+        else -> Modifier
+    }
+    Column(
+        modifier
+            .clip(shape)
+            .background(if (outlined) Color.Transparent else colors.surfaceRaised)
+            .then(border),
+    ) {
+        if (title != null) {
+            Row(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 14.dp, top = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = CubType.cardTitle, color = colors.text)
+                    if (subtitle != null) Text(subtitle, style = CubType.rowDetail, color = colors.textDim)
+                }
+                actions()
+            }
+        }
+        Column(Modifier.padding(contentPadding), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
+    }
+}
+
+/** The grey sentence inside a card. */
+@Composable
+fun CardDesc(text: String, modifier: Modifier = Modifier) {
+    Text(text, style = CubType.rowDetail, color = CubTheme.colors.textDim, lineHeight = 18.sp, modifier = modifier)
+}
+
+/** The small label above a group of cards. */
+@Composable
+fun SectionLabel(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        style = CubType.sectionLabel,
+        color = CubTheme.colors.textDim,
+        modifier = modifier.padding(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 2.dp),
+    )
+}
+
+/**
+ * A card whose body folds away.
+ *
+ * 运行模式 is the reason this exists: it matters enormously to the person fighting
+ * permissions and not at all to anybody else, so its heading stays visible and carries the
+ * answer while its body stays shut.
+ */
+@Composable
+fun FoldCard(
+    title: String,
+    summary: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = CubTheme.colors
     Column(
         modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(colors.surface)
-            .border(1.dp, colors.outline, RoundedCornerShape(16.dp)),
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(colors.surfaceRaised),
     ) {
-        if (title != null) {
-            Row(
-                Modifier.fillMaxWidth().padding(start = 14.dp, end = 8.dp, top = 12.dp, bottom = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = CubType.cardTitle, color = colors.text)
-                    if (subtitle != null) Text(subtitle, style = CubType.meta, color = colors.textDim)
-                }
-                actions()
-            }
-            HorizontalDivider(color = colors.outline)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onToggle,
+                )
+                .padding(horizontal = 16.dp, vertical = 15.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CubIcon(
+                if (expanded) IconPaths.CHEVRON_DOWN else IconPaths.CHEVRON_RIGHT,
+                size = 18,
+                tint = colors.textDim,
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(title, style = CubType.cardTitle, color = colors.text)
+            Spacer(Modifier.weight(1f))
+            Text(
+                summary,
+                style = CubType.rowDetail,
+                color = colors.textFaint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
-        Column(Modifier.padding(contentPadding), content = content)
+        if (expanded) {
+            Column(
+                Modifier.padding(start = 16.dp, end = 16.dp, bottom = 15.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                content = content,
+            )
+        }
     }
 }
+
+/** One line inside a card: an icon tile, a name, a second line, and whatever goes on the right. */
+@Composable
+fun CardRow(
+    title: String,
+    detail: String = "",
+    modifier: Modifier = Modifier,
+    icon: String? = null,
+    tint: Color? = null,
+    onClick: (() -> Unit)? = null,
+    trailing: @Composable (RowScope.() -> Unit)? = null,
+) {
+    val colors = CubTheme.colors
+    Row(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 2.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (icon != null) {
+            Box(
+                Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(colors.accentContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                CubIcon(icon, size = 20, tint = colors.accent)
+            }
+            Spacer(Modifier.width(13.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = CubType.rowTitle,
+                color = tint ?: colors.text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (detail.isNotEmpty()) {
+                Text(
+                    detail,
+                    style = CubType.rowDetail,
+                    color = colors.textDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (trailing != null) trailing()
+    }
+}
+
+/** Which of the design's three button weights a card button is drawn in. */
+enum class CardButtonKind { FILLED, TONAL, OUTLINED }
+
+/** A full-width button at the bottom of a card. */
+@Composable
+fun CardButton(
+    text: String,
+    kind: CardButtonKind = CardButtonKind.FILLED,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    val colors = CubTheme.colors
+    val shape = RoundedCornerShape(99.dp)
+    val background = when (kind) {
+        CardButtonKind.FILLED -> if (enabled) colors.accent else colors.surfaceSunken
+        CardButtonKind.TONAL -> colors.accentContainer
+        CardButtonKind.OUTLINED -> Color.Transparent
+    }
+    val foreground = when {
+        !enabled -> colors.textFaint
+        kind == CardButtonKind.FILLED -> Color.White
+        kind == CardButtonKind.TONAL -> colors.accent
+        else -> colors.text
+    }
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clip(shape)
+            .background(background)
+            .then(if (kind == CardButtonKind.OUTLINED) Modifier.border(1.dp, colors.outlineStrong, shape) else Modifier)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 13.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, style = CubType.buttonLabel, color = foreground, maxLines = 1)
+    }
+}
+
+// ---------------------------------------------------------------- 档位
+
+/** The pill row the design uses wherever a value is picked from a handful. */
+@Composable
+fun <T> ChoiceChips(
+    options: List<T>,
+    selected: T,
+    modifier: Modifier = Modifier,
+    label: (T) -> String = { it.toString() },
+    onSelect: (T) -> Unit,
+) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+        for (option in options) {
+            val active = option == selected
+            Box(
+                Modifier
+                    .heightIn(min = 34.dp)
+                    .clip(RoundedCornerShape(99.dp))
+                    .background(if (active) CubTheme.colors.accent else Color.Transparent)
+                    .border(1.dp, if (active) CubTheme.colors.accent else CubTheme.colors.outlineStrong, RoundedCornerShape(99.dp))
+                    .clickable { onSelect(option) }
+                    .padding(horizontal = 13.dp, vertical = 7.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    label(option),
+                    style = CubType.label,
+                    color = if (active) Color.White else CubTheme.colors.textDim,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+/** The same pill row, for the values where more than one can be on. */
+@Composable
+fun <T> ToggleChips(
+    options: List<T>,
+    isOn: (T) -> Boolean,
+    modifier: Modifier = Modifier,
+    label: (T) -> String = { it.toString() },
+    onToggle: (T) -> Unit,
+) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+        for (option in options) {
+            val active = isOn(option)
+            Box(
+                Modifier
+                    .heightIn(min = 34.dp)
+                    .clip(RoundedCornerShape(99.dp))
+                    .background(if (active) CubTheme.colors.accent else Color.Transparent)
+                    .border(1.dp, if (active) CubTheme.colors.accent else CubTheme.colors.outlineStrong, RoundedCornerShape(99.dp))
+                    .clickable { onToggle(option) }
+                    .padding(horizontal = 13.dp, vertical = 7.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    label(option),
+                    style = CubType.label,
+                    color = if (active) Color.White else CubTheme.colors.textDim,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * A field that opens a list of choices.
+ *
+ * The phone has no room for a dropdown, so a value picked from many — 同步方向 has six —
+ * is a row that says what is chosen now and opens a sheet when tapped.
+ */
+@Composable
+fun SelectRow(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val colors = CubTheme.colors
+    Column(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(colors.surfaceSunken)
+            .border(1.dp, colors.outlineStrong, RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Text(label, style = CubType.rowDetail, color = colors.textFaint)
+        Spacer(Modifier.height(3.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                value,
+                style = CubType.body,
+                color = colors.text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            CubIcon(IconPaths.CHEVRON_DOWN, size = 18, tint = colors.textDim)
+        }
+    }
+}
+
+// ---------------------------------------------------------------- 传输与作业的状态
+
+/** A bar that grows from the left, for a run in flight. */
+@Composable
+fun ProgressBar(
+    fraction: Float,
+    modifier: Modifier = Modifier,
+    tone: Color? = null,
+    height: Int = 8,
+) {
+    val colors = CubTheme.colors
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(height.dp)
+            .clip(RoundedCornerShape(99.dp))
+            .background(if (colors.isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.10f)),
+    ) {
+        if (fraction > 0f) {
+            Box(
+                Modifier
+                    .fillMaxWidth(fraction.coerceIn(0f, 1f))
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(99.dp))
+                    .background(tone ?: colors.accent),
+            )
+        }
+    }
+}
+
+@Composable
+fun toneColor(tone: JobTone): Color {
+    val colors = CubTheme.colors
+    return when (tone) {
+        JobTone.GOOD -> colors.success
+        JobTone.WARN -> colors.warning
+        JobTone.BAD -> colors.danger
+    }
+}
+
+@Composable
+fun levelColor(level: LogLevel): Color {
+    val colors = CubTheme.colors
+    return when (level) {
+        LogLevel.DEBUG -> colors.textFaint
+        LogLevel.INFO -> colors.textDim
+        LogLevel.WARN -> colors.warning
+        LogLevel.ERROR -> colors.danger
+    }
+}
+
+@Composable
+fun StatusDot(color: Color, size: Int = 8) {
+    Box(Modifier.size(size.dp).clip(CircleShape).background(color))
+}
+
+/** The round button in a sub-row, drawn with the same mark size as the top bar's. */
+@Composable
+fun GlyphButton(
+    glyph: String,
+    modifier: Modifier = Modifier,
+    selected: Boolean = false,
+    enabled: Boolean = true,
+    size: Int = 38,
+    onClick: () -> Unit,
+) {
+    val colors = CubTheme.colors
+    Box(
+        modifier
+            .size(size.dp)
+            .clip(CircleShape)
+            .background(if (selected) colors.accent else Color.Transparent)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            glyph,
+            style = CubType.label,
+            color = when {
+                !enabled -> colors.textFaint
+                selected -> Color.White
+                else -> colors.textDim
+            },
+            maxLines = 1,
+        )
+    }
+}
+
+/** The floating action button a list screen carries. */
+@Composable
+fun Fab(icon: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier
+            .size(58.dp)
+            .clip(RoundedCornerShape(19.dp))
+            .background(CubTheme.colors.accent)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        CubIcon(icon, size = 26, stroke = 2f, tint = Color.White)
+    }
+}
+
+// ---------------------------------------------------------------- 按钮与输入
 
 /** A text button at the design's hit area for a thumb. */
 @Composable
@@ -134,38 +535,6 @@ fun PrimaryButton(
         contentAlignment = Alignment.Center,
     ) {
         Text(text, style = CubType.label, color = if (enabled) Color.White else colors.textFaint, maxLines = 1)
-    }
-}
-
-/** The round glyph button the sub-row is made of. */
-@Composable
-fun GlyphButton(
-    glyph: String,
-    modifier: Modifier = Modifier,
-    selected: Boolean = false,
-    enabled: Boolean = true,
-    size: Int = 38,
-    onClick: () -> Unit,
-) {
-    val colors = CubTheme.colors
-    Box(
-        modifier
-            .size(size.dp)
-            .clip(CircleShape)
-            .background(if (selected) colors.accent else Color.Transparent)
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            glyph,
-            style = CubType.label,
-            color = when {
-                !enabled -> colors.textFaint
-                selected -> Color.White
-                else -> colors.textDim
-            },
-            maxLines = 1,
-        )
     }
 }
 
@@ -225,13 +594,14 @@ fun SettingRow(
 ) {
     val colors = CubTheme.colors
     Row(
-        modifier.fillMaxWidth().heightIn(min = 46.dp).padding(vertical = 4.dp),
+        modifier.fillMaxWidth().heightIn(min = 46.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(label, style = CubType.label, color = colors.text)
-            if (hint.isNotEmpty()) Text(hint, style = CubType.meta, color = colors.textFaint)
+            Text(label, style = CubType.rowTitle, color = colors.text)
+            if (hint.isNotEmpty()) Text(hint, style = CubType.rowDetail, color = colors.textFaint)
         }
+        Spacer(Modifier.width(10.dp))
         control()
     }
 }
@@ -256,8 +626,8 @@ fun Toggle(checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Uni
 @Composable
 fun KeyValueRow(key: String, value: String, dim: Boolean = false) {
     val colors = CubTheme.colors
-    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.Top) {
-        Text(key, style = CubType.meta, color = colors.textFaint, modifier = Modifier.width(88.dp))
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Text(key, style = CubType.rowDetail, color = colors.textFaint, modifier = Modifier.width(92.dp))
         Text(
             value.ifEmpty { "—" },
             style = CubType.body,
@@ -372,12 +742,7 @@ fun StepperField(
 
 @Composable
 fun GroupLabel(text: String, modifier: Modifier = Modifier) {
-    Text(text, style = CubType.meta, color = CubTheme.colors.textFaint, modifier = modifier)
-}
-
-@Composable
-fun StatusDot(color: Color, size: Int = 8) {
-    Box(Modifier.size(size.dp).clip(CircleShape).background(color))
+    Text(text, style = CubType.rowDetail, color = CubTheme.colors.textFaint, modifier = modifier)
 }
 
 @Composable
@@ -391,7 +756,7 @@ fun EmptyState(text: String, detail: String = "", action: (@Composable () -> Uni
         Text(text, style = CubType.body, color = colors.textDim)
         if (detail.isNotEmpty()) {
             Spacer(Modifier.height(6.dp))
-            Text(detail, style = CubType.meta, color = colors.textFaint)
+            Text(detail, style = CubType.rowDetail, color = colors.textFaint)
         }
         if (action != null) {
             Spacer(Modifier.height(12.dp))
@@ -423,21 +788,21 @@ fun BottomSheet(
             modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
-                .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                .background(colors.surfaceRaised)
+                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .background(colors.surface)
                 .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 20.dp),
             content = content,
         )
     }
 }
 
-/** The header of a bottom sheet: a grab handle, a title and a way out. */
+/** The header of a bottom sheet: a title and a way out. */
 @Composable
 fun SheetHeader(title: String, onClose: () -> Unit) {
     val colors = CubTheme.colors
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(title, style = CubType.cardTitle, color = colors.text, modifier = Modifier.weight(1f))
-        GlyphButton("×", size = 30, onClick = onClose)
+        IconButton(IconPaths.CLOSE, size = 38, onClick = onClose)
     }
     Spacer(Modifier.height(4.dp))
 }
@@ -450,7 +815,7 @@ fun ListRow(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     tint: Color? = null,
-    leading: String = "",
+    leadingIcon: String? = null,
     onClick: (() -> Unit)? = null,
     trailing: @Composable (RowScope.() -> Unit)? = null,
 ) {
@@ -465,58 +830,52 @@ fun ListRow(
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (leading.isNotEmpty()) {
-            Text(leading, style = CubType.label, color = colors.textFaint, modifier = Modifier.width(24.dp))
+        if (leadingIcon != null) {
+            CubIcon(leadingIcon, size = 20, tint = colors.textFaint)
+            Spacer(Modifier.width(12.dp))
         }
         Column(Modifier.weight(1f)) {
-            Text(title, style = CubType.body, color = tint ?: colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title, style = CubType.rowTitle, color = tint ?: colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (detail.isNotEmpty()) {
-                Text(detail, style = CubType.meta, color = colors.textFaint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(detail, style = CubType.rowDetail, color = colors.textFaint, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         if (trailing != null) trailing()
     }
 }
 
-@Composable
-fun toneColor(tone: JobTone): Color {
-    val colors = CubTheme.colors
-    return when (tone) {
-        JobTone.GOOD -> colors.success
-        JobTone.WARN -> colors.warning
-        JobTone.BAD -> colors.danger
-    }
-}
+// ---------------------------------------------------------------- 品牌
 
+/**
+ * The mark, at whatever size it is asked for.
+ *
+ * Two circles and a hole punched through the smaller one — the same three numbers the logo
+ * build uses, so what appears in the product is the product's own logo rather than a
+ * drawing of it. The hole is cleared rather than filled, because a fill would show as a
+ * disc against whatever it happens to sit on.
+ */
 @Composable
-fun levelColor(level: LogLevel): Color {
-    val colors = CubTheme.colors
-    return when (level) {
-        LogLevel.DEBUG -> colors.textFaint
-        LogLevel.INFO -> colors.textDim
-        LogLevel.WARN -> colors.warning
-        LogLevel.ERROR -> colors.danger
-    }
-}
-
-/** A bar that grows from the left, for a run in flight. */
-@Composable
-fun ProgressBar(fraction: Float, modifier: Modifier = Modifier) {
+fun BrandMark(size: Int = 34, modifier: Modifier = Modifier) {
     val colors = CubTheme.colors
     Box(
         modifier
-            .fillMaxWidth()
-            .height(6.dp)
-            .clip(RoundedCornerShape(99.dp))
-            .background(colors.surfaceSunken),
+            .size(size.dp)
+            .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen),
     ) {
-        if (fraction > 0f) {
-            Box(
-                Modifier
-                    .fillMaxWidth(fraction.coerceIn(0f, 1f))
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(99.dp))
-                    .background(colors.accent),
+        Canvas(Modifier.fillMaxSize()) {
+            // The 120-unit design grid, scaled so the mark's bounding box fills the box.
+            val side = this.size.minDimension
+            val scale = side / 77.4f
+            fun x(v: Float) = (v - 64.7f) * scale + side / 2f
+            fun y(v: Float) = (v - 62.55f) * scale + side / 2f
+
+            drawCircle(colors.accent, radius = 34f * scale, center = Offset(x(60f), y(60f)))
+            drawCircle(colors.info, radius = 23f * scale, center = Offset(x(80.4f), y(76.1f)))
+            drawCircle(
+                Color.Black,
+                radius = 8f * scale,
+                center = Offset(x(80.4f), y(76.1f)),
+                blendMode = BlendMode.Clear,
             )
         }
     }

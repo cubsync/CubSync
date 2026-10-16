@@ -15,8 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.dp
 import io.github.cubsync.core.model.CompareMode
 import io.github.cubsync.core.model.ConflictPolicy
@@ -34,6 +35,7 @@ import io.github.cubsync.core.model.FolderPair
 import io.github.cubsync.core.model.SyncConfig
 import io.github.cubsync.core.model.SyncDirection
 import io.github.cubsync.service.Format
+import io.github.cubsync.service.IconPaths
 import io.github.cubsync.service.PathTools
 import io.github.cubsync.service.Words
 import io.github.cubsync.service.policySentence
@@ -44,59 +46,60 @@ import io.github.cubsync.service.policySentence
  * The phone presses the last three inside this tab and comes back with `←`, which is what
  * the design asks for — the bottom bar keeps 同步 lit throughout, so no screen is ever
  * without a parent.
+ *
+ * A value picked from a list of six — 同步方向 — is a row that opens a sheet here, because
+ * a dropdown is a mouse's affordance. The values are the shared ones either way; only the
+ * way they are asked for differs between the two ends, which is exactly the difference the
+ * design allows.
  */
 @Composable
 fun SyncListScreen(state: AndroidAppState) {
-    val colors = CubTheme.colors
-    var search by remember { mutableStateOf("") }
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().padding(bottom = 12.dp)) {
+            if (state.configs.isEmpty()) {
+                EmptyState(
+                    "还没有同步配置",
+                    "一个配置是一组文件夹对加一套策略。",
+                    action = { PrimaryButton("新建") { state.saveConfig(state.newConfigDraft()) } },
+                )
+                return@Column
+            }
 
-    Column(Modifier.fillMaxSize().padding(12.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Field(search, { search = it }, Modifier.weight(1f), placeholder = "搜索配置…")
-            Spacer(Modifier.width(8.dp))
-            PrimaryButton("新建") { state.saveConfig(state.newConfigDraft()) }
-        }
-        Spacer(Modifier.height(10.dp))
-
-        if (state.configs.isEmpty()) {
-            EmptyState(
-                "还没有同步配置",
-                "一个配置是一组文件夹对加一套策略。",
-                action = { PrimaryButton("新建") { state.saveConfig(state.newConfigDraft()) } },
-            )
-            return@Column
-        }
-
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-            for (config in state.matchingConfigs(search)) {
-                val last = state.jobs.firstOrNull { it.configId == config.configId }
-                Panel(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                    ListRow(
-                        title = config.name,
-                        detail = "${Format.directionShort(config.direction)} · ${config.pairs.size} 对 · " +
-                            if (last != null) Format.ago(last.result.finishedAtMs) else "从未运行",
-                        onClick = {
-                            state.selectedConfigId = config.configId
-                            state.open(Route.Config(config.configId))
-                        },
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        PrimaryButton("立即同步") { state.runConfig(config, dryRun = false) }
-                        QuietButton("预览") { state.previewConfig(config) }
-                        QuietButton("导出") { state.exportConfig(config) }
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                Panel(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    CardDesc("一个配置可含多个文件夹对；方向与比较是配置级全局，过滤可在每对单独覆盖。")
+                }
+                for (config in state.configs) {
+                    val last = state.jobs.firstOrNull { it.configId == config.configId }
+                    Panel(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                        highlight = state.selectedConfigId == config.configId,
+                    ) {
+                        CardRow(
+                            title = config.name,
+                            detail = listOf(
+                                Format.directionShort(config.direction),
+                                "${config.pairs.count { it.enabled }} 对启用",
+                                if (last != null) Format.ago(last.result.finishedAtMs) else "从未运行",
+                            ).joinToString(" · "),
+                            icon = IconPaths.NAV_SYNC,
+                            onClick = {
+                                state.selectedConfigId = config.configId
+                                state.open(Route.Config(config.configId))
+                            },
+                        )
                     }
                 }
+                Spacer(Modifier.height(72.dp))
             }
-            Spacer(Modifier.height(6.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                QuietButton("另存为") { state.selectedConfig?.let { state.duplicateConfig(it) } }
-                QuietButton("删除选中的", danger = true) {
-                    state.selectedConfigId?.let { state.deleteConfig(it) }
-                }
-            }
-            Spacer(Modifier.height(16.dp))
         }
+
+        Fab(
+            IconPaths.PLUS,
+            Modifier.align(Alignment.BottomEnd).padding(end = 18.dp, bottom = 18.dp),
+        ) { state.saveConfig(state.newConfigDraft()) }
     }
 }
 
@@ -109,137 +112,154 @@ fun ConfigScreen(state: AndroidAppState, configId: String) {
         return
     }
     var draft by remember(configId, saved.name) { mutableStateOf(saved) }
+    var sheet by remember(configId) { mutableStateOf<String?>(null) }
+    var exclude by remember(configId) { mutableStateOf(saved.globalFilter.globs.joinToString("\n")) }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
-        Panel(Modifier.fillMaxWidth(), title = draft.name, subtitle = policySentence(draft)) {
-            Field(
-                value = draft.name,
-                onValueChange = { draft = draft.copy(name = it) },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = "配置名",
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 12.dp),
+        ) {
+            SectionLabel("策略（全局）")
+            Panel(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                SelectRow("同步方向", Format.direction(draft.direction)) { sheet = "direction" }
+                SelectRow("比较方式", Format.compare(draft.compare)) { sheet = "compare" }
+                SelectRow("冲突时", Format.conflict(draft.conflict)) { sheet = "conflict" }
+                SelectRow("删除时", Format.delete(draft.delete)) { sheet = "delete" }
+                SettingRow("对内并行", "${draft.parallelism} 个文件同时传输") {
+                    StepperField(
+                        value = draft.parallelism,
+                        onChange = { draft = draft.copy(parallelism = it.coerceIn(1, 16)) },
+                        canDecrease = draft.parallelism > 1,
+                        canIncrease = draft.parallelism < 16,
+                        fieldWidth = 26,
+                    )
+                }
+                CardButton(
+                    "过滤器：排除 ${draft.globalFilter.globs.size} 条" +
+                        if (draft.globalFilter.enabled) "" else " · 未启用",
+                    CardButtonKind.OUTLINED,
+                ) { sheet = "filter" }
+            }
+
+            SectionLabel("文件夹对（${draft.pairs.size}）")
+            for ((index, pair) in draft.pairs.withIndex()) {
+                Panel(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                    PairCard(state, pair, onRemove = {
+                        draft = draft.copy(pairs = draft.pairs.filterNot { it.pairId == pair.pairId })
+                    }) { updated ->
+                        val next = draft.pairs.toMutableList()
+                        next[index] = updated
+                        draft = draft.copy(pairs = next)
+                    }
+                }
+            }
+
+            Panel(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                CardButton("＋ 添加文件夹对", CardButtonKind.TONAL) {
+                    draft = draft.copy(pairs = draft.pairs + state.newPairDraft(draft.pairs))
+                }
+                CardButton("比较并预览差异") {
+                    state.saveConfig(draft)
+                    state.previewConfig(draft)
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Panel(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                CardDesc(policySentence(draft))
+                CardButton("保存") {
+                    state.saveConfig(draft)
+                    state.back()
+                }
+                CardButton("试运行（不写任何东西）", CardButtonKind.OUTLINED) {
+                    state.saveConfig(draft)
+                    state.runConfig(draft, dryRun = true)
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+
+        when (sheet) {
+            "direction" -> ChoicesSheet("同步方向", SyncDirection.entries, draft.direction, Format::direction) {
+                draft = draft.copy(direction = it); sheet = null
+            }
+
+            "compare" -> ChoicesSheet("比较方式", CompareMode.entries, draft.compare, Format::compare) {
+                draft = draft.copy(compare = it); sheet = null
+            }
+
+            "conflict" -> ChoicesSheet("冲突时", ConflictPolicy.entries, draft.conflict, Format::conflict) {
+                draft = draft.copy(conflict = it); sheet = null
+            }
+
+            "delete" -> ChoicesSheet("删除时", DeletePolicy.entries, draft.delete, Format::delete) {
+                draft = draft.copy(delete = it); sheet = null
+            }
+
+            "filter" -> BottomSheet(onClose = { sheet = null }) {
+                SheetHeader("过滤器") { sheet = null }
+                CardDesc("排除优先于包含：先按排除剔掉命中项，再在剩下的里套包含。每行一条，支持 * ? ** 与 [...]。")
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(150.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(colors.surfaceSunken)
+                        .border(1.dp, colors.outlineStrong, RoundedCornerShape(12.dp))
+                        .padding(10.dp),
+                ) {
+                    if (exclude.isEmpty()) {
+                        Text("*.tmp、Thumbs.db、.cub_trash/** …", style = CubType.meta, color = colors.textFaint)
+                    }
+                    BasicTextField(
+                        value = exclude,
+                        onValueChange = { exclude = it },
+                        textStyle = CubType.meta.copy(color = colors.text),
+                        cursorBrush = SolidColor(colors.accent),
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PrimaryButton("应用") {
+                        val patterns = exclude.lines().map { it.trim() }.filter { it.isNotEmpty() }
+                        draft = draft.copy(
+                            globalFilter = draft.globalFilter.copy(globs = patterns, enabled = patterns.isNotEmpty()),
+                        )
+                        state.notify("已应用 ${patterns.size} 条排除规则", NoticeKind.SUCCESS)
+                        sheet = null
+                    }
+                    QuietButton("清空") { exclude = "" }
+                }
+            }
+        }
+    }
+}
+
+/** One choice out of several, as a sheet. */
+@Composable
+private fun <T> ChoicesSheet(
+    title: String,
+    options: List<T>,
+    selected: T,
+    label: (T) -> String,
+    onPick: (T) -> Unit,
+) {
+    BottomSheet(onClose = { onPick(selected) }) {
+        SheetHeader(title) { onPick(selected) }
+        for (option in options) {
+            val active = option == selected
+            ListRow(
+                title = label(option),
+                tint = if (active) CubTheme.colors.accent else null,
+                selected = active,
+                trailing = { if (active) CubIcon(IconPaths.CHECK, size = 20, tint = CubTheme.colors.accent) },
+                onClick = { onPick(option) },
             )
         }
-
-        Spacer(Modifier.height(12.dp))
-        Panel(Modifier.fillMaxWidth(), title = "策略", subtitle = "同一套策略对所有文件夹对生效") {
-            for (direction in SyncDirection.entries) {
-                val active = draft.direction == direction
-                ListRow(
-                    title = Format.direction(direction),
-                    tint = if (active) colors.accent else null,
-                    trailing = { if (active) Chip("使用中", tone = colors.accent) },
-                    onClick = { draft = draft.copy(direction = direction) },
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            GroupLabel("比较方式")
-            for (mode in CompareMode.entries) {
-                val active = draft.compare == mode
-                ListRow(
-                    title = Format.compare(mode),
-                    tint = if (active) colors.accent else null,
-                    onClick = { draft = draft.copy(compare = mode) },
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            GroupLabel("冲突时")
-            for (policy in ConflictPolicy.entries) {
-                val active = draft.conflict == policy
-                ListRow(
-                    title = Format.conflict(policy),
-                    tint = if (active) colors.accent else null,
-                    onClick = { draft = draft.copy(conflict = policy) },
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            GroupLabel("删除时")
-            for (policy in DeletePolicy.entries) {
-                val active = draft.delete == policy
-                ListRow(
-                    title = Format.delete(policy),
-                    tint = if (active) colors.accent else null,
-                    onClick = { draft = draft.copy(delete = policy) },
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            SettingRow("并行度", "${draft.parallelism} 个文件同时传输") {
-                StepperField(
-                    value = draft.parallelism,
-                    onChange = { draft = draft.copy(parallelism = it.coerceIn(1, 8)) },
-                    canDecrease = draft.parallelism > 1,
-                    canIncrease = draft.parallelism < 8,
-                    fieldWidth = 26,
-                )
-            }
-        }
-
-        Spacer(Modifier.height(12.dp))
-        Panel(
-            Modifier.fillMaxWidth(),
-            title = "文件夹对",
-            subtitle = "${draft.pairs.size} 对",
-            actions = { QuietButton("添加") { draft = draft.copy(pairs = draft.pairs + state.newPairDraft(draft.pairs)) } },
-        ) {
-            if (draft.pairs.isEmpty()) {
-                Text("还没有文件夹对。一对是「这一侧的一个目录」和「那一侧的一个目录」。", style = CubType.meta, color = colors.textFaint)
-            }
-            for ((index, pair) in draft.pairs.withIndex()) {
-                PairCard(state, pair, onRemove = {
-                    draft = draft.copy(pairs = draft.pairs.filterNot { it.pairId == pair.pairId })
-                }) { updated ->
-                    val next = draft.pairs.toMutableList()
-                    next[index] = updated
-                    draft = draft.copy(pairs = next)
-                }
-            }
-        }
-
-        Spacer(Modifier.height(12.dp))
-        Panel(Modifier.fillMaxWidth(), title = Words.FILTER, subtitle = "先排除黑名单，再套白名单；排除优先于包含") {
-            var exclude by remember(draft.configId) { mutableStateOf(draft.globalFilter.globs.joinToString("\n")) }
-            Text("排除（每行一条，支持 * ? ** [...]）", style = CubType.meta, color = colors.textFaint)
-            Spacer(Modifier.height(4.dp))
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(96.dp)
-                    .clip(RoundedCornerShape(9.dp))
-                    .background(colors.surfaceSunken)
-                    .border(1.dp, colors.outlineStrong, RoundedCornerShape(9.dp))
-                    .padding(8.dp),
-            ) {
-                androidx.compose.foundation.text.BasicTextField(
-                    value = exclude,
-                    onValueChange = { exclude = it },
-                    textStyle = CubType.meta.copy(color = colors.text),
-                    cursorBrush = androidx.compose.ui.graphics.SolidColor(colors.accent),
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                QuietButton("应用过滤") {
-                    val patterns = exclude.lines().map { it.trim() }.filter { it.isNotEmpty() }
-                    draft = draft.copy(
-                        globalFilter = draft.globalFilter.copy(globs = patterns, enabled = patterns.isNotEmpty()),
-                    )
-                    state.notify("已应用 ${patterns.size} 条排除规则", NoticeKind.SUCCESS)
-                }
-                Spacer(Modifier.width(8.dp))
-                Chip("${draft.globalFilter.globs.size} 条", tone = colors.textDim)
-            }
-        }
-
-        Spacer(Modifier.height(14.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PrimaryButton("保存") {
-                state.saveConfig(draft)
-                state.back()
-            }
-            QuietButton("试运行") { state.saveConfig(draft); state.runConfig(draft, dryRun = true) }
-            QuietButton("立即同步") { state.saveConfig(draft); state.runConfig(draft, dryRun = false) }
-        }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(6.dp))
     }
 }
 
@@ -252,87 +272,78 @@ private fun PairCard(
     onChange: (FolderPair) -> Unit,
 ) {
     val colors = CubTheme.colors
-    var pickingLeft by remember(pair.pairId) { mutableStateOf(false) }
-    var pickingRight by remember(pair.pairId) { mutableStateOf(false) }
+    var picking by remember(pair.pairId) { mutableStateOf<String?>(null) }
 
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = 5.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(colors.surfaceRaised)
-            .padding(10.dp),
-    ) {
+    Column(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Field(
                 value = pair.name,
                 onValueChange = { onChange(pair.copy(name = it)) },
                 modifier = Modifier.weight(1f),
                 placeholder = "这一对的备注名",
-                style = CubType.meta,
+                style = CubType.body,
             )
             Spacer(Modifier.width(8.dp))
             Toggle(pair.enabled) { onChange(pair.copy(enabled = it)) }
-            QuietButton("移除", danger = true, onClick = onRemove)
         }
 
-        Spacer(Modifier.height(8.dp))
         GroupLabel(Words.LOCAL)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Field(
-                value = pair.left.rootPath,
-                onValueChange = { onChange(pair.copy(left = pair.left.copy(rootPath = it))) },
-                modifier = Modifier.weight(1f),
-                placeholder = "本机目录",
-                style = CubType.meta,
-            )
-            Spacer(Modifier.width(6.dp))
-            QuietButton("选") { pickingLeft = !pickingLeft }
+        PathRow(pair.left.rootPath, "本机目录") { picking = "left" }
+        GroupLabel(Words.REMOTE)
+        PathRow(pair.right.rootPath, "远端目录") { picking = "right" }
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            QuietButton("移除这一对", danger = true, onClick = onRemove)
         }
-        if (pickingLeft) {
-            for (root in state.localRoots().take(6)) {
+
+        if (picking == "left") {
+            Spacer(Modifier.height(6.dp))
+            for (root in state.localRoots().take(8)) {
                 ListRow(
                     title = PathTools.leafName(root).ifEmpty { root },
                     detail = root,
+                    leadingIcon = IconPaths.FOLDER,
                     onClick = {
                         onChange(pair.copy(left = pair.left.copy(rootPath = root, backendId = io.github.cubsync.service.EndpointId.LOCAL)))
-                        pickingLeft = false
+                        picking = null
                     },
                 )
             }
         }
-
-        Spacer(Modifier.height(8.dp))
-        GroupLabel(Words.REMOTE)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Field(
-                value = pair.right.rootPath,
-                onValueChange = { onChange(pair.copy(right = pair.right.copy(rootPath = it))) },
-                modifier = Modifier.weight(1f),
-                placeholder = "远端目录",
-                style = CubType.meta,
-            )
-            Spacer(Modifier.width(6.dp))
-            QuietButton("选") { pickingRight = !pickingRight }
-        }
-        if (pickingRight) {
+        if (picking == "right") {
+            Spacer(Modifier.height(6.dp))
             if (state.peers.isEmpty()) {
-                Text("先到连接页连上一台设备。", style = CubType.meta, color = colors.textFaint, modifier = Modifier.padding(6.dp))
+                Text("先到连接页连上一台设备。", style = CubType.rowDetail, color = colors.textFaint)
             }
             for (peer in state.peers) {
                 for (root in peer.roots) {
                     ListRow(
                         title = root,
                         detail = "${peer.nodeName} · ${peer.host}",
+                        leadingIcon = IconPaths.FOLDER,
                         onClick = {
                             onChange(pair.copy(right = pair.right.copy(rootPath = root, backendId = peer.backendId)))
-                            pickingRight = false
+                            picking = null
                         },
                     )
                 }
             }
         }
-        HorizontalDivider(color = colors.outline, modifier = Modifier.padding(top = 8.dp))
+    }
+}
+
+/** A root path, edited in place or picked from a list. */
+@Composable
+private fun PathRow(value: String, placeholder: String, onPick: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            value.ifEmpty { placeholder },
+            style = CubType.body,
+            color = if (value.isEmpty()) CubTheme.colors.textFaint else CubTheme.colors.text,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(8.dp))
+        QuietButton("选…", onClick = onPick)
     }
 }
 
@@ -340,44 +351,69 @@ private fun PairCard(
 @Composable
 fun PreviewScreen(state: AndroidAppState) {
     val colors = CubTheme.colors
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
-        val preview = state.preview
+    val preview = state.preview
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(bottom = 12.dp),
+    ) {
         when {
             state.previewing -> EmptyState("正在比较…", "这一遍只读，不写任何东西。")
-            preview == null -> EmptyState("还没有预览", "点「预览」先看看会发生什么。")
+            preview == null -> EmptyState("还没有预览", "在配置详情里点「比较并预览差异」。")
+
             else -> {
                 val totals = preview.totals
-                Panel(Modifier.fillMaxWidth(), title = "差异汇总", subtitle = totals.sentence()) {
-                    KeyValueRow("将写入", Format.bytes(totals.bytes))
-                    KeyValueRow("新增", "${totals.create} 项")
-                    KeyValueRow("更新", "${totals.update} 项")
-                    KeyValueRow("删除", "${totals.delete} 项")
-                    KeyValueRow("冲突", "${totals.conflict} 项")
-                    KeyValueRow("跳过", "${totals.skip} 项")
-                    if (totals.total == 0) {
-                        Spacer(Modifier.height(6.dp))
-                        Text("两边已经一致，这一遍什么都不用做。", style = CubType.meta, color = colors.success)
+                Panel(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Chip("${preview.pairs.size} 对", tone = colors.accent)
+                        if (totals.conflict > 0) Chip("冲突 ${totals.conflict}", tone = colors.conflict)
+                        Chip("新增 ${totals.create}", tone = colors.success)
+                        Chip("更新 ${totals.update}", tone = colors.textDim)
+                        Chip("删除 ${totals.delete}", tone = colors.danger)
                     }
+                    CardDesc(
+                        "要写入 ${Format.bytes(totals.bytes)} · 跳过 ${totals.skip} 项 · 汇总 ＝ 各对之和。",
+                    )
                 }
-                Spacer(Modifier.height(12.dp))
+
                 for (pair in preview.pairs) {
-                    Panel(Modifier.fillMaxWidth().padding(bottom = 8.dp), title = pair.pairName.ifEmpty { pair.pairId }, subtitle = pair.sentence()) {
+                    Panel(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                        CardRow(
+                            title = pair.pairName.ifEmpty { pair.pairId },
+                            detail = pair.sentence(),
+                            icon = IconPaths.FOLDER,
+                            tint = if (pair.blockReason.isNotEmpty()) colors.danger else null,
+                        )
                         if (pair.blockReason.isNotEmpty()) {
-                            Text(pair.blockReason, style = CubType.meta, color = colors.danger)
+                            CardDesc(pair.blockReason)
                         } else if (pair.total == 0) {
-                            Text("这一对已经一致。", style = CubType.meta, color = colors.textFaint)
+                            CardDesc("这一对已经一致。")
                         }
                     }
                 }
+
                 if (preview.blocked.isNotEmpty()) {
-                    Panel(Modifier.fillMaxWidth()) {
+                    Panel(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), outlined = true) {
                         Text(
-                            "${preview.blocked.size} 对被拦下了，原因是路径重叠或方向不允许。修好之后才能同步。",
-                            style = CubType.meta,
+                            "${preview.blocked.size} 对被拦下了：路径重叠或方向不允许。修好之后才能同步。",
+                            style = CubType.rowDetail,
                             color = colors.danger,
                         )
                     }
                 }
+
+                Panel(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                    CardButton(
+                        if (totals.conflict > 0) "执行同步（${totals.conflict} 冲突待处理）" else "执行同步",
+                        enabled = preview.blocked.isEmpty() && totals.total > 0,
+                    ) {
+                        state.selectedConfig?.let { state.runConfig(it, dryRun = false) }
+                    }
+                    CardDesc("冲突永远不自动覆盖：先按这对的策略处理，剩下的留到作业详情里看。")
+                }
+                Spacer(Modifier.height(16.dp))
             }
         }
     }

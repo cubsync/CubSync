@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.cubsync.desktop.CubTheme
 import io.github.cubsync.desktop.CubType
+import io.github.cubsync.service.IconPaths
 import io.github.cubsync.service.JobTone
 import io.github.cubsync.service.LogLevel
 
@@ -355,7 +356,7 @@ fun StepperField(
                 .background(if (canDecrease) colors.surfaceSunken else Color.Transparent)
                 .clickable(enabled = canDecrease) { onChange(value - step) },
             contentAlignment = Alignment.Center,
-        ) { Text("−", style = CubType.label, color = if (canDecrease) colors.text else colors.textFaint) }
+        ) { CubIcon(IconPaths.MINUS, size = 15, tint = if (canDecrease) colors.text else colors.textFaint) }
 
         Row(
             Modifier
@@ -391,7 +392,7 @@ fun StepperField(
                 .background(if (canIncrease) colors.surfaceSunken else Color.Transparent)
                 .clickable(enabled = canIncrease) { onChange(value + step) },
             contentAlignment = Alignment.Center,
-        ) { Text("＋", style = CubType.label, color = if (canIncrease) colors.text else colors.textFaint) }
+        ) { CubIcon(IconPaths.PLUS, size = 15, tint = if (canIncrease) colors.text else colors.textFaint) }
     }
 }
 
@@ -452,7 +453,7 @@ fun FloatingHeader(title: String, onClose: () -> Unit) {
     val colors = CubTheme.colors
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(title, style = CubType.cardTitle, color = colors.text, modifier = Modifier.weight(1f))
-        GlyphButton("✕", size = 24, onClick = onClose)
+        IconButton(IconPaths.CLOSE, size = 24, mark = 14, onClick = onClose)
     }
     Spacer(Modifier.height(6.dp))
 }

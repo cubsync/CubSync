@@ -46,6 +46,9 @@ class JobHistory(private val limit: Int = 200) {
 
     fun find(jobId: String): JobRecord? = synchronized(lock) { records.firstOrNull { it.jobId == jobId } }
 
+    /** Drops one run from the list. Nothing on disk is touched; this is a list, not a log. */
+    fun forget(jobId: String) = synchronized(lock) { records.removeAll { it.jobId == jobId } }
+
     fun clear() = synchronized(lock) { records.clear() }
 }
 
@@ -260,21 +263,17 @@ class SyncService(
  * decision the planner made, not a fact about the two files.
  */
 private fun PairOutcome.toPreview(): PairPreview {
-    val actions = plan?.actions.orEmpty()
-    fun copies() = actions.filter {
-        it.kind == ActionKind.COPY_LEFT_TO_RIGHT || it.kind == ActionKind.COPY_RIGHT_TO_LEFT
-    }
-
+    val counts = changeCounts()
     return PairPreview(
         pairId = pairId,
         pairName = pairName.ifEmpty { pairId },
-        create = actions.count { it.kind == ActionKind.MKDIR },
-        update = copies().count { !it.resolvesConflict },
-        delete = actions.count { it.kind == ActionKind.DELETE_LEFT || it.kind == ActionKind.DELETE_RIGHT },
-        conflict = actions.count { it.resolvesConflict },
-        skip = actions.count { it.kind == ActionKind.NONE },
+        create = counts.create,
+        update = counts.update,
+        delete = counts.delete,
+        conflict = counts.conflict,
+        skip = counts.skip,
         blockReason = plan?.blockReason.orEmpty(),
-        bytes = copies().sumOf { it.diff.right?.size ?: it.diff.left?.size ?: 0L },
+        bytes = counts.bytes,
     )
 }
 
