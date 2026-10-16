@@ -55,6 +55,20 @@ worst of both.
 The consequence worth knowing: a change to what a policy *means* goes in `service`
 and reaches both ends; a change to how it is *shown* has to be made twice.
 
+There is a third category, and it is where most of the work belongs: a *behaviour*
+that is not a pixel. The two-pane browser is the example. `BrowserSession` holds
+what is open, what is selected, how a list is ordered and what happens when you
+press the arrow, and publishes it as flows; the desktop window and the phone draw
+it. Neither front end decides what opening a folder means, and neither can be the
+one that is wrong about it.
+
+Why not share the screens themselves? Because `commonMain` in a Kotlin
+Multiplatform module cannot see `java.nio`, and `service` is a plain JVM library.
+Moving the screens into a shared module means converting `core`, `backends/local`,
+`backends/lan` and `service` to Android-capable multiplatform modules first — which
+is a worthwhile change and a separate one. Until then the rule is: behaviour in
+`service`, pixels per platform, and the same words in both.
+
 ## The three decisions worth knowing
 
 **Backends are an interface, not a protocol.** `RemoteBackend` exposes list, stat,

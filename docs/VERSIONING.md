@@ -4,6 +4,17 @@ CubSync follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with 
 pre-1.0 relaxations spelled out below, because "we might change anything" is not a
 useful promise to make to someone syncing their files with it.
 
+## One version, every platform
+
+There is one version number, `cubsync.version`, and one tag per release. A tag
+produces every artefact that release has: the Windows installer, the Windows
+application image and the Android APK are built from the same commit, carry the same
+number, and are attached to the same release page.
+
+That is not a description of an intention, it is what `.github/workflows/release.yml`
+does. A release that covers one platform and calls itself a version is a release that
+makes somebody ask which download is the current one.
+
 ## Where the version lives
 
 One place: `cubsync.version` in [`gradle.properties`](../gradle.properties). Every
