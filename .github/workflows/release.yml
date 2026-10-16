@@ -147,21 +147,66 @@ jobs:
       - name: Test before packaging
         run: ./gradlew --no-daemon --stacktrace :app:android:testDebugUnitTest
 
-      - name: Build the APK
-        run: ./gradlew --no-daemon --stacktrace :app:android:assembleDebug
-
-      - name: Name it after the release
+      - name: Provide the signing identity
+        # The keystore is base64 inside a secret because a secret is text and a keystore
+        # is binary. Decoding it here, rather than committing it, is what makes one key
+        # sign every release: a runner that regenerated its own key each time is exactly
+        # why the earlier APKs could not replace one another. See docs/SIGNING.md.
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -eu
-          cp app/android/build/outputs/apk/debug/android-debug.apk \
-             "CubSync-${GITHUB_REF_NAME}-debug.apk"
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set — falling back to the debug APK, which cannot upgrade an installed release"
+            exit 0
+          fi
+          keystore="$RUNNER_TEMP/cubsync-release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$keystore"
+          {
+            echo "storeFile=$keystore"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > keystore.properties
+
+      - name: Build the APK
+        run: |
+          set -eu
+          if [ -f keystore.properties ]; then
+            ./gradlew --no-daemon --stacktrace :app:android:assembleRelease
+            apk=$(ls app/android/build/outputs/apk/release/*.apk | head -1)
+            name="CubSync-${GITHUB_REF_NAME}.apk"
+          else
+            ./gradlew --no-daemon --stacktrace :app:android:assembleDebug
+            apk=app/android/build/outputs/apk/debug/android-debug.apk
+            name="CubSync-${GITHUB_REF_NAME}-debug.apk"
+          fi
+          cp "$apk" "$name"
           ls -l CubSync-*.apk
+          # Printed so the log says which key signed it, which is the one thing about an
+          # APK that cannot be recovered from the repository afterwards.
+          #
+          # apksigner rather than `keytool -printcert -jarfile`: these APKs are signed
+          # with the v2/v3 scheme, whose signature lives in the APK Signing Block and not
+          # in the JAR signature files keytool reads. keytool therefore prints nothing at
+          # all here, which looks like a pass rather than a missing check.
+          if [ -f keystore.properties ]; then
+            apksigner="$(ls -1 "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/*/apksigner 2>/dev/null | sort | tail -1 || true)"
+            if [ -n "${apksigner:-}" ]; then
+              "$apksigner" verify --print-certs "$name"
+            else
+              echo "::warning::apksigner not found under \$ANDROID_HOME/build-tools; the certificate was not printed"
+            fi
+          fi
 
       - name: Upload as a workflow artefact
         uses: actions/upload-artifact@v4
         with:
           name: cubsync-android
-          path: CubSync-*-debug.apk
+          path: CubSync-*.apk
           retention-days: 30
 
       - name: Attach to the release
@@ -213,7 +258,6 @@ jobs:
             return 1
           }
           ensure_release
-          # The debug APK rather than a release build: a signed release needs a
-          # keystore, and a keystore is a decision about distribution rather than a
-          # build step. A debug APK sideloads normally in the meantime.
-          gh release upload "$GITHUB_REF_NAME" CubSync-*-debug.apk --clobber
+          # Whichever APK the build produced: release-signed when the signing secret is
+          # present, the debug one when it is not. The glob covers both.
+          gh release upload "$GITHUB_REF_NAME" CubSync-*.apk --clobber

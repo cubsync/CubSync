@@ -1,3 +1,6 @@
+import java.io.File
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -17,6 +20,43 @@ private fun versionCodeOf(version: String): Int {
     return major * 10_000 + minor * 100 + patch
 }
 
+/*
+ * The release signing identity, read from the environment first and from
+ * `keystore.properties` in the repository root second.
+ *
+ * A laptop sets the file once; a CI runner has no file to set, so the workflow decodes
+ * the keystore out of a secret and exports the four names below. Reading both means the
+ * same key signs the same release whether it was built here or there, which is the
+ * whole point — an APK signed by a different key cannot replace an installed one.
+ *
+ * Neither source is committed. A checkout that has neither still builds: it just cannot
+ * produce a signed release, which is what a fresh clone should do rather than fail.
+ *
+ * See docs/SIGNING.md.
+ */
+val signingProperties: Properties = Properties().also { properties ->
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) {
+        file.inputStream().use { stream -> properties.load(stream) }
+    }
+}
+
+fun signingValue(envName: String, propertyName: String): String? =
+    providers.environmentVariable(envName).orNull?.takeIf { it.isNotBlank() }
+        ?: signingProperties.getProperty(propertyName)?.takeIf { it.isNotBlank() }
+
+val releaseKeystoreFile: File? = signingValue("ANDROID_KEYSTORE_FILE", "storeFile")
+    ?.let { rootProject.file(it) }
+    ?.takeIf { it.exists() }
+val releaseKeystorePassword: String? = signingValue("ANDROID_KEYSTORE_PASSWORD", "storePassword")
+val releaseKeyAlias: String? = signingValue("ANDROID_KEY_ALIAS", "keyAlias")
+val releaseKeyPassword: String? = signingValue("ANDROID_KEY_PASSWORD", "keyPassword")
+
+val hasReleaseSigning: Boolean = releaseKeystoreFile != null &&
+    releaseKeystorePassword != null &&
+    releaseKeyAlias != null &&
+    releaseKeyPassword != null
+
 android {
     namespace = "io.github.cubsync.android"
     compileSdk = 36
@@ -31,11 +71,28 @@ android {
         versionCode = versionCodeOf(cubsyncVersion)
     }
 
+    signingConfigs {
+        // Created only when there is something to create it from. An empty configuration
+        // would let `assembleRelease` succeed and emit an APK signed with nothing, which
+        // is worse than admitting it is unsigned.
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = releaseKeystoreFile
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             // The first releases are for people who can read a log. Shrinking can wait
             // until there is something worth obfuscating.
             isMinifyEnabled = false
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
