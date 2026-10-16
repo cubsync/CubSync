@@ -64,6 +64,15 @@ The workspace script `脚本/new-signing-identity.py` wraps this, writes the
 `keystore.properties` beside it, and prints the base64 blob CI needs. It prompts for the
 password rather than taking it as an argument, so it does not end up in a shell history.
 
+Run it from this directory with no arguments — the application name comes from the
+directory name and the repository from `git remote origin`, so there is nothing to fill
+in. `--dry-run` prints the values it would use and writes nothing.
+
+```
+py ../脚本/new-signing-identity.py --dry-run   # look
+py ../脚本/new-signing-identity.py             # then make it
+```
+
 ## Where the keystore lives
 
 Not in the repository, and not only on the machine that built it. Two copies, in two
