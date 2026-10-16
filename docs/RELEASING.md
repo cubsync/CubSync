@@ -19,11 +19,13 @@
    `app/desktop/build/screenshots`.
 6. **Package what a user will download.** `./gradlew :app:desktop:packageMsi`,
    `./gradlew :app:desktop:createDistributable` and
-   `./gradlew :app:android:assembleDebug`. The MSI step downloads WiX the first time
-   it runs. Attach all three to the release; a tag alone is not an application. The
-   Android artefact is the debug APK until there is a keystore and a decision about
-   where the application is distributed — say so in the release notes rather than
-   quietly shipping something unsigned.
+   `./gradlew :app:android:assembleRelease`. The MSI step downloads WiX the first time
+   it runs. Attach all three to the release; a tag alone is not an application.
+   The Android build is the one that needs the signing identity — locally from
+   `keystore.properties`, on CI from repository secrets, both described in
+   [SIGNING.md](SIGNING.md). With no identity the APK comes out unsigned and cannot
+   replace an installed one, so say which it is in the notes rather than leaving it
+   to be discovered.
 7. **Commit.** `chore(release): 0.2.0` — one commit, version and changelog together.
 8. **Tag.** Annotated, on `main`:
    `git tag -a v0.2.0 -m "CubSync 0.2.0" && git push origin v0.2.0`.
@@ -83,10 +85,10 @@ a language has chosen to read it, and a second round of clicking is a second rou
 
 ```html
 <details>
-<summary><b>中文说明</b></summary>
+<summary><h3>中文说明</h3></summary>
 
 <details open>
-<summary><h3>能用了</h3></summary>
+<summary><h4>能用了</h4></summary>
 
 正文…
 
@@ -97,9 +99,14 @@ a language has chosen to read it, and a second round of clicking is a second rou
 
 Two details that are easy to get wrong. Blank lines are part of the shape and not
 decoration: with none after `</summary>`, GitHub renders the Markdown inside as literal
-text. And the section headings have to be real headings — wrapping them in `<b>`, which the
-first version of this did, makes a `##` and an `h4` look identical and the notes lose their
+text. And the headings have to be real headings — wrapping them in `<b>`, which the first
+version of this did, makes a `##` and an `h4` look identical and the notes lose their
 outline.
+
+The **language** label is a heading too, one level above the sections (`h3` over `h4`). It
+used to be plain `<b>` while the sections were `h3`, which made the child render larger
+than its parent on the release page — the label is the one that has to look like the
+parent.
 
 `tools/collapse-release-notes.py` applies the shape to a plain file and is safe to re-run —
 it skips anything that already has a `<details>` in it, so restore from git first if the

@@ -11,10 +11,14 @@ Two levels, and they behave differently on purpose:
 * each **section** inside starts open, because a reader who has chosen a language has
   chosen to read it, and a second round of clicking is a second round of work.
 
-The section headings are drawn as real headings (`h3`, `h4`, …) inside their `<summary>`,
+The section headings are drawn as real headings (`h4`, `h5`, …) inside their `<summary>`,
 keeping the depth the file already had. Wrapping them in `<b>` — which the first version of
 this script did — made a `##` and an `h4` look identical, which is what "你好像没排版" was
 about: the notes had lost their outline.
+
+The **language** label is a real heading as well, one level above the sections. It has to be
+the bigger of the two: with a plain `<b>` on the label and `h3` on the sections, the child
+rendered larger than its parent.
 
     python tools/collapse-release-notes.py docs/releases/v0.4.0.md
 
@@ -60,7 +64,7 @@ def section_details(text: str) -> str:
             if inner:
                 rendered.append(inner)
             continue
-        tag = "h%d" % min(6, 3 + (level - top))
+        tag = "h%d" % min(6, 4 + (level - top))
         rendered.append(
             "<details open>\n<summary><%s>%s</%s></summary>\n\n%s\n\n</details>"
             % (tag, heading, tag, inner)
@@ -95,7 +99,9 @@ def collapse(path: pathlib.Path) -> bool:
         )
         body = section_details(half.strip("\n"))
         if body:
-            parts.append("<details>\n<summary><b>%s</b></summary>\n\n%s\n\n</details>" % (label, body))
+            parts.append(
+                "<details>\n<summary><h3>%s</h3></summary>\n\n%s\n\n</details>" % (label, body)
+            )
 
     path.write_text("\n\n".join(parts) + "\n", encoding="utf-8")
     return True
