@@ -13,6 +13,7 @@ import io.github.cubsync.core.model.SyncConfig
 import io.github.cubsync.core.protocol.Protocol
 import io.github.cubsync.service.ConfigStore
 import io.github.cubsync.service.EndpointId
+import io.github.cubsync.service.Format
 import io.github.cubsync.service.JobRecord
 import io.github.cubsync.service.LogEntry
 import io.github.cubsync.service.LogLevel

@@ -4,6 +4,7 @@ import io.github.cubsync.core.engine.SnapshotFileStore
 import io.github.cubsync.core.engine.SnapshotStore
 import io.github.cubsync.core.model.SyncConfig
 import io.github.cubsync.core.model.SyncConfigCodec
+import io.github.cubsync.core.util.TextFiles
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -37,7 +38,7 @@ class ConfigStore(private val base: Path) {
     }
 
     fun load(path: Path): SyncConfig {
-        val text = Files.readString(path)
+        val text = TextFiles.read(path)
         // A file may be a plain configuration or an export envelope, and the
         // extension is not a reliable way to tell them apart: somebody will rename
         // one. Trying the envelope first and falling back costs nothing.
@@ -59,7 +60,7 @@ class ConfigStore(private val base: Path) {
         Files.createDirectories(configDirectory)
         val target = pathFor(config.configId)
         val temporary = target.resolveSibling("${target.fileName}.tmp")
-        Files.writeString(temporary, SyncConfigCodec.encode(config))
+        TextFiles.write(temporary, SyncConfigCodec.encode(config))
         Files.move(temporary, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
         return target
     }
@@ -76,7 +77,7 @@ class ConfigStore(private val base: Path) {
 
     fun export(config: SyncConfig, destination: Path): Path {
         destination.parent?.let { Files.createDirectories(it) }
-        Files.writeString(
+        TextFiles.write(
             destination,
             SyncConfigCodec.encodeExport(config, exportedAt = Instant.now().toString(), appVersion = BuildInfo.VERSION),
         )

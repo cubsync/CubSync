@@ -84,3 +84,55 @@ jobs:
             app/desktop/build/compose/binaries/main/msi/*.msi \
             CubSync-*-windows-x64.zip \
             --clobber
+
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Test before packaging
+        run: ./gradlew --no-daemon --stacktrace :app:android:testDebugUnitTest
+
+      - name: Build the APK
+        run: ./gradlew --no-daemon --stacktrace :app:android:assembleDebug
+
+      - name: Name it after the release
+        run: |
+          set -eu
+          cp app/android/build/outputs/apk/debug/android-debug.apk \
+             "CubSync-${GITHUB_REF_NAME}-debug.apk"
+          ls -l CubSync-*.apk
+
+      - name: Upload as a workflow artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cubsync-android
+          path: CubSync-*-debug.apk
+          retention-days: 30
+
+      - name: Attach to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" \
+              --title "CubSync ${GITHUB_REF_NAME#v}" \
+              --notes "Release notes are being written; see CHANGELOG.md in this tag."
+          fi
+          # The debug APK rather than a release build: a signed release needs a
+          # keystore, and a keystore is a decision about distribution rather than a
+          # build step. A debug APK sideloads normally in the meantime.
+          gh release upload "$GITHUB_REF_NAME" CubSync-*-debug.apk --clobber

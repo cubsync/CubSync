@@ -5,6 +5,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
+import io.github.cubsync.core.util.TextFiles
 import kotlinx.serialization.json.Json
 import java.nio.file.Files
 import java.nio.file.Path
@@ -39,7 +40,7 @@ class SnapshotFileStore(private val directory: Path) : SnapshotStore {
         val file = fileFor(pairId)
         if (!Files.isRegularFile(file)) return@withContext null
         val dto = try {
-            json.decodeFromString<SnapshotDto>(Files.readString(file))
+            json.decodeFromString<SnapshotDto>(TextFiles.read(file))
         } catch (unreadable: Exception) {
             // A snapshot that cannot be parsed is treated as absent: the run then
             // behaves like a first sync instead of failing outright.
@@ -67,7 +68,7 @@ class SnapshotFileStore(private val directory: Path) : SnapshotStore {
         )
         val target = fileFor(snapshot.pairId)
         val temporary = target.resolveSibling("${target.fileName}.tmp")
-        Files.writeString(temporary, json.encodeToString(dto))
+        TextFiles.write(temporary, json.encodeToString(dto))
         Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING)
         Unit
     }

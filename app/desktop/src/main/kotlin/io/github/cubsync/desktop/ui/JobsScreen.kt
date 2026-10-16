@@ -35,7 +35,7 @@ import io.github.cubsync.core.engine.PairStatus
 import io.github.cubsync.desktop.AppState
 import io.github.cubsync.desktop.CubTheme
 import io.github.cubsync.desktop.CubType
-import io.github.cubsync.desktop.Format
+import io.github.cubsync.service.Format
 import io.github.cubsync.desktop.Section
 import io.github.cubsync.service.JobRecord
 

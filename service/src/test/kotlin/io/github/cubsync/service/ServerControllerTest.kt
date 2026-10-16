@@ -94,7 +94,7 @@ class ServerControllerTest {
     }
 
     @Test
-    fun stopping_the_server_releases_the_port() = runBlocking {
+    fun stopping_the_server_stops_serving() = runBlocking {
         val shared = tempDir("shared-")
         val controller = controller()
         val state = controller.start(listOf(shared.toString()), port = 0)
@@ -108,9 +108,18 @@ class ServerControllerTest {
         assertFalse(controller.state.value.running)
         assertEquals(0, controller.state.value.port)
 
-        // The port is free again: a second server on the same number must bind.
+        // Nothing is listening any more. Deliberately not "the same port can be bound
+        // again immediately": whether the operating system hands a just-closed port
+        // back is a property of the operating system, and a test that asserts it is a
+        // test that fails on somebody else's machine.
+        val refused = runCatching {
+            LanBackend.connect("127.0.0.1", state.port, clientScope(), nodeName = "probe")
+        }
+        assertTrue(refused.isFailure, "the peer should be gone, but a connection succeeded")
+
+        // And a fresh server still starts.
         val again = controller()
-        val restarted = again.start(listOf(shared.toString()), port = state.port)
+        val restarted = again.start(listOf(shared.toString()), port = 0)
         assertTrue(restarted.running, restarted.error)
     }
 

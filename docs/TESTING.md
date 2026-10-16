@@ -58,6 +58,13 @@ every screen off screen. The rendering is not decoration: a screen that cannot b
 composed fails the build here instead of being discovered by whoever opens the
 window next. The images land in `app/desktop/build/screenshots`.
 
+**Android tests** (`app/android/src/test`) cover the phone's state and navigation:
+that a detail is a place and the back arrow leaves it, that the guards refuse what
+they should before anything is opened, and that a run started from the state object
+moves real files. They run on the JVM, so they cannot prove that an API exists on a
+device — which is exactly the class of bug that shipped `Files.readString` in 0.3.0
+and was only caught by building the Android application.
+
 **CLI tests** (`cli/src/test`) cover argument parsing, the quirks of flags that take
 no value, and the summary format.
 

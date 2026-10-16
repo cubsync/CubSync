@@ -1,4 +1,4 @@
-package io.github.cubsync.desktop
+package io.github.cubsync.service
 
 import io.github.cubsync.core.engine.ActionKind
 import io.github.cubsync.core.engine.JobStatus
@@ -6,8 +6,8 @@ import io.github.cubsync.core.engine.PairStatus
 import io.github.cubsync.core.model.CompareMode
 import io.github.cubsync.core.model.ConflictPolicy
 import io.github.cubsync.core.model.DeletePolicy
+import io.github.cubsync.core.model.SyncConfig
 import io.github.cubsync.core.model.SyncDirection
-import io.github.cubsync.service.LogLevel
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -139,4 +139,29 @@ object Format {
 
     /** "3 项" reads better than "3 items" beside Chinese labels. */
     fun count(value: Int, unit: String = "项"): String = "$value $unit"
+}
+
+/**
+ * What a configuration will do, in one sentence.
+ *
+ * Generated from the same fields the engine reads, so a screen cannot describe a
+ * policy the run will not follow. It lives here rather than in a screen because both
+ * front ends say this, and they have to say the same thing.
+ */
+fun policySentence(config: SyncConfig): String {
+    val direction = config.direction
+    val deletes = when {
+        !direction.deletesAllowed -> "不会删除任何文件"
+        config.delete == DeletePolicy.KEEP -> "删除不会被同步，多余的文件会留着"
+        config.delete == DeletePolicy.RECYCLE -> "删除会同步，被删掉的文件进回收站"
+        else -> "删除会同步，被删掉的文件直接删除"
+    }
+    val conflicts = when (config.conflict) {
+        ConflictPolicy.ASK -> "冲突时停下来等人决定"
+        ConflictPolicy.PREFER_LEFT -> "冲突时用左侧覆盖右侧"
+        ConflictPolicy.PREFER_RIGHT -> "冲突时用右侧覆盖左侧"
+        ConflictPolicy.KEEP_BOTH -> "冲突时两份都保留"
+        ConflictPolicy.SKIP -> "冲突时跳过"
+    }
+    return "${Format.direction(direction)}；$deletes；$conflicts。"
 }

@@ -322,13 +322,7 @@ class LocalBackend(
 
     private fun move(from: Path, to: Path) {
         try {
-            Files.move(from, to, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-        } catch (notSupported: java.nio.file.AtomicMoveNotSupportedException) {
-            try {
-                Files.move(from, to, StandardCopyOption.REPLACE_EXISTING)
-            } catch (failure: IOException) {
-                throw BackendException(ErrorCode.IO_ERROR, "cannot move $from to $to: ${failure.message}", failure)
-            }
+            atomicMove(from, to)
         } catch (failure: IOException) {
             throw BackendException(ErrorCode.IO_ERROR, "cannot move $from to $to: ${failure.message}", failure)
         }
@@ -434,9 +428,9 @@ class LocalBackend(
             channel.close()
             closed = true
             try {
-                Files.move(staging, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-            } catch (notSupported: java.nio.file.AtomicMoveNotSupportedException) {
-                Files.move(staging, target, StandardCopyOption.REPLACE_EXISTING)
+                atomicMove(staging, target)
+            } catch (failure: IOException) {
+                throw BackendException(ErrorCode.IO_ERROR, "cannot put $target in place: ${failure.message}", failure)
             }
             val effective = if (mtimeMs > 0) mtimeMs else declaredMtimeMs
             if (effective > 0) {
@@ -461,5 +455,24 @@ class LocalBackend(
 
         private const val DEFAULT_CHUNK: Int = 256 * 1024
         private const val HASH_BUFFER_SIZE: Int = 128 * 1024
+    }
+}
+
+/**
+ * Renames a file into place, atomically when the filesystem allows it.
+ *
+ * `ATOMIC_MOVE` is not universally supported -- Android throws an
+ * `UnsupportedOperationException` where a desktop JDK throws
+ * `AtomicMoveNotSupportedException` -- and both mean the same thing here: a plain
+ * rename is still a rename, and the alternative is refusing to write any file at all
+ * on a filesystem that simply has no opinion.
+ */
+private fun atomicMove(from: Path, to: Path) {
+    try {
+        Files.move(from, to, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+    } catch (notSupported: java.nio.file.AtomicMoveNotSupportedException) {
+        Files.move(from, to, StandardCopyOption.REPLACE_EXISTING)
+    } catch (notSupported: UnsupportedOperationException) {
+        Files.move(from, to, StandardCopyOption.REPLACE_EXISTING)
     }
 }
