@@ -29,6 +29,7 @@ import kotlinx.coroutines.launch
 
 enum class Section(val label: String, val hint: String) {
     CONNECT("连接", "共享本机文件夹，或连上另一台设备"),
+    TRANSFER("传输", "两栏对照，把选中的东西送过去"),
     SYNC("同步", "配置要同步的文件夹对，然后运行"),
     JOBS("作业", "每次运行的结果与明细"),
     LOGS("日志", "连接、比较、写入的实时记录"),
@@ -224,6 +225,51 @@ class AppState(
                 )
             }
             .onFailure { notify("导入失败：${it.message}", NoticeKind.ERROR) }
+    }
+
+    // ------------------------------------------------------------------- browsing
+
+    /**
+     * Bumped whenever a browsing preference changes.
+     *
+     * The preferences live in the shared layer as plain mutable state, because both
+     * front ends read the same ones; this is how a screen announces that it changed
+     * one, so the layout knows to look again.
+     */
+    var browserRevision by mutableStateOf(0)
+        private set
+
+    fun changeBrowserSettings(change: (io.github.cubsync.service.BrowserSettings) -> Unit) {
+        change(service.browsing.settings)
+        service.browsing.resort()
+        browserRevision++
+    }
+
+    /** Copies one pane's selection into the other, and says what happened. */
+    fun transfer(from: io.github.cubsync.service.Side) {
+        service.browsing.transfer(from) { outcome ->
+            val tone = if (outcome.ok) NoticeKind.SUCCESS else NoticeKind.WARNING
+            val text = when {
+                !outcome.ok -> "传送了 ${outcome.copied} 项，${outcome.failures.size} 项失败：${outcome.failures.first()}"
+                outcome.copied == 0 -> "没有需要传送的内容"
+                else -> "已传送 ${outcome.copied} 项（${Format.bytes(outcome.bytes)}）"
+            }
+            notify(text, tone)
+        }
+    }
+
+    /**
+     * Folders worth opening in a pane.
+     *
+     * The folders this machine shares come first, because those are the ones somebody
+     * has deliberately decided to work with; then the home folder and the drives, so a
+     * pane is never stuck with nowhere to go.
+     */
+    fun localRoots(): List<String> {
+        val shared = settings.sharedRoots
+        val home = runCatching { java.nio.file.Paths.get(System.getProperty("user.home")).toString() }.getOrNull()
+        val drives = runCatching { java.io.File.listRoots().map { it.absolutePath }.toList() }.getOrDefault(emptyList())
+        return (shared + listOfNotNull(home) + drives).distinct()
     }
 
     /**

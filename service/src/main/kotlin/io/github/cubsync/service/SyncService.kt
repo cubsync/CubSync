@@ -87,6 +87,18 @@ class SyncService(
         log = log,
     )
 
+    /** Listing and ad-hoc copying, for a two-pane browser. */
+    val browser: FolderBrowser = FolderBrowser(browsePool, log)
+
+    /**
+     * The two panes and what they are showing.
+     *
+     * One session for the whole application, because a pane is a view of a machine
+     * rather than a view of a screen: leaving the browser and coming back should find
+     * the same folder open, not a fresh one.
+     */
+    val browsing: BrowserSession = BrowserSession(browser, browseScope, log = log)
+
     suspend fun run(
         config: SyncConfig,
         jobId: String = newJobId(),

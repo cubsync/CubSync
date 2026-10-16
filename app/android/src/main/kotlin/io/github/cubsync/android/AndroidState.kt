@@ -30,6 +30,7 @@ import java.io.File
 
 enum class Tab(val label: String) {
     CONNECT("连接"),
+    TRANSFER("传输"),
     SYNC("同步"),
     JOBS("作业"),
     SETTINGS("设置"),
@@ -90,6 +91,10 @@ class AndroidAppState(
     var rootDraft by mutableStateOf<List<String>>(emptyList())
 
     private var runTask: Job? = null
+
+    /** Bumped when a browsing preference changes, so the layout looks again. */
+    var browserRevision by mutableStateOf(0)
+        private set
 
     val stateDirectory: String get() = service.stateDirectory.toString()
 
@@ -181,6 +186,52 @@ class AndroidAppState(
         }
     }
 
+    // ------------------------------------------------------------------- browsing
+
+    fun changeBrowserSettings(change: (io.github.cubsync.service.BrowserSettings) -> Unit) {
+        change(service.browsing.settings)
+        service.browsing.resort()
+        browserRevision++
+    }
+
+    /** Copies one pane's selection into the other, and says what happened. */
+    fun transfer(from: io.github.cubsync.service.Side) {
+        service.browsing.transfer(from) { outcome ->
+            val tone = if (outcome.ok) NoticeKind.SUCCESS else NoticeKind.WARNING
+            val text = when {
+                !outcome.ok -> "传送了 ${outcome.copied} 项，${outcome.failures.size} 项失败：${outcome.failures.first()}"
+                outcome.copied == 0 -> "没有需要传送的内容"
+                else -> "已传送 ${outcome.copied} 项（${Format.bytes(outcome.bytes)}）"
+            }
+            notify(text, tone)
+        }
+    }
+
+    /**
+     * Folders worth opening in a pane, most useful first.
+     *
+     * There is no folder picker on purpose: the platform's picker hands back a content
+     * URI and the engine works in paths, so a wrong guess somebody can correct in a
+     * text field beats a picker that produces something the engine cannot open.
+     */
+    fun localRoots(): List<String> {
+        val shared = preferences.sharedRoots
+        return (shared + localRootsCache).distinct()
+    }
+
+    private val localRootsCache: List<String> = run {
+        val candidates = listOf(
+            "/sdcard/DCIM",
+            "/sdcard/Pictures",
+            "/sdcard/Download",
+            "/sdcard/Documents",
+            "/sdcard/Music",
+            "/sdcard/Movies",
+            appDirectory.absolutePath,
+        )
+        candidates.filter { runCatching { File(it).isDirectory }.getOrDefault(false) }
+    }
+
     fun newPairDraft(existing: List<FolderPair>): FolderPair {
         val peer = peers.firstOrNull()
         return FolderPair(
@@ -193,27 +244,6 @@ class AndroidAppState(
                 Endpoint(EndpointId.LOCAL, "")
             },
         )
-    }
-
-    /**
-     * Paths worth offering on a phone.
-     *
-     * There is no folder picker here on purpose: the platform's picker hands back a
-     * content URI, and the engine works in paths. A wrong guess that a person can
-     * correct in a text field is better than a picker that produces something the
-     * engine cannot open.
-     */
-    fun localRoots(): List<String> {
-        val candidates = listOf(
-            "/sdcard/DCIM",
-            "/sdcard/Pictures",
-            "/sdcard/Download",
-            "/sdcard/Documents",
-            "/sdcard/Music",
-            "/sdcard/Movies",
-            appDirectory.absolutePath,
-        )
-        return candidates.filter { runCatching { File(it).isDirectory }.getOrDefault(false) }
     }
 
     // ----------------------------------------------------------------------- runs

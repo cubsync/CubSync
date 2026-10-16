@@ -8,6 +8,44 @@ with the pre-1.0 rules described in [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-16
+
+The release where the product looks like the design, and where one tag produces every
+platform at once.
+
+### Added
+
+- **The two-pane transfer browser**, on both platforms. This is the screen the design
+  starts on: what is here, what is there, and an arrow between them. Select rows —
+  or press the arrow with nothing selected to move everything visible — and the copy
+  runs through the same backend contract the synchroniser uses.
+- **The display panel**, shared by both ends: five display modes (紧凑 / 详细 / 卡片 /
+  缩略 / 对比), row density as a percentage, column count for the grid modes, and the
+  three-way 分栏方向 with an 自动 that follows the shape of the container. Plus sorting
+  by name, size or time with a direction, folder-first, select-all and clear.
+- **The finalised brand.** The V1-T2 mark is in both applications — Android gets the
+  adaptive icon with a monochrome layer for themed icons and every density, Windows
+  gets the multi-resolution `.ico` for the installer and the window — and the accent
+  colour in both interfaces is the brand indigo `#3A5CCC`.
+
+### Changed
+
+- **`BrowserSession` is one implementation for two products.** What is open, what is
+  selected, how a list is ordered, and what a copy does when one side cannot be
+  reached are decided once, in `service`, and published as flows. The screens draw it.
+  The desktop pane and the phone pane are not merely similar; they are the same
+  object. This is the shape the rest of the interface is moving to.
+- The Android application has five tabs rather than four: 连接 / 传输 / 同步 / 作业 /
+  设置, matching the desktop's rail minus the one entry that exists because a desktop
+  screen has room for it.
+
+### Note
+
+- The two releases before this one each covered a single platform, because the
+  features landed at different times. From 0.5.0 a tag produces the Windows
+  installer, the Windows application image and the Android APK under one version
+  number, attached to one release. `docs/RELEASING.md` says so.
+
 ## [0.4.0] - 2026-10-16
 
 The release where CubSync runs on a phone.
@@ -165,7 +203,8 @@ versions.
 - Credentials and encryption: the protocol is plaintext and intends to run over
   a trusted network until authentication is designed.
 
-[Unreleased]: https://github.com/cubsync/CubSync/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/cubsync/CubSync/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/cubsync/CubSync/releases/tag/v0.5.0
 [0.4.0]: https://github.com/cubsync/CubSync/releases/tag/v0.4.0
 [0.3.0]: https://github.com/cubsync/CubSync/releases/tag/v0.3.0
 [0.2.0]: https://github.com/cubsync/CubSync/releases/tag/v0.2.0

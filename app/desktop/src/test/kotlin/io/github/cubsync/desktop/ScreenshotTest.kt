@@ -25,6 +25,7 @@ class ScreenshotTest {
     private data class Shot(val name: String, val section: Section, val dark: Boolean)
 
     private val shots = listOf(
+        Shot("00-transfer", Section.TRANSFER, dark = true),
         Shot("01-connect", Section.CONNECT, dark = true),
         Shot("02-sync", Section.SYNC, dark = true),
         Shot("03-jobs", Section.JOBS, dark = true),
@@ -52,6 +53,10 @@ class ScreenshotTest {
                     CubTheme(dark = shot.dark) { CubApp(state) }
                 }
                 val image = try {
+                    // Composed twice: the browser reads real folders, and the first
+                    // frame is drawn before that read has finished.
+                    scene.render()
+                    Thread.sleep(350)
                     scene.render()
                 } finally {
                     scene.close()

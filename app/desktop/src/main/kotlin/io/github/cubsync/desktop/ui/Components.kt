@@ -160,13 +160,19 @@ fun PrimaryButton(
     }
 }
 
+/**
+ * A button that reads as text until you look at it.
+ *
+ * `onClick` is last so a call site can put the action in a trailing lambda, which is
+ * what makes a row of small controls readable.
+ */
 @Composable
 fun QuietButton(
     text: String,
-    onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     danger: Boolean = false,
+    onClick: () -> Unit,
 ) {
     TextButton(
         onClick = onClick,

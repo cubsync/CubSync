@@ -21,10 +21,10 @@ import androidx.compose.ui.unit.sp
  * prototype's light values rather than a second design. Nothing in a screen refers
  * to a raw colour, so switching the theme cannot leave one panel unreadable.
  *
- * One deliberate difference from the prototype: the prototype carries both a
- * Windows accent (`--win-accent`) and a Material accent (`--m3-primary`). The
- * desktop window uses the Windows one, which is what the design document specifies
- * for this surface; the Android application uses the Material one.
+ * One deliberate difference from the prototype: the accent is the finalised brand
+ * indigo (`#3A5CCC`) rather than the prototype's blue, because the mark and the
+ * interface sitting next to it in the same window cannot be two different blues. The
+ * teal from the same palette appears where something is informational.
  */
 data class CubColors(
     val isDark: Boolean,
@@ -60,14 +60,14 @@ internal val DarkCubColors = CubColors(
     text = Color(0xFFE8EBF1),
     textDim = Color(0xFF98A1B0),
     textFaint = Color(0xFF6D7686),
-    accent = Color(0xFF1E88E5),
-    accentSoft = Color(0xFF1D2C3E),
-    accentDeep = Color(0xFF1565C0),
+    accent = Color(0xFF3A5CCC),
+    accentSoft = Color(0xFF232B4A),
+    accentDeep = Color(0xFF2F4AA8),
     danger = Color(0xFFE5484D),
     warning = Color(0xFFE0A020),
     success = Color(0xFF2E9E5B),
     conflict = Color(0xFFF0731F),
-    info = Color(0xFF3B82F6),
+    info = Color(0xFF1FA8A0),
     rail = Color(0xFF181B21),
     hover = Color(0xFF232833),
 )
@@ -83,14 +83,14 @@ internal val LightCubColors = CubColors(
     text = Color(0xFF161A20),
     textDim = Color(0xFF637085),
     textFaint = Color(0xFF8B97A8),
-    accent = Color(0xFF1E88E5),
-    accentSoft = Color(0xFFE6F0FB),
-    accentDeep = Color(0xFF1565C0),
+    accent = Color(0xFF3A5CCC),
+    accentSoft = Color(0xFFE4E9FA),
+    accentDeep = Color(0xFF2F4AA8),
     danger = Color(0xFFE5484D),
     warning = Color(0xFFE0A020),
     success = Color(0xFF2E9E5B),
     conflict = Color(0xFFF0731F),
-    info = Color(0xFF3B82F6),
+    info = Color(0xFF1FA8A0),
     rail = Color(0xFFFFFFFF),
     hover = Color(0xFFF0F3F8),
 )

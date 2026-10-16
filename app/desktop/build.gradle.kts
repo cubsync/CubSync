@@ -42,6 +42,9 @@ compose.desktop {
                 // A stable id so an upgrade replaces the previous install instead of
                 // sitting next to it.
                 upgradeUuid = "6E1C2A44-1F4B-4A2E-9E7C-3C9E1D2B7A55"
+                // The finalised mark, with a hand-tuned 16px layer: a two-circle
+                // shape that is crisp at 512 still turns to mud in a taskbar.
+                iconFile.set(project.file("src/main/resources/cubsync.ico"))
                 menu = true
                 shortcut = true
                 dirChooser = true

@@ -49,6 +49,7 @@ fun CubApp(state: AppState) {
             Column(Modifier.fillMaxSize()) {
                 when (state.section) {
                     Section.CONNECT -> ConnectScreen(state, server)
+                    Section.TRANSFER -> TransferScreen(state)
                     Section.SYNC -> SyncScreen(state)
                     Section.JOBS -> JobsScreen(state)
                     Section.LOGS -> LogsScreen(state)

@@ -1,4 +1,4 @@
-# CubSync
+<img src="docs/logo-lockup.svg" alt="CubSync" width="320">
 
 **Cross-platform file sync — one engine, many backends.**
 
@@ -6,10 +6,10 @@ CubSync keeps folders in sync between your devices over your own network. Androi
 desktop, and headless (daemon) in one codebase, driven by a single synchronization
 engine that is agnostic to the transport underneath it.
 
-> Status: **usable, early**. Version 0.4.0 has the engine, the protocol, two
-> backends, a CLI, a Windows desktop application and an Android application. The
-> wire format can still change between minor versions — see
-> [docs/VERSIONING.md](docs/VERSIONING.md).
+> Status: **usable, early**. Version 0.5.0 has the engine, the protocol, two
+> backends, a CLI, a Windows desktop application and an Android application. One tag
+> produces every platform's package under one version number. The wire format can
+> still change between minor versions — see [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ![The connect screen](docs/screenshots/connect.png)
 
@@ -123,6 +123,15 @@ address it shows. On the other machine, type that address into 远端设备 and 
 Both halves are optional: a one-way copy to a peer works without sharing anything
 locally, and a folder can be shared without ever connecting out.
 
+**Transfer** — two folders side by side and an arrow between them. One pane is this
+machine, the other is a connected device; select rows, or press the arrow with
+nothing selected to move everything visible. 显示方式 chooses among five ways of
+showing a folder, 行密度 and 列数 set how much fits, 分栏方向 decides whether the
+panes sit side by side or stacked, and each pane's ⋯ holds the ordering. This is the
+screen the design starts on, and the one the product is named after.
+
+![The transfer screen](docs/screenshots/transfer.png)
+
 **Sync** — a configuration is a policy plus a list of folder pairs. Add a pair by
 choosing a device and a folder on each side; the folders the peer exposes are
 offered as buttons, so nothing has to be typed from memory. 试运行 compares without
@@ -149,6 +158,11 @@ landing points a phone can use.
 out the address; or type the other machine's address and connect. The paths a phone
 is likely to want are offered as suggestions you can tap, and there is a field for
 anything else.
+
+**传输** — the same two panes, one at a time: a switch chooses which side you are
+looking at, and the button at the bottom sends the selection to the other. The
+ordering, the modes and the copy itself are the desktop's, because they are the same
+shared session; only the shape of the screen differs.
 
 **同步** — the list of configurations, and one configuration opened as its own
 screen. Policies first, then the folder pairs; each side is a device and a folder, and
