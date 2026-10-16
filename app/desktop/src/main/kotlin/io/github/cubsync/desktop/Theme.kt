@@ -8,6 +8,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -122,9 +123,44 @@ object CubType {
     val monoDim = TextStyle(fontSize = 10.5.sp, fontFamily = FontFamily.Monospace, lineHeight = 15.sp)
 }
 
+/**
+ * `#RRGGBB` as a colour, with the brand's indigo as the fallback.
+ *
+ * Parsed here rather than through the platform's parser: this file is compiled for the
+ * desktop, and reaching for an Android class for six hexadecimal digits is how a shared
+ * file stops being shippable on one of the two platforms.
+ */
+fun parseHexColour(hex: String): Color {
+    val clean = hex.removePrefix("#").trim()
+    if (clean.length != 6) return Color(0xFF3A5CCC)
+    val parsed = clean.toLongOrNull(16) ?: return Color(0xFF3A5CCC)
+    return Color(0xFF000000L or parsed)
+}
+
+/**
+ * The theme, with the user's accent laid over the brand palette.
+ *
+ * Only the accent is replaceable. The surfaces, the outlines and the two text weights are
+ * not offered as choices because a window with an unreadable panel is not a preference,
+ * it is a bug — and this is the line where that distinction is made.
+ */
 @Composable
-fun CubTheme(dark: Boolean, content: @Composable () -> Unit) {
-    val cub = if (dark) DarkCubColors else LightCubColors
+fun CubTheme(
+    dark: Boolean,
+    accentHex: String = io.github.cubsync.service.AppSettings.ACCENT_DEFAULT,
+    content: @Composable () -> Unit,
+) {
+    val base = if (dark) DarkCubColors else LightCubColors
+    val cub = if (accentHex.equals(base.accent.hex(), ignoreCase = true)) {
+        base
+    } else {
+        val accent = parseHexColour(accentHex)
+        base.copy(
+            accent = accent,
+            accentSoft = lerp(accent, base.background, 0.80f),
+            accentDeep = lerp(accent, Color.Black, 0.22f),
+        )
+    }
     val material = if (dark) {
         darkColorScheme(
             primary = cub.accent,
@@ -155,4 +191,10 @@ fun CubTheme(dark: Boolean, content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalCubColors provides cub) {
         MaterialTheme(colorScheme = material, content = content)
     }
+}
+
+/** `#RRGGBB` for a colour, so a swatch can be compared with the setting it came from. */
+private fun Color.hex(): String {
+    fun part(value: Float): Int = (value * 255f).toInt().coerceIn(0, 255)
+    return "#%02X%02X%02X".format(part(red), part(green), part(blue))
 }
