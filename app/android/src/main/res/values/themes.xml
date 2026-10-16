@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The window background is set here rather than in Compose so that the very first
+      frame is already the right colour instead of flashing white before the theme is
+      applied.
+    -->
+    <style name="Theme.CubSync" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:statusBarColor">@color/rail</item>
+        <item name="android:navigationBarColor">@color/rail</item>
+    </style>
+</resources>
