@@ -29,7 +29,7 @@ import sys
 
 HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
 RULE = re.compile(r"^-{3,}\s*$")
-LANGUAGE_WORDS = {"english", "中文", "说明"}
+LANGUAGE_WORDS = {"english", "中文", "说明", "中文说明"}
 
 
 def section_details(text: str) -> str:
@@ -76,7 +76,7 @@ def collapse(path: pathlib.Path) -> bool:
     lines = text.split("\n")
     split = next((index for index, line in enumerate(lines) if RULE.match(line.strip())), None)
     halves = (
-        [("中文", "\n".join(lines[:split])), ("English", "\n".join(lines[split + 1:]))]
+        [("中文说明", "\n".join(lines[:split])), ("English", "\n".join(lines[split + 1:]))]
         if split is not None
         else [("说明", text)]
     )

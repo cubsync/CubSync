@@ -83,7 +83,7 @@ a language has chosen to read it, and a second round of clicking is a second rou
 
 ```html
 <details>
-<summary><b>中文</b></summary>
+<summary><b>中文说明</b></summary>
 
 <details open>
 <summary><h3>能用了</h3></summary>
