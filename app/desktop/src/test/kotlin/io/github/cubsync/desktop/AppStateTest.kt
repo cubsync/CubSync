@@ -6,6 +6,7 @@ import io.github.cubsync.core.model.SyncConfig
 import io.github.cubsync.service.AppLog
 import io.github.cubsync.service.DisplayMode
 import io.github.cubsync.service.EndpointId
+import io.github.cubsync.service.PathTools
 import io.github.cubsync.service.Section
 import io.github.cubsync.service.ServerController
 import io.github.cubsync.service.ServerState
@@ -183,15 +184,45 @@ class AppStateTest {
         Files.createDirectories(dir.resolve("holiday"))
         Files.write(dir.resolve("notes.txt"), "notes".toByteArray())
 
-        fixture.state.openPane(Side.LEFT, dir.toString())
+        // One spelling of the folder, used both to open the pane and to assert where it came
+        // back to.
+        //
+        // The first version opened the pane with `dir.toString()` and asserted against
+        // `dir.toAbsolutePath()`. Those are the same string only when the test worker's
+        // `java.io.tmpdir` is already absolute, which is not something a test gets to
+        // assume — and when they differ the pane is *already* where the assertion wants it
+        // while the two strings never match. That is how this test waited fifteen seconds
+        // for the folder it was sitting in.
+        val root = PathTools.normalizeRoot(dir.toAbsolutePath().toString())
+
+        fixture.state.openPane(Side.LEFT, root)
         await("the listing") { fixture.state.browsing.current(Side.LEFT).entries.size == 2 }
         assertTrue(fixture.state.browsing.current(Side.LEFT).entries.any { it.relPath == "holiday" && it.isDirectory })
 
         fixture.state.browsing.enter(Side.LEFT, "holiday")
-        await("the subfolder") { fixture.state.browsing.current(Side.LEFT).path.endsWith("holiday") }
+        await("the subfolder") { PathTools.leafName(fixture.state.browsing.current(Side.LEFT).path) == "holiday" }
 
         fixture.state.browsing.up(Side.LEFT)
-        await("the parent") { fixture.state.browsing.current(Side.LEFT).path == dir.toAbsolutePath().toString().replace('\\', '/') }
+        try {
+            // Back at the parent, asserted by what the pane lists rather than by how the
+            // path is spelled: `holiday` is empty, so seeing an entry named `holiday` means
+            // the pane re-listed the folder that contains it. Comparing the last segment
+            // says the same thing without depending on absolute-versus-relative.
+            await("the parent") {
+                val pane = fixture.state.browsing.current(Side.LEFT)
+                !pane.loading &&
+                    pane.entries.any { it.relPath == "holiday" } &&
+                    PathTools.leafName(pane.path) == PathTools.leafName(root)
+            }
+        } catch (failure: AssertionError) {
+            // Say where it actually is, so a failure here explains itself instead of having
+            // to be reproduced by hand.
+            throw AssertionError(
+                "${failure.message}; the pane was at " +
+                    "${fixture.state.browsing.current(Side.LEFT).path}, expected $root",
+                failure,
+            )
+        }
     }
 
     @Test
