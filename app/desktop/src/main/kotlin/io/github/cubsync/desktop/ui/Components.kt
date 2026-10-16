@@ -582,7 +582,7 @@ const val DASH: String = "—"
 /**
  * The mark: two circles and a hole punched through the smaller one.
  *
- * The same three numbers `素材/logo/tools/brand.py` builds the shipped icon from, so what
+ * The same three numbers the brand build script derives the shipped icon from, so what
  * appears in the window is the product's own logo rather than a drawing of it. The hole is
  * cleared rather than filled, because a fill shows as a disc against whatever it sits on.
  */

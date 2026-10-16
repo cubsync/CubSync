@@ -1,7 +1,7 @@
 package io.github.cubsync.service
 
 /**
- * The brand constants, from `素材/logo/tools/brand.py`.
+ * The brand constants, as the brand build script defines them.
  *
  * Kept apart from [CubColors] on purpose. `#3A5CCC` is the mark's big circle and
  * `#1FA8A0` its small one, and `brand.py` says in capitals that these two do not change
