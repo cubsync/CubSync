@@ -856,7 +856,6 @@ fun ListRow(
  */
 @Composable
 fun BrandMark(size: Int = 34, modifier: Modifier = Modifier) {
-    val colors = CubTheme.colors
     Box(
         modifier
             .size(size.dp)
@@ -869,8 +868,12 @@ fun BrandMark(size: Int = 34, modifier: Modifier = Modifier) {
             fun x(v: Float) = (v - 64.7f) * scale + side / 2f
             fun y(v: Float) = (v - 62.55f) * scale + side / 2f
 
-            drawCircle(colors.accent, radius = 34f * scale, center = Offset(x(60f), y(60f)))
-            drawCircle(colors.info, radius = 23f * scale, center = Offset(x(80.4f), y(76.1f)))
+            // The mark's own two colours, not the interface tokens.
+            //
+            // Drawing it with `accent`/`info` meant that changing the palette changed the
+            // logo — which is exactly how the small circle stopped being teal.
+            drawCircle(Color(io.github.cubsync.service.Brand.PRIMARY_ARGB), radius = 34f * scale, center = Offset(x(60f), y(60f)))
+            drawCircle(Color(io.github.cubsync.service.Brand.ACCENT_ARGB), radius = 23f * scale, center = Offset(x(80.4f), y(76.1f)))
             drawCircle(
                 Color.Black,
                 radius = 8f * scale,

@@ -84,6 +84,30 @@ object IconPaths {
     const val DOT = "M12 10.9a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2z"
 
     /**
+     * 显示方式, five marks, from the prototype's `VIEWICON`.
+     *
+     * The prototype uses `⋮≡ ☰ ▤ ▦ ⇄`, which are characters; drawn as paths they look the
+     * same on a machine that has the font and still look like themselves on one that does
+     * not, which is the whole reason this file exists.
+     */
+    const val VIEW_COMPACT = "M9 6h11M9 12h11M9 18h11M4.2 6h.01M4.2 12h.01M4.2 18h.01"
+    const val VIEW_DETAIL = "M4 7h16M4 12h16M4 17h16"
+    const val VIEW_CARD = "M3.5 5.5h4.5v13H3.5zM11.5 6.5h9M11.5 12h6M11.5 17.5h9"
+
+    /** `▦` — a two-by-two grid, for 缩略. */
+    const val VIEW_THUMB = "M4.5 4.5h6v6h-6zM13.5 4.5h6v6h-6zM4.5 13.5h6v6h-6zM13.5 13.5h6v6h-6z"
+
+    /** `⇄` — two arrows past each other, for 对比. */
+    const val VIEW_COMPARE = "M4 8.5h13M14 5.5l3 3-3 3M20 15.5H7M10 12.5l-3 3 3 3"
+
+    /** The two directions a transfer can go, which the prototype draws as `→` and `←`. */
+    const val ARROW_RIGHT = "M4 12h15M13.5 6.5 19 12l-5.5 5.5"
+    const val ARROW_LEFT = "M20 12H5M10.5 6.5 5 12l5.5 5.5"
+
+    /** 新建文件夹's ＋ inside the rail's 收藏夹 heading. */
+    const val ROOT = "M12 3.5 4 8v8l8 4.5 8-4.5V8zM4 8l8 4.5 8-4.5M12 12.5V21"
+
+    /**
      * The window controls, from the prototype's `.win-title .wctl`.
      *
      * Drawn rather than borrowed from the system, because the prototype draws them: a
@@ -96,4 +120,39 @@ object IconPaths {
 
     /** `.rail-fold` — the button that collapses the rail to icons. */
     const val FOLD = "M13 5.5 6.5 12l6.5 6.5M19.5 5.5 13 12l6.5 6.5"
+}
+
+/** The mark 显示方式 wears, which is also what the menu shows before each name. */
+fun viewIcon(mode: DisplayMode): String = when (mode) {
+    DisplayMode.COMPACT -> IconPaths.VIEW_COMPACT
+    DisplayMode.DETAIL -> IconPaths.VIEW_DETAIL
+    DisplayMode.CARD -> IconPaths.VIEW_CARD
+    DisplayMode.THUMBNAIL -> IconPaths.VIEW_THUMB
+    DisplayMode.COMPARE -> IconPaths.VIEW_COMPARE
+}
+
+/**
+ * The mark a row wears, by what the row is.
+ *
+ * The prototype's `.a-row .ric` and `.drow .ico` pick between folder, image, video,
+ * document and plain file. Drawn as paths for the same reason as everything else here.
+ */
+object FileIcons {
+    const val FOLDER = IconPaths.FOLDER
+    const val IMAGE = "M4 5.5h16v13H4zM4 15l4.5-4.5L12 14l3-2.5 5 4.5M15.5 9.2a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6z"
+    const val VIDEO = "M4 6.5h11v11H4zM15 10.5l5-3v9l-5-3z"
+    const val DOCUMENT = "M6.5 3.5h7L18 8v12.5H6.5zM13.5 3.5V8H18M9.5 12.5h5M9.5 16h5"
+    const val PLAIN = "M6.5 3.5h7L18 8v12.5H6.5zM13.5 3.5V8H18"
+}
+
+/** Which of those a name is, by its extension. */
+fun fileIcon(name: String, isDirectory: Boolean): String {
+    if (isDirectory) return FileIcons.FOLDER
+    return when (name.substringAfterLast('.', "").lowercase()) {
+        "jpg", "jpeg", "png", "gif", "bmp", "webp", "heic", "heif", "avif", "svg" -> FileIcons.IMAGE
+        "mp4", "mkv", "mov", "avi", "webm", "m4v", "flv", "wmv", "ts", "mpg", "mpeg" -> FileIcons.VIDEO
+        "md", "txt", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "json", "xml",
+        "csv", "yml", "yaml", "html", "log", "ini", "conf" -> FileIcons.DOCUMENT
+        else -> FileIcons.PLAIN
+    }
 }

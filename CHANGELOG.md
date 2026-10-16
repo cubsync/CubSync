@@ -8,6 +8,37 @@ with the pre-1.0 rules described in [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-10-16
+
+### Fixed
+
+- The phone can start its server. It required a shared folder, had none, and answered
+  `choose at least one folder to share`; the first run now seeds the phone's own storage.
+- Both transfer screens open on real folders instead of an empty path.
+- The desktop window no longer disappears when dragged: the drag used the pointer delta
+  measured inside the window, which fed the movement back in.
+- The desktop no longer draws a sub-row and a standing display bar the prototype does not
+  have; the two controls on it were duplicates of the heading's.
+- The phone's tab bar no longer mixes 34dp and 38dp targets, and none of its controls are
+  characters any more.
+- The phone's drawer keeps clear of the system bars.
+- The mark is drawn from the brand constants rather than the interface tokens, which is why
+  its small circle had stopped being teal.
+
+### Changed
+
+- 显示方式 is a drop-down on the desktop heading and five marks on the phone's view bar,
+  both as drawn; every mode is behind its own icon.
+- The phone's transfer screen has no strip between the panes — the prototype draws that on
+  the desktop only. A tap enters or ticks, a long press opens the action panel, and a
+  selection raises the bar along the bottom.
+- The phone's 连接 screen is the prototype's four blocks: 账户与连接状态 folded into 最近.
+- Rows carry the mark for what they are: folder, image, video, document, plain file.
+
+### Removed
+
+- The desktop dependency on `compose.components.resources`, which nothing used.
+
 ## [0.3.3] - 2026-10-16
 
 ### Changed

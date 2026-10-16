@@ -15,7 +15,9 @@ dependencies {
 
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
-    implementation(compose.components.resources)
+    // Deliberately no `compose.components.resources`: the window icon goes through
+    // `painterResource`, which is in `compose.ui`, and a dependency that is not on any
+    // code path is weight in the installer and nothing else.
 
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)
@@ -37,6 +39,15 @@ compose.desktop {
             description = "Cross-platform file synchronisation, one engine, many backends."
             vendor = "CubSync"
             copyright = "Apache-2.0"
+
+            // A trimmed runtime, not the whole JDK.
+            //
+            // The plugin builds the image with jlink from what jdeps finds, so this is not
+            // what does the trimming — it is what stops a future dependency from silently
+            // re-adding the whole JDK through `includeAllModules`. The two names come from
+            // `./gradlew :app:desktop:suggestRuntimeModules`.
+            modules("java.instrument", "jdk.unsupported")
+            includeAllModules = false
 
             windows {
                 // A stable id so an upgrade replaces the previous install instead of

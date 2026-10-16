@@ -12,6 +12,10 @@ engine that is agnostic to the transport underneath it.
 > package under one version number. The wire format can still change between minor
 > versions — see [docs/VERSIONING.md](docs/VERSIONING.md).
 
+**▶ [Try the interface prototype](https://cubsync.github.io/demo/)** — both ends, clickable,
+in a browser. Nothing to install. The screenshots below are from the real applications; the
+prototype is the design at full size.
+
 ![The connect screen](docs/screenshots/connect.png)
 
 *Tell this machine what to share, then connect to another machine that is sharing.

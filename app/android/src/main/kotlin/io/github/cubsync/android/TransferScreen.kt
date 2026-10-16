@@ -43,7 +43,12 @@ import io.github.cubsync.service.Density
 import io.github.cubsync.service.Difference
 import io.github.cubsync.service.DisplayMode
 import io.github.cubsync.service.Format
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import io.github.cubsync.service.viewIcon
 import io.github.cubsync.service.IconPaths
+import io.github.cubsync.service.fileIcon
 import io.github.cubsync.service.Header
 import io.github.cubsync.service.ItemScale
 import io.github.cubsync.service.PaneDirection
@@ -113,14 +118,13 @@ fun TransferScreen(state: AndroidAppState) {
 
             else -> Column(Modifier.weight(1f).fillMaxWidth()) {
                 Pane(state, Side.LEFT, left, Modifier.weight(1f))
-                TransferArrow(state, left, right, busy, horizontal = false)
                 Pane(state, Side.RIGHT, right, Modifier.weight(1f))
             }
         }
 
-        if (solo == null && paneDirection == PaneDirection.SIDE_BY_SIDE) {
-            TransferArrow(state, left, right, busy, horizontal = true)
-        }
+        // The prototype's phone has no strip between the panes: a thumb does not drag a
+        // button that is 20px wide, so a transfer starts from the row's action panel or
+        // from the selection bar. The desktop keeps its two arrows; this end does not.
         ActionBar(state)
     }
 }
@@ -140,19 +144,27 @@ private fun SubRow(state: AndroidAppState, left: PaneState, right: PaneState, bu
         Modifier.fillMaxWidth().heightIn(min = 50.dp).padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        GlyphButton("☰", size = 38) { state.drawerOpen = true }
+        // Every mark on this row is a path and every target is the same 38dp. The row used
+        // to mix 34 and 38 and to spell 单双栏 with \u25a4 \u25e7 \u25e8, which are characters
+        // a font may or may not have — the same failure that once emptied the tab bar.
+        IconButton(IconPaths.MENU, size = 38) { state.drawerOpen = true }
 
         Row(Modifier.padding(horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-            GlyphButton("▤", size = 34, selected = state.showSoloLocal.not() && state.showSoloRemote.not()) {
+            IconButton(
+                IconPaths.PANE_BOTH,
+                size = 38,
+                mark = 18,
+                selected = state.showSoloLocal.not() && state.showSoloRemote.not(),
+            ) {
                 state.showSoloLocal = false
                 state.showSoloRemote = false
             }
-            GlyphButton("◧", size = 34, selected = state.showSoloLocal) {
+            IconButton(IconPaths.PANE_LOCAL, size = 38, mark = 18, selected = state.showSoloLocal) {
                 state.showSoloLocal = true
                 state.showSoloRemote = false
                 settings.activeSide = Side.LEFT
             }
-            GlyphButton("◨", size = 34, selected = state.showSoloRemote) {
+            IconButton(IconPaths.PANE_REMOTE, size = 38, mark = 18, selected = state.showSoloRemote) {
                 state.showSoloLocal = false
                 state.showSoloRemote = true
                 settings.activeSide = Side.RIGHT
@@ -169,15 +181,21 @@ private fun SubRow(state: AndroidAppState, left: PaneState, right: PaneState, bu
                 .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            CubIcon(viewIcon(prefs.displayMode), size = 16, tint = colors.text)
+            Spacer(Modifier.width(7.dp))
             Text(prefs.displayMode.label, style = CubType.label, color = colors.text, maxLines = 1)
-            Spacer(Modifier.width(4.dp))
-            Text(if (settings.displayBarOpen) "▲" else "▼", style = CubType.meta, color = colors.textDim)
+            Spacer(Modifier.width(5.dp))
+            CubIcon(
+                if (settings.displayBarOpen) IconPaths.CHEVRON_DOWN else IconPaths.CHEVRON_RIGHT,
+                size = 14,
+                tint = colors.textDim,
+            )
         }
 
         if (selected > 0) {
             Chip("已选 $selected", tone = colors.accent, modifier = Modifier.padding(horizontal = 4.dp))
         }
-        GlyphButton("⋮", size = 38) { state.paneMenu = settings.activeSide }
+        IconButton(IconPaths.MORE, size = 38, mark = 18, stroke = 3.4f) { state.paneMenu = settings.activeSide }
     }
 }
 
@@ -207,17 +225,23 @@ private fun DisplayBar(state: AndroidAppState) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             GroupLabel("显示方式", Modifier.width(58.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            // The prototype's `.a-viewbar` shows five marks, not five words.
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 for (mode in DisplayMode.entries) {
                     val active = prefs.displayMode == mode
                     Box(
                         Modifier
-                            .clip(Shape9)
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(99.dp))
                             .background(if (active) colors.accent else colors.surfaceSunken)
-                            .clickableCustom { state.setDisplayMode(side, mode) }
-                            .padding(horizontal = 9.dp, vertical = 6.dp),
+                            .clickableCustom { state.setDisplayMode(side, mode) },
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Text(mode.label, style = CubType.meta, color = if (active) Color.White else colors.textDim)
+                        CubIcon(
+                            viewIcon(mode),
+                            size = 17,
+                            tint = if (active) Color.White else colors.textDim,
+                        )
                     }
                 }
             }
@@ -443,21 +467,38 @@ private fun PaneList(state: AndroidAppState, side: Side, pane: PaneState, scale:
                     Modifier
                         .fillMaxWidth()
                         .height(rowHeight)
+                        // `.a-row`: a tap enters a folder or ticks a file, a long press opens
+                        // the action panel. The per-row ⋮ this used to carry is gone — the
+                        // prototype has no such button on a phone row, and a ⋮ beside every
+                        // name is a target that gets in the way of the name.
+                        .combinedClickable(
+                            onClick = {
+                                if (entry.isDirectory) state.browsing.enter(side, Browsing.name(entry.relPath))
+                                else state.browsing.toggle(side, entry.relPath)
+                                state.touch()
+                            },
+                            onLongClick = {
+                                state.actionSheet = ActionSheet(side, entry.relPath, entry.isDirectory)
+                            },
+                        )
                         .background(if (selected) colors.accentContainer else Color.Transparent)
-                        .clickableCustom {
-                            if (entry.isDirectory) state.browsing.enter(side, Browsing.name(entry.relPath))
-                            else state.browsing.toggle(side, entry.relPath)
-                            state.touch()
-                        }
-                        .padding(horizontal = 10.dp),
+                        .padding(horizontal = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        if (entry.isDirectory) "▸" else " ",
-                        style = CubType.meta,
-                        color = colors.textFaint,
-                        modifier = Modifier.width(16.dp),
-                    )
+                    Box(
+                        Modifier
+                            .size((40 * scale).dp)
+                            .clip(RoundedCornerShape((11 * scale).dp))
+                            .background(colors.accentContainer),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CubIcon(
+                            fileIcon(Browsing.name(entry.relPath), entry.isDirectory),
+                            size = (20 * scale).toInt(),
+                            tint = colors.accent,
+                        )
+                    }
+                    Spacer(Modifier.width((10 * scale).dp))
                     Column(Modifier.weight(1f)) {
                         Text(
                             Browsing.name(entry.relPath),
@@ -474,9 +515,6 @@ private fun PaneList(state: AndroidAppState, side: Side, pane: PaneState, scale:
                                 maxLines = 1,
                             )
                         }
-                    }
-                    GlyphButton("⋮", size = 34) {
-                        state.actionSheet = ActionSheet(side, entry.relPath, entry.isDirectory)
                     }
                 }
             }
@@ -626,13 +664,13 @@ private fun ActionBar(state: AndroidAppState) {
             Modifier.fillMaxWidth().background(colors.surfaceRaised).padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("已选 $selected 项", style = CubType.label, color = colors.text)
+            Text("已选 $selected 项", style = CubType.label, color = colors.textDim)
             Spacer(Modifier.weight(1f))
-            QuietButton("传送") {
+            QuietButton("传送 ▸ ${Words.REMOTE}") {
                 val from = if (left.selection.isNotEmpty()) Side.LEFT else Side.RIGHT
                 state.transfer(from)
             }
-            QuietButton("清除") {
+            IconButton(IconPaths.CLOSE, size = 38, mark = 16) {
                 state.browsing.clearAllSelections()
                 state.touch()
             }
