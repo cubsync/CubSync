@@ -231,5 +231,14 @@ class SyncServiceTest {
         assertEquals(0, second.create, "nothing is new the second time round")
         assertEquals(1, second.update, "the changed file should count as 更新")
         assertEquals(0, second.delete)
+
+        // And the job detail reads the same numbers, rather than printing the copy count
+        // twice — once under each of the two headings.
+        val detail = JobDetailsFactory.of(service.history.all().last(), service.log)
+        assertEquals("${first.create} · ${first.update}", detail.rows[9].second, "新增 · 更新")
+        assertTrue(
+            detail.rows[9].second.split(" · ").distinct().size > 1,
+            "新增 and 更新 must not be the same number: ${detail.rows[9].second}",
+        )
     }
 }

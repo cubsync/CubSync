@@ -1,8 +1,11 @@
 package io.github.cubsync.service
 
 import io.github.cubsync.core.engine.ActionKind
+import io.github.cubsync.core.engine.DiffKind
 import io.github.cubsync.core.engine.JobItem
+import io.github.cubsync.core.engine.JobResult
 import io.github.cubsync.core.engine.JobStatus
+import io.github.cubsync.core.engine.PairOutcome
 import io.github.cubsync.core.engine.PairStatus
 
 /** The tone of a result headline. Three, because the design gives three. */
@@ -60,6 +63,7 @@ object JobDetailsFactory {
         val stats = result.stats
         val duration = result.durationMs
         val pairs = result.pairs
+        val counts = result.changeCounts()
 
         val transferredItems = pairs.flatMap { it.transferred }
         val skippedItems = pairs.flatMap { it.skippedItems }
@@ -101,7 +105,7 @@ object JobDetailsFactory {
             Format.count(stats.copiedFiles),
             Format.duration(duration),
             Format.rate(stats.copiedBytes, duration),
-            "${stats.copiedFiles} · ${stats.copiedFiles}",
+            "${counts.create} · ${counts.update}",
             "${stats.deletedFiles} · ${stats.conflicts}",
             "${stats.skipped} · ${stats.failures}",
             resumeNote.ifEmpty { "—" },
@@ -156,6 +160,62 @@ data class SyncPreview(
 
     val blocked: List<PairPreview> get() = pairs.filter { it.blockReason.isNotEmpty() }
 }
+
+/**
+ * How a run's work divides into 新增 / 更新 / 删除 / 冲突 / 跳过.
+ *
+ * Read off the **comparison**, not off the action kinds. Counting actions said the
+ * opposite of the truth twice over: every copied file is a `COPY`, so every new file was
+ * reported as 更新 and 新增 counted directories only; and the job detail did not count at
+ * all — it printed the number of copied files twice, once under each heading.
+ *
+ * The distinction a reader wants is "did the other side have this before": if it did not,
+ * the file is new; if it had an older copy, the file is updated. That is in the diff, so
+ * that is where this reads it.
+ */
+data class ChangeCounts(
+    val create: Int = 0,
+    val update: Int = 0,
+    val delete: Int = 0,
+    val conflict: Int = 0,
+    val skip: Int = 0,
+    val bytes: Long = 0,
+) {
+    operator fun plus(other: ChangeCounts) = ChangeCounts(
+        create = create + other.create,
+        update = update + other.update,
+        delete = delete + other.delete,
+        conflict = conflict + other.conflict,
+        skip = skip + other.skip,
+        bytes = bytes + other.bytes,
+    )
+}
+
+/** What one folder pair's plan amounts to. */
+fun PairOutcome.changeCounts(): ChangeCounts {
+    val actions = plan?.actions.orEmpty()
+    fun copies() = actions.filter {
+        it.kind == ActionKind.COPY_LEFT_TO_RIGHT || it.kind == ActionKind.COPY_RIGHT_TO_LEFT
+    }
+    val copied = copies().filterNot { it.resolvesConflict }
+
+    return ChangeCounts(
+        create = actions.count { it.kind == ActionKind.MKDIR } +
+            copied.count { it.diff.kind == DiffKind.LEFT_ONLY || it.diff.kind == DiffKind.RIGHT_ONLY },
+        update = copied.count {
+            it.diff.kind == DiffKind.LEFT_NEWER || it.diff.kind == DiffKind.RIGHT_NEWER ||
+                it.diff.kind == DiffKind.DIFFERENT || it.diff.kind == DiffKind.TYPE_MISMATCH
+        },
+        delete = actions.count { it.kind == ActionKind.DELETE_LEFT || it.kind == ActionKind.DELETE_RIGHT },
+        conflict = actions.count { it.resolvesConflict },
+        skip = actions.count { it.kind == ActionKind.NONE },
+        bytes = copies().sumOf { it.diff.right?.size ?: it.diff.left?.size ?: 0L },
+    )
+}
+
+/** The same, over every pair of a run. */
+fun JobResult.changeCounts(): ChangeCounts =
+    pairs.fold(ChangeCounts()) { acc, pair -> acc + pair.changeCounts() }
 
 data class PairPreview(
     val pairId: String,

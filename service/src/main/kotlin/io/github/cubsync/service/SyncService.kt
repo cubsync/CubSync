@@ -1,7 +1,6 @@
 package io.github.cubsync.service
 
 import io.github.cubsync.core.engine.ActionKind
-import io.github.cubsync.core.engine.DiffKind
 import io.github.cubsync.core.engine.JobListener
 import io.github.cubsync.core.engine.JobResult
 import io.github.cubsync.core.engine.JobRunner
@@ -264,33 +263,17 @@ class SyncService(
  * decision the planner made, not a fact about the two files.
  */
 private fun PairOutcome.toPreview(): PairPreview {
-    val actions = plan?.actions.orEmpty()
-    fun copies() = actions.filter {
-        it.kind == ActionKind.COPY_LEFT_TO_RIGHT || it.kind == ActionKind.COPY_RIGHT_TO_LEFT
-    }
-    val copied = copies().filterNot { it.resolvesConflict }
-
+    val counts = changeCounts()
     return PairPreview(
         pairId = pairId,
         pairName = pairName.ifEmpty { pairId },
-        // 新增 and 更新 are read off the comparison, not off the action.
-        //
-        // Counting by action kind said the opposite of the truth: every copied file is a
-        // `COPY`, so every new file was reported as an update, and the only action that
-        // was not a copy — `MKDIR` — was the only thing reported as new. A file that the
-        // other side did not have is an addition; one it had an older copy of is an
-        // update; that is the difference the reader cares about and it is in the diff.
-        create = actions.count { it.kind == ActionKind.MKDIR } +
-            copied.count { it.diff.kind == DiffKind.LEFT_ONLY || it.diff.kind == DiffKind.RIGHT_ONLY },
-        update = copied.count {
-            it.diff.kind == DiffKind.LEFT_NEWER || it.diff.kind == DiffKind.RIGHT_NEWER ||
-                it.diff.kind == DiffKind.DIFFERENT || it.diff.kind == DiffKind.TYPE_MISMATCH
-        },
-        delete = actions.count { it.kind == ActionKind.DELETE_LEFT || it.kind == ActionKind.DELETE_RIGHT },
-        conflict = actions.count { it.resolvesConflict },
-        skip = actions.count { it.kind == ActionKind.NONE },
+        create = counts.create,
+        update = counts.update,
+        delete = counts.delete,
+        conflict = counts.conflict,
+        skip = counts.skip,
         blockReason = plan?.blockReason.orEmpty(),
-        bytes = copies().sumOf { it.diff.right?.size ?: it.diff.left?.size ?: 0L },
+        bytes = counts.bytes,
     )
 }
 

@@ -43,6 +43,12 @@ is a shape rather than a character.
 
 ### Fixed
 
+- 新增 and 更新 were counted by action kind, so every copied file — including a file the
+  other side had never seen — was reported as an update, and 新增 counted directories only.
+  They are read off the comparison now, where the difference between "new" and "changed"
+  actually lives.
+- The job detail printed the number of copied files twice, once under 新增 and once under
+  更新. It reads the same comparison the preview does.
 - The phone's bottom bar and the desktop's rail no longer lose their icons to a font
   without the glyph: every mark is an `ImageVector` now.
 - A notice on the phone disappears on its own after four seconds.
