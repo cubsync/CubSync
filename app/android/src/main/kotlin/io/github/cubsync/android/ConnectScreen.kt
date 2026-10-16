@@ -1,15 +1,18 @@
 package io.github.cubsync.android
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Button
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -18,183 +21,243 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import io.github.cubsync.service.Channel
 import io.github.cubsync.service.Format
-import io.github.cubsync.service.ServerState
+import io.github.cubsync.service.Peers
+import io.github.cubsync.service.RunMode
+import io.github.cubsync.service.Section
+import io.github.cubsync.service.Side
+import io.github.cubsync.service.Words
 
 /**
- * The screen that has to work before anything else can.
+ * 连接: this machine's side of the relationship, then the peers it can reach.
  *
- * Both halves are the same shape — a state, a list of folders, one button that flips
- * the state — because that is what the two halves are. The address a person reads out
- * is shown in full rather than shortened, because it is going to be typed somewhere
- * else.
+ * The run mode comes first because on a phone it is the question underneath everything
+ * else — whether the application can read a folder at all — and it stays collapsed
+ * because somebody who is not fighting permissions should never have to read about them.
  */
 @Composable
 fun ConnectScreen(state: AndroidAppState) {
+    val colors = CubTheme.colors
     val server = state.serverState
-    ScreenBody {
-        ServerPanel(state, server)
-        PeerPanel(state)
-    }
-}
+    val settings = state.liveSettings
 
-@Composable
-private fun ServerPanel(state: AndroidAppState, server: ServerState) {
-    val colors = CubTheme.colors
-    var portText by remember(server.port) { mutableStateOf(if (server.port > 0) server.port.toString() else "") }
-    var newRoot by remember { mutableStateOf("") }
-
-    Panel(
-        title = "本机服务端",
-        subtitle = if (server.running) {
-            "正在端口 ${server.port} 上共享 ${server.roots.size} 个文件夹"
-        } else {
-            "选择要共享给别的设备的文件夹"
-        },
-    ) {
-        SectionTitle("共享的文件夹")
-        Spacer(Modifier.height(6.dp))
-        if (state.rootDraft.isEmpty()) {
-            Text("还没有选择文件夹", style = CubType.meta, color = colors.textFaint)
-        }
-        for (root in state.rootDraft) {
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(root, style = CubType.mono, color = colors.text, modifier = Modifier.weight(1f), maxLines = 1)
-                if (!server.running) {
-                    TextButton(onClick = { state.removeRoot(root) }) {
-                        Text("移除", style = CubType.meta, color = colors.danger)
-                    }
-                }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
+        Panel(Modifier.fillMaxWidth(), title = "设备发现", subtitle = "局域网直连，不经过任何服务器") {
+            Field(
+                value = state.peerDraft,
+                onValueChange = { state.peerDraft = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = "192.168.1.20:43917",
+                onSubmit = { state.connectPeer(state.peerDraft) },
+            )
+            if (state.peerError != null) {
+                Spacer(Modifier.height(6.dp))
+                Text(state.peerError.orEmpty(), style = CubType.meta, color = colors.danger)
             }
-        }
-
-        if (!server.running) {
-            Spacer(Modifier.height(6.dp))
-            SectionTitle("这台设备上常见的目录")
-            Spacer(Modifier.height(6.dp))
-            ChoiceChips(
-                options = state.localRoots().map { Choice(it, it.removePrefix("/sdcard/")) },
-                selected = newRoot,
-                onSelect = { chosen ->
-                    newRoot = chosen
-                    state.addRoot(chosen)
-                },
-            )
-            Spacer(Modifier.height(8.dp))
-            CubField(
-                label = "或者直接填路径",
-                value = newRoot,
-                onValueChange = { newRoot = it },
-                placeholder = "/sdcard/DCIM",
-            )
-            Spacer(Modifier.height(6.dp))
-            CubField(
-                label = "端口",
-                value = portText,
-                onValueChange = { portText = it.filter { c -> c.isDigit() }.take(5) },
-                placeholder = "43917",
-                keyboard = androidx.compose.ui.text.input.KeyboardType.Number,
-            )
-        }
-
-        Spacer(Modifier.height(12.dp))
-        if (server.running) {
-            SectionTitle("别的设备填这个地址")
-            Spacer(Modifier.height(4.dp))
-            if (server.endpoints.isEmpty()) {
-                Text("没有找到可用的网络地址，请检查是否连上了 Wi-Fi", style = CubType.meta, color = colors.warning)
-            }
-            for (endpoint in server.endpoints) {
-                Text(endpoint, style = CubType.mono, color = colors.text)
-            }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                if (server.sessions == 0) "还没有设备连接" else "已有 ${server.sessions} 个连接",
-                style = CubType.meta,
-                color = if (server.sessions == 0) colors.textFaint else colors.success,
-            )
             Spacer(Modifier.height(10.dp))
-            Button(onClick = { state.stopServer() }) { Text("停止共享") }
-        } else {
-            Button(
-                enabled = state.rootDraft.isNotEmpty(),
-                onClick = { state.startServer(portText.toIntOrNull() ?: 0, "CubSync-Android") },
-            ) {
-                Text("开始共享")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PrimaryButton(if (state.connecting) "连接中…" else "连接", enabled = !state.connecting) {
+                    state.connectPeer(state.peerDraft)
+                }
+                QuietButton("刷新设备") { state.refreshPeers() }
             }
-            if (state.rootDraft.isEmpty()) {
-                Spacer(Modifier.height(4.dp))
-                Text("先选一个要共享的文件夹", style = CubType.meta, color = colors.textFaint)
-            }
-        }
-    }
-}
-
-@Composable
-private fun PeerPanel(state: AndroidAppState) {
-    val colors = CubTheme.colors
-
-    Panel(title = "远端设备", subtitle = "填上另一台设备上显示的 HOST:PORT") {
-        CubField(
-            label = "地址",
-            value = state.peerDraft,
-            onValueChange = {
-                state.peerDraft = it
-                state.peerError = null
-            },
-            placeholder = "192.168.1.10:43917",
-            isError = state.peerError != null,
-        )
-        state.peerError?.let {
-            Spacer(Modifier.height(4.dp))
-            Text(it, style = CubType.meta, color = colors.danger)
-        }
-        Spacer(Modifier.height(8.dp))
-        Button(enabled = !state.connecting, onClick = { state.connectPeer(state.peerDraft) }) {
-            Text(if (state.connecting) "连接中…" else "连接")
         }
 
         Spacer(Modifier.height(12.dp))
-        if (state.peers.isEmpty()) {
-            EmptyState("还没有连接任何设备", "在另一台设备上打开 CubSync 并开始共享，然后把它的地址填在上面。")
-        } else {
-            for (peer in state.peers) {
-                Spacer(Modifier.height(4.dp))
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(peer.nodeName, style = CubType.cardTitle, color = colors.text)
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        "v${peer.appVersion.ifBlank { "?" }} · 协议 ${peer.protocolVersion}",
-                        style = CubType.meta,
-                        color = colors.textFaint,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    TextButton(onClick = { state.disconnectPeer(peer.backendId) }) {
-                        Text("断开", style = CubType.meta, color = colors.textDim)
-                    }
-                }
-                Text(
-                    "${peer.host}:${peer.port} · ${Format.count(peer.roots.size, "个文件夹")}",
-                    style = CubType.meta,
-                    color = colors.textDim,
+        Panel(Modifier.fillMaxWidth(), title = "运行模式", subtitle = settings.runMode.label) {
+            for (mode in RunMode.entries) {
+                val current = mode == settings.runMode
+                ListRow(
+                    title = mode.label,
+                    detail = mode.detail,
+                    tint = if (current) colors.accent else null,
+                    trailing = { if (current) Chip("使用中", tone = colors.accent) },
+                    onClick = { if (!current) state.setRunMode(mode) },
                 )
-                for (root in peer.roots) {
-                    Text("  $root", style = CubType.mono, color = colors.textDim)
-                }
             }
-        }
-
-        Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                "两台设备都可以只连不收：不共享也能把文件送出去。",
+                "Root 模式需要设备已获取 Root 权限（KernelSU / Magisk / APatch）。普通模式经系统授权读写，能碰到的目录就是系统给的目录。",
                 style = CubType.meta,
                 color = colors.textFaint,
-                modifier = Modifier.padding(top = 2.dp),
+                modifier = Modifier.padding(top = 6.dp),
             )
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Panel(Modifier.fillMaxWidth(), title = "传输通道", subtitle = Peers.localAddresses().joinToString("  ·  ").ifEmpty { "还没读到网卡地址" }) {
+            for (channel in Channel.entries) {
+                ListRow(
+                    title = channel.label,
+                    detail = channel.detail,
+                    trailing = {
+                        when (channel) {
+                            Channel.USB_ADB -> Chip("未实现", tone = colors.textFaint)
+                            Channel.MULTI_LINK -> Chip("单链路", tone = colors.textFaint)
+                            Channel.LAN -> if (state.peers.isEmpty()) Chip("空闲", tone = colors.textFaint)
+                            else Chip("已连接 ${state.peers.size} 台", tone = colors.success)
+                        }
+                    },
+                )
+            }
+            val rate = state.running?.let { Format.rate(it.bytes, System.currentTimeMillis() - it.startedAtMs) } ?: DASH
+            KeyValueRow("当前速率", rate)
+            Text(
+                "USB-ADB 与多链路是如实的占位档位：协议支持多链路，界面先把它标出来，传输本身仍走局域网。",
+                style = CubType.meta,
+                color = colors.textFaint,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Panel(
+            Modifier.fillMaxWidth(),
+            title = "${Words.SERVER}（主控）",
+            subtitle = if (server.running) "等待${Words.REMOTE}连接" else "选择共享的文件夹，然后开始",
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                QuietButton("添加文件夹") { state.open(Route.PickFolder(Side.LEFT)) }
+                Spacer(Modifier.width(8.dp))
+                Text("${state.rootDraft.size} 个", style = CubType.meta, color = colors.textFaint)
+            }
+            Spacer(Modifier.height(6.dp))
+            if (state.rootDraft.isEmpty()) {
+                Text(
+                    "还没有共享任何文件夹。不共享也能连出去，只是别人看不到这台机器上的东西。",
+                    style = CubType.meta,
+                    color = colors.textFaint,
+                )
+            }
+            for (root in state.rootDraft) {
+                ListRow(
+                    title = io.github.cubsync.service.PathTools.leafName(root).ifEmpty { root },
+                    detail = root,
+                    trailing = { QuietButton("移除") { state.removeRoot(root) } },
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (server.running) {
+                    PrimaryButton("停止共享") { state.stopServer() }
+                } else {
+                    PrimaryButton("开始共享") {
+                        state.startServer(
+                            state.liveSettings.sharePort,
+                            state.liveSettings.serverNodeName.ifEmpty { Peers.local().name },
+                        )
+                    }
+                }
+                QuietButton("浏览文件（双栏）") {
+                    state.go(Section.TRANSFER)
+                    state.localRoots().firstOrNull()?.let { state.openPane(Side.LEFT, it) }
+                }
+            }
+            if (server.running) {
+                Spacer(Modifier.height(8.dp))
+                for (endpoint in server.endpoints) {
+                    ListRow(title = endpoint, detail = "把这行填到另一台设备上")
+                }
+                if (server.endpoints.isEmpty()) {
+                    Text("没有读到可用的网卡地址，检查一下网络连接。", style = CubType.meta, color = colors.warning)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Panel(Modifier.fillMaxWidth(), title = "已连接的设备") {
+            if (state.peers.isEmpty()) {
+                Text("还没有连上别的设备。", style = CubType.meta, color = colors.textFaint)
+            }
+            for (peer in state.peers) {
+                ListRow(
+                    title = peer.nodeName.ifEmpty { peer.backendId },
+                    detail = "${peer.host}:${peer.port} · 协议 ${peer.protocolVersion} · ${peer.roots.size} 个可访问目录",
+                    trailing = {
+                        QuietButton("断开") { state.disconnectPeer(peer.backendId) }
+                    },
+                    onClick = {
+                        state.go(Section.TRANSFER)
+                        state.openPane(Side.RIGHT, peer.roots.firstOrNull().orEmpty(), peer.backendId)
+                    },
+                )
+            }
+            val remembered = state.liveSettings.knownPeers.filterNot { known ->
+                state.peers.any { it.backendId == io.github.cubsync.service.EndpointId.peer(known.host, known.port).backendId }
+            }
+            if (remembered.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                GroupLabel("之前连过")
+                for (peer in remembered.take(5)) {
+                    ListRow(
+                        title = peer.name.ifEmpty { peer.address },
+                        detail = peer.address,
+                        onClick = {
+                            state.peerDraft = peer.address
+                            state.connectPeer(peer.address)
+                        },
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Panel(
+            Modifier.fillMaxWidth(),
+            title = "最近传输",
+            actions = { QuietButton("全部作业") { state.go(Section.JOBS) } },
+        ) {
+            if (state.jobs.isEmpty()) {
+                Text("还没有跑过同步。", style = CubType.meta, color = colors.textFaint)
+            }
+            for (job in state.jobs.take(3)) {
+                ListRow(
+                    title = job.configName,
+                    detail = "${if (job.dryRun) "试运行" else Format.jobStatus(job.result.status)} · ${Format.bytes(job.result.stats.copiedBytes)} · ${Format.ago(job.result.finishedAtMs)}",
+                    onClick = { state.go(Section.JOBS); state.open(Route.Job(job.jobId)) },
+                )
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+/** The folder picker: the suggestions the engine can actually open, in one list. */
+@Composable
+fun PickFolderScreen(state: AndroidAppState, side: Side) {
+    val colors = CubTheme.colors
+    var typed by remember { mutableStateOf("") }
+
+    Column(Modifier.fillMaxSize().padding(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Field(
+                value = typed,
+                onValueChange = { typed = it },
+                modifier = Modifier.weight(1f),
+                placeholder = "也可以直接输入路径",
+                onSubmit = { if (typed.isNotBlank()) state.addRoot(typed) },
+            )
+            Spacer(Modifier.width(8.dp))
+            PrimaryButton("用这个") { if (typed.isNotBlank()) state.addRoot(typed) }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "系统选择器给出的是 content URI，而引擎按路径工作，所以这里列出的是能直接打开的目录；路径不对可以直接改。",
+            style = CubType.meta,
+            color = colors.textFaint,
+        )
+        Spacer(Modifier.height(10.dp))
+        Panel(Modifier.fillMaxWidth(), title = "可以打开的目录") {
+            for (root in state.localRoots()) {
+                ListRow(
+                    title = io.github.cubsync.service.PathTools.leafName(root).ifEmpty { root },
+                    detail = root,
+                    onClick = {
+                        state.addRoot(root)
+                        state.back()
+                    },
+                )
+            }
         }
     }
 }

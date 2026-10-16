@@ -1,22 +1,21 @@
 package io.github.cubsync.android
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,280 +24,283 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import io.github.cubsync.core.engine.JobItem
-import io.github.cubsync.core.engine.JobStatus
-import io.github.cubsync.core.engine.PairOutcome
 import io.github.cubsync.service.Format
+import io.github.cubsync.service.JobDetails
+import io.github.cubsync.service.JobFileLine
 import io.github.cubsync.service.JobRecord
 import io.github.cubsync.service.LogLevel
+import io.github.cubsync.service.Words
 
 /**
- * What each run did, and one run in detail.
+ * 作业, with the log as its second half.
  *
- * The log belongs to the job here rather than to a tab of its own: on a phone the
- * useful question after a run is "what did this run do", and a separate log screen
- * would make a person correlate two lists by timestamp. The entries are the ones
- * written between the run's start and its end, which is exactly the window they
- * describe.
+ * The log is not a tab of its own here: after a run the question is "what did this run
+ * do", and the answer belongs next to the run. The desktop keeps a separate log entry
+ * because it has the room; the design allows exactly that difference and no other.
  */
 @Composable
-fun JobsListScreen(state: AndroidAppState) {
-    val colors = CubTheme.colors
+fun JobsScreen(state: AndroidAppState) {
+    Column(Modifier.fillMaxSize().padding(12.dp)) {
+        Segmented(
+            options = JobsSegment.entries.toList(),
+            selected = state.jobsSegment,
+            label = { it.label },
+            onSelect = { state.jobsSegment = it },
+        )
+        Spacer(Modifier.height(10.dp))
 
-    if (state.jobs.isEmpty()) {
-        ScreenBody { EmptyState("还没有运行过", "在「同步」页选一个配置，点「立即同步」或「试运行」。") }
+        if (state.jobsSegment == JobsSegment.LOGS) {
+            LogsBody(state, Modifier.fillMaxSize())
+            return@Column
+        }
+
+        if (state.jobs.isEmpty()) {
+            EmptyState("还没有跑过同步", "在同步页选一个配置，试运行一次会立刻出现在这里。")
+            return@Column
+        }
+
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            for (job in state.jobs) {
+                val detail = state.detailsOf(job)
+                Panel(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                    ListRow(
+                        title = job.configName,
+                        detail = "${Format.clockTime(job.result.startedAtMs)} · ${detail.summary}",
+                        tint = toneColor(detail.tone),
+                        trailing = {
+                            if (job.result.stats.failures > 0) Chip("${job.result.stats.failures} 项失败", tone = CubTheme.colors.danger)
+                            else Chip(if (job.dryRun) "试运行" else "完成", tone = CubTheme.colors.textDim)
+                        },
+                        onClick = { state.open(Route.Job(job.jobId)) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+/** 作业条目详情 — the same five parts as the desktop, in the same order. */
+@Composable
+fun JobDetailScreen(state: AndroidAppState, jobId: String) {
+    val colors = CubTheme.colors
+    val job = state.selectedJob(jobId) ?: run {
+        state.back()
         return
     }
+    val detail = state.detailsOf(job)
+    var showTransferred by remember(jobId) { mutableStateOf(false) }
+    var showSkipped by remember(jobId) { mutableStateOf(false) }
 
-    ScreenBody {
-        for (job in state.jobs) {
-            val tone = statusTone(job.result.status)
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(colors.surface)
-                    .clickable { state.open(Route.JobDetail(job.jobId)) }
-                    .padding(14.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.width(7.dp).height(7.dp).clip(CircleShape).background(tone))
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        job.configName.ifBlank { job.configId },
-                        style = CubType.cardTitle,
-                        color = colors.text,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (job.dryRun) Text("试运行", style = CubType.meta, color = colors.textFaint)
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
+        // ① the result banner
+        Panel(Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(detail.headline, style = CubType.big, color = toneColor(detail.tone))
+                Spacer(Modifier.weight(1f))
+                Chip(if (job.dryRun) "试运行" else Format.jobStatus(job.result.status), tone = toneColor(detail.tone))
+            }
+            Spacer(Modifier.height(5.dp))
+            Text(detail.summary, style = CubType.meta, color = colors.textDim)
+            if (detail.resumeNote.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Text(detail.resumeNote, style = CubType.meta, color = colors.warning)
+            }
+        }
+
+        // ② the key/value block
+        Spacer(Modifier.height(12.dp))
+        Panel(Modifier.fillMaxWidth(), title = "明细") {
+            for ((key, value) in detail.rows) KeyValueRow(key, value)
+        }
+
+        // ③ the file-level lists
+        Spacer(Modifier.height(12.dp))
+        FileGroup(
+            title = "已传输 ${detail.transferredTotal} 项",
+            lines = detail.transferred,
+            expanded = showTransferred,
+            more = detail.moreTransferred,
+            tone = colors.success,
+        ) { showTransferred = !showTransferred }
+        Spacer(Modifier.height(8.dp))
+        FileGroup(
+            title = "已跳过 ${detail.skippedTotal} 项",
+            lines = detail.skipped,
+            expanded = showSkipped,
+            more = detail.moreSkipped,
+            tone = colors.textDim,
+        ) { showSkipped = !showSkipped }
+
+        // ④ this run's log, inline
+        Spacer(Modifier.height(12.dp))
+        Panel(
+            Modifier.fillMaxWidth(),
+            title = "这次运行的日志",
+            subtitle = "${detail.logs.size} 行",
+            actions = { QuietButton("在日志页看全部 →") { state.jobsSegment = JobsSegment.LOGS; state.back() } },
+        ) {
+            if (detail.logs.isEmpty()) {
+                Text("这次运行没有写入日志。", style = CubType.meta, color = colors.textFaint)
+            }
+            for (entry in detail.logs.takeLast(40)) {
+                Row(Modifier.fillMaxWidth().padding(vertical = 1.dp), verticalAlignment = Alignment.Top) {
+                    Text(Format.stamp(entry.atMs), style = CubType.mono, color = colors.textFaint, modifier = Modifier.width(68.dp))
+                    Text(entry.area, style = CubType.mono, color = levelColor(entry.level), modifier = Modifier.width(50.dp))
+                    Text(entry.message, style = CubType.mono, color = colors.textDim, modifier = Modifier.weight(1f))
                 }
-                Spacer(Modifier.height(4.dp))
+            }
+        }
+
+        // ⑤ the actions, which depend on how it ended
+        Spacer(Modifier.height(14.dp))
+        val config = state.configs.firstOrNull { it.configId == job.configId }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            when {
+                state.running != null -> PrimaryButton("暂停 / 取消") { state.cancelRun() }
+                detail.canRetryFailedPairs -> PrimaryButton("重试失败对") {
+                    if (config != null) state.runConfig(config, dryRun = false) else state.notify("这个配置已经不在了", NoticeKind.WARNING)
+                }
+
+                else -> PrimaryButton("再次运行") {
+                    if (config != null) state.runConfig(config, dryRun = false) else state.notify("这个配置已经不在了", NoticeKind.WARNING)
+                }
+            }
+            QuietButton("报告") { report(state, detail) }
+        }
+        if (config == null) {
+            Spacer(Modifier.height(6.dp))
+            Text("原来的配置已经被删掉了。", style = CubType.meta, color = colors.textFaint)
+        }
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun FileGroup(
+    title: String,
+    lines: List<JobFileLine>,
+    expanded: Boolean,
+    more: Int,
+    tone: androidx.compose.ui.graphics.Color,
+    onToggle: () -> Unit,
+) {
+    val colors = CubTheme.colors
+    Panel(
+        Modifier.fillMaxWidth(),
+        title = title,
+        subtitle = if (expanded) "" else "点开看文件级明细",
+        actions = { QuietButton(if (expanded) "收起" else "展开") { onToggle() } },
+    ) {
+        if (!expanded) return@Panel
+        if (lines.isEmpty()) {
+            Text("没有。", style = CubType.meta, color = colors.textFaint)
+            return@Panel
+        }
+        for (line in lines) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                StatusDot(if (line.ok) tone else colors.danger, 6)
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(line.relPath, style = CubType.body, color = colors.text, maxLines = 1)
+                    if (line.note.isNotEmpty()) {
+                        Text(line.note, style = CubType.meta, color = colors.textFaint, maxLines = 1)
+                    }
+                }
+                if (line.bytes > 0) Text(Format.bytes(line.bytes), style = CubType.meta, color = colors.textFaint)
+            }
+        }
+        if (more > 0) {
+            Spacer(Modifier.height(4.dp))
+            Text("还有 $more 项", style = CubType.meta, color = colors.textFaint)
+        }
+    }
+}
+
+/** The log, filterable, as the second half of the jobs tab. */
+@Composable
+fun LogsBody(state: AndroidAppState, modifier: Modifier = Modifier) {
+    val colors = CubTheme.colors
+    var area by remember { mutableStateOf("") }
+    val areas = state.logs.map { it.area }.distinct().sorted()
+
+    Column(modifier) {
+        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Segmented(
+                options = LogLevel.entries.toList(),
+                selected = state.logMinimumLevel,
+                label = { Format.level(it) },
+                onSelect = { state.logMinimumLevel = it },
+            )
+            Spacer(Modifier.weight(1f))
+            QuietButton("清空") { state.clearLogs() }
+        }
+        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(99.dp))
+                    .background(colors.surfaceRaised)
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            ) {
                 Text(
-                    "${Format.stamp(job.result.startedAtMs)} · ${Format.jobStatus(job.result.status)}",
+                    if (area.isEmpty()) "全部区域（${areas.size}）" else area,
                     style = CubType.meta,
                     color = colors.textDim,
                 )
-                Text(
-                    "${Format.bytes(job.result.stats.copiedBytes)} · ${Format.duration(job.result.durationMs)}",
-                    style = CubType.meta,
-                    color = colors.textFaint,
-                )
             }
-        }
-    }
-}
-
-@Composable
-fun JobDetailScreen(state: AndroidAppState, job: JobRecord) {
-    val colors = CubTheme.colors
-    val result = job.result
-    val stats = result.stats
-    val tone = statusTone(result.status)
-    val config = state.config(job.configId)
-
-    ScreenBody {
-        Panel {
-            Text(Format.jobStatus(result.status), style = CubType.big, color = tone)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "${job.configName} · ${Format.duration(result.durationMs)} · " +
-                    Format.rate(stats.copiedBytes, result.durationMs),
-                style = CubType.body,
-                color = colors.textDim,
-            )
-            Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Metric("复制", Format.count(stats.copiedFiles, "个"))
-                Metric("数据量", Format.bytes(stats.copiedBytes))
-                Metric("删除", Format.count(stats.deletedFiles, "个"))
-                Metric("失败", Format.count(stats.failures, "个"), if (stats.failures > 0) colors.danger else null)
+            Spacer(Modifier.width(8.dp))
+            QuietButton("切换区域") {
+                val next = areas.indexOf(area).let { index -> if (index + 1 >= areas.size) -1 else index + 1 }
+                area = if (next < 0) "" else areas[next]
             }
         }
 
-        Panel(title = "明细") {
-            KeyValue("配置", job.configName)
-            KeyValue("作业号", job.jobId)
-            KeyValue("方向", Format.direction(job.direction))
-            KeyValue("模式", if (job.dryRun) "试运行（不写入）" else "实际写入")
-            KeyValue("文件夹对", Format.count(result.pairs.size, "对"))
-            KeyValue("开始", Format.stamp(result.startedAtMs))
-            KeyValue("结束", Format.stamp(result.finishedAtMs))
-            KeyValue("冲突", Format.count(stats.conflicts, "个"), colors.conflict)
-            KeyValue("跳过", Format.count(stats.skipped, "个"), colors.textDim)
-        }
+        val shown = state.logs
+            .filter { it.level >= state.logMinimumLevel }
+            .filter { area.isEmpty() || it.area == area }
 
-        for (pair in result.pairs) {
-            PairPanel(pair)
-        }
-
-        Panel(title = "接下来") {
-            Button(
-                enabled = config != null && state.running == null,
-                onClick = { config?.let { state.runConfig(it, dryRun = false) } },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("再次运行")
+        Panel(Modifier.weight(1f).fillMaxWidth(), title = "日志", subtitle = "最新在最后，共 ${shown.size} 行") {
+            if (shown.isEmpty()) {
+                Text("没有符合条件的日志。", style = CubType.meta, color = colors.textFaint)
             }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(
-                enabled = config != null && state.running == null,
-                onClick = { config?.let { state.runConfig(it, dryRun = true) } },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("试运行")
-            }
-            if (config == null) {
-                Spacer(Modifier.height(6.dp))
-                Text("原配置已被删除", style = CubType.meta, color = colors.warning)
-            }
-        }
-
-        RunLogPanel(state, job)
-    }
-}
-
-@Composable
-private fun Metric(label: String, value: String, color: Color? = null) {
-    Column {
-        Text(label, style = CubType.meta, color = CubTheme.colors.textFaint)
-        Text(value, style = CubType.cardTitle, color = color ?: CubTheme.colors.text)
-    }
-}
-
-@Composable
-private fun PairPanel(pair: PairOutcome) {
-    val colors = CubTheme.colors
-    var showTransferred by remember(pair.pairId) { mutableStateOf(false) }
-    var showSkipped by remember(pair.pairId) { mutableStateOf(false) }
-    val failed = pair.items.filter { !it.ok }
-
-    Panel(
-        title = pair.pairName.ifEmpty { pair.pairId },
-        subtitle = "${Format.pairStatus(pair.status)} · 复制 ${pair.stats.copiedFiles} · 删除 ${pair.stats.deletedFiles}" +
-            if (pair.error.isNotEmpty()) " · ${pair.error}" else "",
-    ) {
-        if (pair.transferred.isNotEmpty()) {
-            ItemGroup("已传输 ${pair.transferred.size} 项", showTransferred, { showTransferred = !showTransferred }, pair.transferred, colors.text)
-        }
-        if (failed.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-            ItemGroup("失败 ${failed.size} 项", true, {}, failed, colors.danger)
-        }
-        if (pair.skippedItems.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-            ItemGroup("已跳过 ${pair.skippedItems.size} 项", showSkipped, { showSkipped = !showSkipped }, pair.skippedItems, colors.textDim)
-        }
-        if (pair.transferred.isEmpty() && failed.isEmpty() && pair.skippedItems.isEmpty()) {
-            EmptyState("这次没有任何改动", "两侧已经一致。")
-        }
-    }
-}
-
-@Composable
-private fun ItemGroup(
-    title: String,
-    expanded: Boolean,
-    onToggle: () -> Unit,
-    items: List<JobItem>,
-    tone: Color,
-) {
-    val colors = CubTheme.colors
-    Column(Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.fillMaxWidth().clickable { onToggle() }.padding(vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(if (expanded) "▾" else "▸", style = CubType.meta, color = colors.textFaint)
-            Spacer(Modifier.width(6.dp))
-            Text(title, style = CubType.label, color = tone)
-        }
-        if (expanded) {
-            for (item in items.take(20)) {
-                Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 3.dp, bottom = 3.dp)) {
-                    Text(
-                        item.relPath,
-                        style = CubType.meta,
-                        color = if (item.ok) colors.text else colors.danger,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        when {
-                            item.error.isNotEmpty() -> item.error
-                            item.skippedReason.isNotEmpty() -> item.skippedReason
-                            item.bytes > 0 -> Format.bytes(item.bytes)
-                            else -> Format.action(item.action)
-                        },
-                        style = CubType.meta,
-                        color = tone,
-                        maxLines = 1,
-                    )
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                for (entry in shown) {
+                    Row(Modifier.fillMaxWidth().padding(vertical = 1.dp), verticalAlignment = Alignment.Top) {
+                        Text(Format.stamp(entry.atMs), style = CubType.mono, color = colors.textFaint, modifier = Modifier.width(66.dp))
+                        Text(Format.level(entry.level), style = CubType.mono, color = levelColor(entry.level), modifier = Modifier.width(40.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(entry.message, style = CubType.mono, color = colors.text)
+                            if (entry.detail.isNotEmpty()) {
+                                Text(entry.detail, style = CubType.mono, color = colors.textFaint)
+                            }
+                        }
+                    }
                 }
             }
-            if (items.size > 20) {
-                Text(
-                    "还有 ${items.size - 20} 项",
-                    style = CubType.meta,
-                    color = colors.textFaint,
-                    modifier = Modifier.padding(start = 16.dp, top = 4.dp),
-                )
-            }
         }
+        HorizontalDivider(color = colors.outline, modifier = Modifier.padding(top = 6.dp))
     }
 }
 
-@Composable
-private fun RunLogPanel(state: AndroidAppState, job: JobRecord) {
-    val colors = CubTheme.colors
-    var expanded by remember(job.jobId) { mutableStateOf(false) }
-    val entries = state.logs.filter {
-        it.atMs >= job.result.startedAtMs && it.atMs <= job.result.finishedAtMs + 1_000
-    }.filter { it.level >= LogLevel.DEBUG }
-
-    Panel(
-        title = "这次运行的日志",
-        subtitle = if (entries.isEmpty()) "没有留下记录" else "${entries.size} 条，从 ${Format.clockTime(job.result.startedAtMs)} 开始",
-    ) {
-        if (entries.isNotEmpty()) {
-            TextButton(onClick = { expanded = !expanded }) {
-                Text(if (expanded) "收起" else "展开全部", style = CubType.label)
-            }
-        }
-        for (entry in if (expanded) entries else entries.take(8)) {
-            Row(Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
-                Text(Format.clockTime(entry.atMs), style = CubType.meta, color = colors.textFaint)
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    entry.message,
-                    style = CubType.meta,
-                    color = when (entry.level) {
-                        LogLevel.DEBUG -> colors.textFaint
-                        LogLevel.INFO -> colors.textDim
-                        LogLevel.WARN -> colors.warning
-                        LogLevel.ERROR -> colors.danger
-                    },
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        if (!expanded && entries.size > 8) {
-            Text("还有 ${entries.size - 8} 条", style = CubType.meta, color = colors.textFaint)
-        }
+/** Writes the run out as a file in the application's own directory. */
+private fun report(state: AndroidAppState, detail: JobDetails) {
+    val text = buildString {
+        appendLine(detail.title)
+        appendLine(detail.headline + " —— " + detail.summary)
+        appendLine()
+        for ((key, value) in detail.rows) appendLine("$key\t$value")
+        appendLine()
+        appendLine("已传输 ${detail.transferredTotal} 项")
+        for (line in detail.transferred) appendLine("  ${line.relPath}\t${Format.bytes(line.bytes)}")
+        if (detail.moreTransferred > 0) appendLine("  还有 ${detail.moreTransferred} 项")
+        appendLine("已跳过 ${detail.skippedTotal} 项")
+        for (line in detail.skipped) appendLine("  ${line.relPath}\t${line.note}")
+        if (detail.moreSkipped > 0) appendLine("  还有 ${detail.moreSkipped} 项")
     }
-}
-
-@Composable
-private fun statusTone(status: JobStatus): Color = when (status) {
-    JobStatus.COMPLETED -> CubTheme.colors.success
-    JobStatus.PARTIAL_FAILED -> CubTheme.colors.warning
-    JobStatus.CANCELLED -> CubTheme.colors.textDim
-    JobStatus.FAILED -> CubTheme.colors.danger
+    val file = java.io.File(state.appDirectory, "${detail.title.replace(':', '-')}.txt")
+    runCatching { file.writeText(text, Charsets.UTF_8) }
+        .onSuccess { state.notify("报告已保存到 ${file.absolutePath}", NoticeKind.SUCCESS) }
+        .onFailure { state.notify("保存失败：${it.message}", NoticeKind.ERROR) }
 }
