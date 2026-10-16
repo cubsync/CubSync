@@ -15,11 +15,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 /**
- * The design's Material tokens, which are the ones the prototype uses on this side.
+ * The design's Material tokens, with the finalised brand indigo as the accent.
  *
- * The desktop window uses the same prototype's Windows accent; the two ends share the
- * palette and the semantics, not every value, which is what the design document
- * specifies.
+ * The desktop's tokens are the same names with the desktop's surface values; the two
+ * ends share the palette and the semantics, not every single value.
  */
 data class CubColors(
     val isDark: Boolean,
@@ -48,8 +47,8 @@ private val DarkCubColors = CubColors(
     text = Color(0xFFE6E1E9),
     textDim = Color(0xFFC9C5D0),
     textFaint = Color(0xFF8E8A96),
-    accent = Color(0xFF4C6EF5),
-    accentContainer = Color(0xFF26315C),
+    accent = Color(0xFF3A5CCC),
+    accentContainer = Color(0xFF232B4A),
     onAccent = Color(0xFFFFFFFF),
     danger = Color(0xFFE5484D),
     warning = Color(0xFFE0A020),
@@ -66,8 +65,8 @@ private val LightCubColors = CubColors(
     text = Color(0xFF1B1B1F),
     textDim = Color(0xFF44464F),
     textFaint = Color(0xFF767680),
-    accent = Color(0xFF4C6EF5),
-    accentContainer = Color(0xFFE3E8FF),
+    accent = Color(0xFF3A5CCC),
+    accentContainer = Color(0xFFE4E9FA),
     onAccent = Color(0xFFFFFFFF),
     danger = Color(0xFFE5484D),
     warning = Color(0xFFB26A00),
