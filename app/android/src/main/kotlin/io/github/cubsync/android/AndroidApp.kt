@@ -105,6 +105,7 @@ fun CubAndroidApp(state: AndroidAppState) {
             when (val route = state.route) {
                 is Route.Tabs -> when (state.tab) {
                     Tab.CONNECT -> ConnectScreen(state)
+                    Tab.TRANSFER -> TransferScreen(state)
                     Tab.SYNC -> SyncListScreen(state)
                     Tab.JOBS -> JobsListScreen(state)
                     Tab.SETTINGS -> SettingsScreen(state)
@@ -143,6 +144,7 @@ private fun topSubtitle(state: AndroidAppState): String = when (state.route) {
     is Route.JobDetail -> "这次运行做了什么"
     is Route.Tabs -> when (state.tab) {
         Tab.CONNECT -> "共享本机文件夹，或连上另一台设备"
+        Tab.TRANSFER -> "两栏对照，把选中的东西送过去"
         Tab.SYNC -> "配置要同步的文件夹对，然后运行"
         Tab.JOBS -> "每次运行的结果与明细"
         Tab.SETTINGS -> "状态目录、默认策略与外观"
@@ -196,6 +198,7 @@ private fun BottomTabs(state: AndroidAppState) {
 
 private fun tabGlyph(tab: Tab): String = when (tab) {
     Tab.CONNECT -> "⇄"
+    Tab.TRANSFER -> "⇅"
     Tab.SYNC -> "▤"
     Tab.JOBS -> "✓"
     Tab.SETTINGS -> "⚙"
