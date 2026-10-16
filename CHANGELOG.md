@@ -8,119 +8,99 @@ with the pre-1.0 rules described in [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-10-16
-
-The release where the product looks like the design, and where one tag produces every
-platform at once.
-
-### Added
-
-- **The two-pane transfer browser**, on both platforms. This is the screen the design
-  starts on: what is here, what is there, and an arrow between them. Select rows —
-  or press the arrow with nothing selected to move everything visible — and the copy
-  runs through the same backend contract the synchroniser uses.
-- **The display panel**, shared by both ends: five display modes (紧凑 / 详细 / 卡片 /
-  缩略 / 对比), row density as a percentage, column count for the grid modes, and the
-  three-way 分栏方向 with an 自动 that follows the shape of the container. Plus sorting
-  by name, size or time with a direction, folder-first, select-all and clear.
-- **The finalised brand.** The V1-T2 mark is in both applications — Android gets the
-  adaptive icon with a monochrome layer for themed icons and every density, Windows
-  gets the multi-resolution `.ico` for the installer and the window — and the accent
-  colour in both interfaces is the brand indigo `#3A5CCC`.
-
-### Changed
-
-- **`BrowserSession` is one implementation for two products.** What is open, what is
-  selected, how a list is ordered, and what a copy does when one side cannot be
-  reached are decided once, in `service`, and published as flows. The screens draw it.
-  The desktop pane and the phone pane are not merely similar; they are the same
-  object. This is the shape the rest of the interface is moving to.
-- The Android application has five tabs rather than four: 连接 / 传输 / 同步 / 作业 /
-  设置, matching the desktop's rail minus the one entry that exists because a desktop
-  screen has room for it.
-
-### Note
-
-- The two releases before this one each covered a single platform, because the
-  features landed at different times. From 0.5.0 a tag produces the Windows
-  installer, the Windows application image and the Android APK under one version
-  number, attached to one release. `docs/RELEASING.md` says so.
-
-## [0.4.0] - 2026-10-16
-
-The release where CubSync runs on a phone.
-
-### Added
-
-- **An Android application** (`app/android`). Four tabs — 连接, 同步, 作业, 设置 —
-  with material from the prototype and the same words as the desktop, on the landing
-  points a phone can actually use: a configuration and a job open as their own screen
-  with a back arrow, and the log belongs to the job rather than to a tab of its own,
-  because on a phone the question after a run is "what did this run do".
-  Directories are offered as suggestions rather than through a picker: the platform's
-  picker hands back a content URI, and the engine works in paths, so a wrong guess
-  somebody can correct in a text field beats a picker that produces something the
-  engine cannot open.
-- `Preferences`, so the phone's settings can be tested without a device.
-
-### Fixed
-
-- **`Files.readString` and `Files.writeString` do not exist on Android.** They are
-  Java 11 additions and are absent from `android.jar` even at API 37, so the code
-  compiled here and would have thrown `NoSuchMethodError` on a phone the first time
-  anybody saved a configuration or finished a run. Writing a configuration, reading
-  one, and writing a snapshot now go through streams, which have been available since
-  Java 7.
-- **A rename into place now survives a filesystem without `ATOMIC_MOVE`.** Android
-  throws `UnsupportedOperationException` where a desktop JDK throws
-  `AtomicMoveNotSupportedException`, and neither means the write failed: a plain
-  rename is still a rename.
-- The shared formatter and the policy sentence moved into `service`, so the two front
-  ends cannot describe the same policy in two different ways.
-
-### Changed
-
-- `Android` is in the platform table as working, and the Windows entry now says what
-  it ships.
 ## [0.3.0] - 2026-10-16
 
-The release where CubSync stops being a command line and becomes an application.
+The first release with an interface, on both a desktop and a phone.
+
+The three numbers before this one — 0.3.0, 0.4.0, 0.5.0 — each covered a single
+platform, because the features landed at different times. They describe one product,
+so they are one version: a tag builds the Windows installer, the Windows application
+image and the Android APK from the same commit, gives them the same number and puts
+them on the same release page.
 
 ### Added
 
 - **A Windows desktop application** (`app/desktop`), built with Compose
-  Multiplatform. Five screens — connect, sync, jobs, logs, settings — with the dark
-  and light palettes taken from the design prototype. Configurations are created and
-  edited in place, folder pairs are added by picking a device and a folder, and a run
-  shows its progress and then its result. Shipped as an MSI and as a self-contained
-  application image.
+  Multiplatform. Screens — connect, transfer, sync, jobs, logs, settings — with the
+  dark and light palettes taken from the design prototype. Configurations are created
+  and edited in place, folder pairs are added by picking a device and a folder, and a
+  run shows its progress and then its result. Shipped as an MSI and as a
+  self-contained application image.
+- **An Android application** (`app/android`), with the same words as the desktop and
+  the landing points a phone can use: a configuration and a job open as their own
+  screen with a back arrow, and the log belongs to the job rather than to a tab of its
+  own, because on a phone the question after a run is what *that* run did. Directories
+  are offered as suggestions rather than through a picker: the platform's picker hands
+  back a content URI and the engine works in paths, so a wrong guess somebody can
+  correct in a text field beats a picker that produces something the engine cannot
+  open. No storage permission is requested at all.
+- **The two-pane transfer browser**, on both platforms — the screen the design starts
+  on: what is here, what is there, and an arrow between them. Select rows, or press the
+  arrow with nothing selected to move everything visible, and the copy runs through the
+  same backend contract the synchroniser uses.
+- **The display panel**, shared by both ends: five display modes (紧凑 / 详细 / 卡片 /
+  缩略 / 对比), row density as a percentage, column count for the grid modes, and the
+  three-way 分栏方向 with an 自动 that follows the shape of the container.
 - **A shared application layer** (`service`). The configuration store, the peer pool,
-  the run service, the folder server and the application log now live here, and both
-  front ends are written against it. A sync started from a button and one started
-  from a terminal are the same code path, which is the property that matters when
-  only one of them has been tried.
+  the run service, the folder server, the browse session, the formatter and the
+  application log live here, and both front ends are written against it. A sync started
+  from a button and one started from a terminal are the same code path, which is the
+  property that matters when only one of them has been tried.
+- **The finalised brand.** The V1-T2 mark is in both applications — Android gets the
+  adaptive icon with a monochrome layer for themed icons and every density, Windows
+  gets the multi-resolution `.ico` for the installer and the window — and the accent
+  colour in both interfaces is the brand indigo `#3A5CCC`.
 - **Peer details in the window.** A connection reports the peer's name, version,
   protocol version and the folders it exposes, all of it taken from the handshake
   rather than guessed.
 - **`AppLog`**, a bounded in-memory log with levels and areas, streamed to whichever
   front end is showing. The CLI prints warnings; the window renders all of it.
-- **A screenshot renderer in the test suite.** Every screen is composed off screen
-  and written to `app/desktop/build/screenshots`, so a screen that fails to compose
-  fails the build instead of being found by whoever opens the window next.
+- **A screenshot renderer in the test suite.** Every screen is composed off screen and
+  written to `app/desktop/build/screenshots`, so a screen that fails to compose fails
+  the build instead of being found by whoever opens the window next.
 
 ### Changed
 
+- **`BrowserSession` is one implementation for two products.** What is open, what is
+  selected, how a list is ordered, and what a copy does when one side cannot be reached
+  are decided once, in `service`, and published as flows. The screens draw it.
 - **`SyncDirection.deletesAllowed` now includes two-way.** It previously said that
-  two-way propagates no deletions, which the engine never believed: a deletion there
-  is discovered by comparing with the snapshot, not decided by the direction. The
-  window was telling people the opposite of what was about to happen.
+  two-way propagates no deletions, which the engine never believed: a deletion there is
+  discovered by comparing with the snapshot, not decided by the direction. The window
+  was telling people the opposite of what was about to happen.
 - **Root paths are normalised at every boundary.** `LocalBackend`, `BackendPool` and
-  the folder server all store a root with forward slashes, so `D:\photos` from a
-  server and `D:/photos` from an address box are one folder rather than two.
+  the folder server all store a root with forward slashes, so `D:\photos` from a server
+  and `D:/photos` from an address box are one folder rather than two.
 - **`LanBackend` keeps what the peer said about itself** — application version and
   protocol version — instead of discarding them once the handshake was checked.
 - The version is read from a resource the build generates out of `gradle.properties`.
   There is no longer a `DEFAULT_VERSION` constant in the CLI to keep in step.
+- The shared formatter and the policy sentence live in `service`, so the two front ends
+  cannot describe the same policy in two different ways.
+
+### Fixed
+
+Three defects that only a platform other than the one they were written on could show.
+
+- **`Files.readString` and `Files.writeString` do not exist on Android.** They are
+  Java 11 additions and are absent from `android.jar` even at API 37, so the code
+  compiled on a desktop JDK and would have thrown `NoSuchMethodError` on a phone — in
+  writing a configuration, reading one, and writing a snapshot, which is to say the
+  first three things anybody does. Everything goes through streams now.
+- **A rename into place now survives a filesystem without `ATOMIC_MOVE`.** Android
+  reports that situation with `UnsupportedOperationException` where a desktop JDK
+  throws `AtomicMoveNotSupportedException`, and the first was not caught, so every
+  write would have failed on a filesystem with no opinion about atomicity.
+- **The Android launcher icon had the mark in both layers.** The adaptive icon's
+  background was drawn with the mark as well as the foreground, so two circles of the
+  same colour landed on top of each other and the launcher showed a single block of
+  blue. The background is a plain colour again, and `素材/logo/tools/build.py` generates
+  it that way.
+
+### Note
+
+The interface is not the design prototype yet. What is missing, and the order it will
+be closed in, is in `报告/规划/2026-10-16-后续规划与实施.md`.
 
 ## [0.2.0] - 2026-10-16
 
@@ -203,9 +183,7 @@ versions.
 - Credentials and encryption: the protocol is plaintext and intends to run over
   a trusted network until authentication is designed.
 
-[Unreleased]: https://github.com/cubsync/CubSync/compare/v0.5.0...HEAD
-[0.5.0]: https://github.com/cubsync/CubSync/releases/tag/v0.5.0
-[0.4.0]: https://github.com/cubsync/CubSync/releases/tag/v0.4.0
+[Unreleased]: https://github.com/cubsync/CubSync/compare/v0.3.0...HEAD
 [0.3.0]: https://github.com/cubsync/CubSync/releases/tag/v0.3.0
 [0.2.0]: https://github.com/cubsync/CubSync/releases/tag/v0.2.0
 [0.1.0]: https://github.com/cubsync/CubSync/releases/tag/v0.1.0

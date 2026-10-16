@@ -27,13 +27,28 @@
 7. **Commit.** `chore(release): 0.2.0` — one commit, version and changelog together.
 8. **Tag.** Annotated, on `main`:
    `git tag -a v0.2.0 -m "CubSync 0.2.0" && git push origin v0.2.0`.
-9. **Publish.** `gh release create v0.3.0 --title "CubSync 0.3.0" --notes-file <file>`
-   with the changelog section as the body, then attach the installers:
+9. **Publish.** `gh release create v0.3.0 --title "CubSync 0.3.0" --notes-file
+   docs/releases/v0.3.0.md` — the bilingual notes file described below, committed with
+   the release — then attach the installers:
    `gh release upload v0.3.0 app/desktop/build/compose/binaries/main/msi/*.msi`.
    The tag-triggered workflow does the same thing on a machine that is not this
    one; if it ran, its assets are already there and this step is a check.
 10. **Confirm.** `gh release view v0.2.0` and `git rev-parse v0.2.0^{commit}` — the
     tag must point at the release commit and be an ancestor of `main`.
+
+## Release notes are bilingual
+
+The notes live in `docs/releases/<tag>.md`: Chinese first, then a horizontal rule and
+`**English**`, then the same thing in English. That file is what `gh release create
+--notes-file` is given, and it is committed with the release.
+
+Chinese comes first because the interface is Chinese. The English half is there so a
+reader who does not read Chinese is not locked out of what changed — and so the
+repository stays readable to anyone who lands on it from a search result.
+
+Keeping the file in the repository rather than in a scratch directory means the release
+page has a copy that outlives GitHub's editor, and the next release can be written by
+editing the previous one instead of by remembering what last time looked like.
 
 ## Why the release notes are not generated
 

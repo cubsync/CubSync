@@ -40,6 +40,17 @@ While the major version is `0`:
   handshake — so a change there is a **minor** bump of the product version, and the
   changelog has to say so.
 
+### Interface work is a patch
+
+Building an interface out to match its specification does not add a capability, so it
+does not move the minor number: the product could already do the thing, it just could
+not be told to. `0.3.1`, `0.3.2`, … are for exactly that, and for fixes.
+
+A minor bump (`0.3.x` → `0.4.0`) is for something a user could not do before: a new
+channel, authentication, a scheduled run. That is what keeps the number meaningful —
+when it moves, something new is possible. A version that moves because a settings
+screen gained nine fields is a version that no longer tells anyone anything.
+
 ## What counts as breaking
 
 | Change | Bump |
