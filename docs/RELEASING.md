@@ -5,23 +5,30 @@
 1. **Green first.** `./gradlew check` locally, and CI green on `main`.
 2. **Decide the version.** Follow [VERSIONING.md](VERSIONING.md). While the major
    version is 0, a change to the wire format is a minor bump.
-3. **Bump in one place.** `cubsync.version` in `gradle.properties`.
-4. **Check the CLI fallback.** `BuildInfo.DEFAULT_VERSION` in
-   `cli/src/main/kotlin/io/github/cubsync/cli/Output.kt` mirrors the same value for
-   the case where the CLI does not run from a jar with manifest metadata. Miss this
-   and `cubsync --version` will lie.
-5. **Write the changelog.** Move the entries out of `Unreleased` into a new version
+3. **Bump in one place.** `cubsync.version` in `gradle.properties`, and nowhere
+   else. The build turns it into `cubsync-build.properties`, which is what
+   `BuildInfo` reads, so the CLI, the window's about box and the installer's file
+   name all follow from that one line. There is no constant to keep in step.
+4. **Write the changelog.** Move the entries out of `Unreleased` into a new version
    section with today's date, and update the two comparison links at the bottom.
-6. **Verify the built artefacts.** `./gradlew :cli:installDist` and run
+5. **Verify the built artefacts.** `./gradlew :cli:installDist` and run
    `cubsync --version` from it, plus the end-to-end procedure in
    [TESTING.md](TESTING.md). A release that has never transferred a file is not a
-   release.
+   release. A release with a window in it should also have been looked at:
+   `./gradlew :app:desktop:test` writes a picture of every screen to
+   `app/desktop/build/screenshots`.
+6. **Package what a user will download.** `./gradlew :app:desktop:packageMsi` and
+   `./gradlew :app:desktop:createDistributable`. The MSI step downloads WiX the
+   first time it runs. Attach both to the release; a tag alone is not a Windows
+   application.
 7. **Commit.** `chore(release): 0.2.0` — one commit, version and changelog together.
 8. **Tag.** Annotated, on `main`:
    `git tag -a v0.2.0 -m "CubSync 0.2.0" && git push origin v0.2.0`.
-9. **Publish.** `gh release create v0.2.0 --title "CubSync 0.2.0" --notes-file <file>`
-   with the changelog section as the body. Attach artefacts only when there is
-   something a user can run; until packaging exists, the source tag is the artefact.
+9. **Publish.** `gh release create v0.3.0 --title "CubSync 0.3.0" --notes-file <file>`
+   with the changelog section as the body, then attach the installers:
+   `gh release upload v0.3.0 app/desktop/build/compose/binaries/main/msi/*.msi`.
+   The tag-triggered workflow does the same thing on a machine that is not this
+   one; if it ran, its assets are already there and this step is a check.
 10. **Confirm.** `gh release view v0.2.0` and `git rev-parse v0.2.0^{commit}` — the
     tag must point at the release commit and be an ancestor of `main`.
 

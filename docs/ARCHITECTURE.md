@@ -3,19 +3,44 @@
 ## Modules
 
 ```
-core/           protocol · model · filter · spi · transfer · engine · util
-backends/local/ the filesystem as a RemoteBackend
-backends/lan/   a peer's tree as a RemoteBackend, over the first-party protocol
-testing/        test-only fixtures: an in-memory backend and a fault injector
-cli/            the command line entry point
+core/            protocol · model · filter · spi · transfer · engine · util
+backends/local/  the filesystem as a RemoteBackend
+backends/lan/    a peer's tree as a RemoteBackend, over the first-party protocol
+service/         the application layer: configs, peers, runs, the folder server, the log
+app/desktop/     the desktop application (Compose Multiplatform)
+cli/             the command line entry point
+testing/         test-only fixtures: an in-memory backend and a fault injector
 ```
 
-Dependencies point one way: `cli` and the backends depend on `core`, `core` depends
-on nothing in this repository. The engine never imports a backend, which is what
-makes "add WebDAV without touching the UI" a statement of fact rather than a hope.
+Dependencies point one way: the front ends and the backends depend on `core`, and
+`core` depends on nothing in this repository. The engine never imports a backend,
+which is what makes "add WebDAV without touching the UI" a statement of fact rather
+than a hope. Neither front end imports a backend either; both go through `service`.
 
-Everything except the two backends and the CLI lives in `commonMain`, so the
-Android and desktop targets can be added to `core` without moving code.
+Everything except the two backends, the application layer and the front ends lives
+in `commonMain`, so the Android target can be added to `core` without moving code.
+
+## The application layer
+
+`service` exists because there were about to be two front ends. The first thing a
+second front end does is copy the first one's orchestration — which pool to open,
+where snapshots live, which roots to register, what to log — and that copy is how
+two front ends start disagreeing about what a sync is.
+
+It holds:
+
+- `ConfigStore` — configurations and per-pair snapshots under one state directory.
+- `EndpointId` — one string that names a side of a pair, and one rule for reading it.
+- `BackendPool` — a session per peer, reused across calls and replaced when its
+  socket has died.
+- `SyncService` — the single path that runs a configuration, with an observer for
+  progress and a log for the record.
+- `ServerController` — the only place that opens a listening socket, and the only
+  place that has to be careful about what it exposes.
+- `AppLog` — a bounded in-memory log with levels and areas.
+
+The rule that keeps it honest: a front end may format what `service` returns, and
+may not decide anything about how a sync happens.
 
 ## The three decisions worth knowing
 

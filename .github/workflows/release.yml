@@ -1,0 +1,86 @@
+name: Release
+
+# Packaging is platform-specific: the Windows build is produced on Windows, because
+# Compose Desktop cannot cross-package a jpackage image. This workflow exists so an
+# installer is attached by a machine that is not the author's laptop, and so the
+# version in the tag is checked against the version in the build before anything is
+# published.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Windows installer and application image
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: The tag and the build must agree on the version
+        shell: bash
+        run: |
+          set -eu
+          tag="${GITHUB_REF_NAME#v}"
+          declared=$(grep -E '^cubsync\.version=' gradle.properties | cut -d= -f2 | tr -d '[:space:]')
+          if [ "$tag" != "$declared" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match cubsync.version=$declared"
+            exit 1
+          fi
+          echo "ok: publishing $declared"
+
+      - name: Test before packaging
+        run: ./gradlew --no-daemon --stacktrace check
+
+      - name: Build the installer and the application image
+        # The MSI target downloads WiX on first use; the runner has network access.
+        run: ./gradlew --no-daemon --stacktrace :app:desktop:packageMsi :app:desktop:createDistributable
+
+      - name: Zip the application image
+        shell: pwsh
+        run: |
+          $source = 'app/desktop/build/compose/binaries/main/app/CubSync'
+          $target = "CubSync-${{ github.ref_name }}-windows-x64.zip"
+          Compress-Archive -Path $source -DestinationPath $target
+          Write-Host "wrote $target ($((Get-Item $target).Length / 1MB) MiB)"
+
+      - name: Upload as a workflow artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cubsync-windows
+          path: |
+            app/desktop/build/compose/binaries/main/msi/*.msi
+            CubSync-*-windows-x64.zip
+          retention-days: 30
+
+      - name: Attach to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            # A tag pushed before the release was written still gets one, so the
+            # artefacts are never orphaned.
+            gh release create "$GITHUB_REF_NAME" \
+              --title "CubSync ${GITHUB_REF_NAME#v}" \
+              --notes "Release notes are being written; see CHANGELOG.md in this tag."
+          fi
+          gh release upload "$GITHUB_REF_NAME" \
+            app/desktop/build/compose/binaries/main/msi/*.msi \
+            CubSync-*-windows-x64.zip \
+            --clobber

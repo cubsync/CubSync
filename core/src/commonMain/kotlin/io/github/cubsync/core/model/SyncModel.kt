@@ -24,7 +24,15 @@ enum class SyncDirection {
     val mirror: Boolean
         get() = this == MIRROR_LEFT_TO_RIGHT || this == MIRROR_RIGHT_TO_LEFT
 
-    val deletesAllowed: Boolean get() = mirror
+    /**
+     * Whether this direction propagates deletions at all.
+     *
+     * Two-way does, and it is easy to get wrong: the deletion is not a rule of the
+     * direction, it is a fact discovered by comparing with the last agreed snapshot.
+     * If this said otherwise, a two-way pair would keep resurrecting files that were
+     * deliberately deleted on the other machine.
+     */
+    val deletesAllowed: Boolean get() = mirror || this == TWO_WAY
 
     val supported: Boolean get() = this != CUSTOM
 }

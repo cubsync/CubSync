@@ -1,0 +1,217 @@
+package io.github.cubsync.service
+
+import io.github.cubsync.core.engine.JobListener
+import io.github.cubsync.core.engine.JobResult
+import io.github.cubsync.core.engine.JobRunner
+import io.github.cubsync.core.engine.JobStatus
+import io.github.cubsync.core.engine.PairOutcome
+import io.github.cubsync.core.model.FolderPair
+import io.github.cubsync.core.model.SyncConfig
+import io.github.cubsync.core.model.SyncDirection
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import java.nio.file.Path
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+/** One finished run, kept so a window can show a history without re-reading disk. */
+data class JobRecord(
+    val jobId: String,
+    val configId: String,
+    val configName: String,
+    val direction: SyncDirection,
+    val dryRun: Boolean,
+    val result: JobResult,
+)
+
+/** The runs of this session, newest first. */
+class JobHistory(private val limit: Int = 200) {
+
+    private val lock = Any()
+    private val records = ArrayDeque<JobRecord>()
+
+    fun add(record: JobRecord): JobRecord {
+        synchronized(lock) {
+            records.addFirst(record)
+            while (records.size > limit) records.removeLast()
+        }
+        return record
+    }
+
+    fun all(): List<JobRecord> = synchronized(lock) { records.toList() }
+
+    fun find(jobId: String): JobRecord? = synchronized(lock) { records.firstOrNull { it.jobId == jobId } }
+
+    fun clear() = synchronized(lock) { records.clear() }
+}
+
+/** Progress callbacks for a front end. The engine's own listener is separate. */
+interface SyncObserver {
+    fun onStarted(config: SyncConfig, jobId: String) {}
+    fun onPairStarted(pair: FolderPair) {}
+    fun onPairFinished(outcome: PairOutcome) {}
+    fun onBytesTransferred(total: Long) {}
+
+    companion object {
+        val NONE: SyncObserver = object : SyncObserver {}
+    }
+}
+
+/**
+ * Runs configurations and remembers what happened.
+ *
+ * Both front ends go through this rather than calling [JobRunner] directly, so the
+ * decision about where snapshots live, which roots are registered, and what gets
+ * logged is made once. A scheduled run, a button press and a CLI invocation then
+ * behave identically, which is the property that matters when something goes wrong
+ * at 3am and only one of them has been tried.
+ */
+class SyncService(
+    val stateDirectory: Path = ConfigStore.defaultBase(),
+    val log: AppLog = AppLog(),
+    val history: JobHistory = JobHistory(),
+) {
+
+    val configs: ConfigStore = ConfigStore(stateDirectory)
+
+    /** Long-lived pool for browsing; a run may share it, or open its own. */
+    private val browseScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    val browsePool: BackendPool = BackendPool(
+        scope = browseScope,
+        nodeName = "CubSync",
+        appVersion = BuildInfo.VERSION,
+        log = log,
+    )
+
+    suspend fun run(
+        config: SyncConfig,
+        jobId: String = newJobId(),
+        observer: SyncObserver = SyncObserver.NONE,
+        pool: BackendPool? = browsePool,
+    ): JobResult {
+        val owned = pool == null
+        val actual = pool ?: BackendPool(
+            nodeName = "CubSync",
+            appVersion = BuildInfo.VERSION,
+            log = log,
+        )
+        try {
+            for (pair in config.pairs) {
+                for (endpoint in listOf(pair.left, pair.right)) {
+                    if (EndpointId(endpoint.backendId).isLocal) actual.registerLocalRoot(endpoint.rootPath)
+                }
+            }
+
+            log.info(
+                "job",
+                "${if (config.dryRun) "Comparing" else "Syncing"} ${config.name}",
+                "${config.pairs.size} folder pair(s), direction ${config.direction.name.lowercase()}",
+            )
+
+            val listener = LoggingListener(log, observer)
+            val runner = JobRunner(
+                backends = actual.resolver,
+                snapshots = configs.snapshotStore(),
+                listener = listener,
+            )
+            val result = runner.run(config, jobId)
+            log.write(
+                if (result.status == JobStatus.COMPLETED) LogLevel.INFO else LogLevel.WARN,
+                "job",
+                "${config.name}: ${result.status.name.lowercase()}",
+                "${result.stats.copiedFiles} copied, ${result.stats.failures} failed, ${result.durationMs} ms",
+            )
+            history.add(
+                JobRecord(
+                    jobId = result.jobId,
+                    configId = config.configId,
+                    configName = config.name,
+                    direction = config.direction,
+                    dryRun = config.dryRun,
+                    result = result,
+                ),
+            )
+            return result
+        } finally {
+            if (owned) actual.close()
+        }
+    }
+
+    fun close() {
+        runCatching { browsePool.close() }
+        runCatching { browseScope.cancel() }
+    }
+
+    companion object {
+        private val STAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("MMdd-HHmmss")
+
+        fun newJobId(now: Instant = Instant.now(), zone: ZoneId = ZoneId.systemDefault()): String =
+            "job-" + STAMP.format(now.atZone(zone))
+    }
+}
+
+/**
+ * Turns engine callbacks into log lines and into front-end progress.
+ *
+ * Deliberately thin: the engine already knows what it did, and this only decides
+ * what is worth writing down. Per-file events are [LogLevel.DEBUG] because a job
+ * that copies ten thousand files would otherwise bury everything else.
+ */
+private class LoggingListener(
+    private val log: AppLog,
+    private val observer: SyncObserver,
+) : JobListener {
+
+    private var bytes = 0L
+
+    override fun onJobStarted(jobId: String, pairCount: Int) {
+        log.info("job", "job $jobId started", "$pairCount folder pair(s)")
+    }
+
+    override fun onPairStarted(pair: FolderPair) {
+        log.info("pair", "${pair.name.ifEmpty { pair.pairId }}: comparing")
+        observer.onPairStarted(pair)
+    }
+
+    override fun onPairPlanned(outcome: PairOutcome) {
+        log.info(
+            "pair",
+            "${outcome.pairName}: ${outcome.plan?.actions?.size ?: 0} action(s) planned",
+            outcome.plan?.blockReason.orEmpty(),
+        )
+    }
+
+    override fun onActionFinished(pairId: String, item: io.github.cubsync.core.engine.JobItem) {
+        when {
+            !item.ok -> log.warn("file", "${item.relPath}: ${item.error.ifEmpty { "failed" }}")
+            item.skippedReason.isNotEmpty() -> log.debug("file", "${item.relPath}: skipped (${item.skippedReason})")
+            else -> log.debug("file", "${item.action.name.lowercase()} ${item.relPath}")
+        }
+    }
+
+    override fun onBytesTransferred(pairId: String, relPath: String, delta: Long) {
+        bytes += delta
+        observer.onBytesTransferred(bytes)
+    }
+
+    override fun onPairFinished(outcome: PairOutcome) {
+        val level = when (outcome.status) {
+            io.github.cubsync.core.engine.PairStatus.COMPLETED -> LogLevel.INFO
+            io.github.cubsync.core.engine.PairStatus.DRY_RUN -> LogLevel.INFO
+            io.github.cubsync.core.engine.PairStatus.SKIPPED -> LogLevel.INFO
+            else -> LogLevel.WARN
+        }
+        log.write(
+            level,
+            "pair",
+            "${outcome.pairName}: ${outcome.status.name.lowercase()}",
+            "${outcome.stats.copiedFiles} copied, ${outcome.stats.copiedBytes} bytes, " +
+                "${outcome.stats.deletedFiles} deleted, ${outcome.stats.failures} failed",
+        )
+        observer.onPairFinished(outcome)
+    }
+}

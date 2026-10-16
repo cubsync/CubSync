@@ -8,6 +8,46 @@ with the pre-1.0 rules described in [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-16
+
+The release where CubSync stops being a command line and becomes an application.
+
+### Added
+
+- **A Windows desktop application** (`app/desktop`), built with Compose
+  Multiplatform. Five screens — connect, sync, jobs, logs, settings — with the dark
+  and light palettes taken from the design prototype. Configurations are created and
+  edited in place, folder pairs are added by picking a device and a folder, and a run
+  shows its progress and then its result. Shipped as an MSI and as a self-contained
+  application image.
+- **A shared application layer** (`service`). The configuration store, the peer pool,
+  the run service, the folder server and the application log now live here, and both
+  front ends are written against it. A sync started from a button and one started
+  from a terminal are the same code path, which is the property that matters when
+  only one of them has been tried.
+- **Peer details in the window.** A connection reports the peer's name, version,
+  protocol version and the folders it exposes, all of it taken from the handshake
+  rather than guessed.
+- **`AppLog`**, a bounded in-memory log with levels and areas, streamed to whichever
+  front end is showing. The CLI prints warnings; the window renders all of it.
+- **A screenshot renderer in the test suite.** Every screen is composed off screen
+  and written to `app/desktop/build/screenshots`, so a screen that fails to compose
+  fails the build instead of being found by whoever opens the window next.
+
+### Changed
+
+- **`SyncDirection.deletesAllowed` now includes two-way.** It previously said that
+  two-way propagates no deletions, which the engine never believed: a deletion there
+  is discovered by comparing with the snapshot, not decided by the direction. The
+  window was telling people the opposite of what was about to happen.
+- **Root paths are normalised at every boundary.** `LocalBackend`, `BackendPool` and
+  the folder server all store a root with forward slashes, so `D:\photos` from a
+  server and `D:/photos` from an address box are one folder rather than two.
+- **`LanBackend` keeps what the peer said about itself** — application version and
+  protocol version — instead of discarding them once the handshake was checked.
+- The version is read from a resource the build generates out of `gradle.properties`.
+  There is no longer a `DEFAULT_VERSION` constant in the CLI to keep in step.
+
 ## [0.2.0] - 2026-10-16
 
 ### Added
@@ -89,6 +129,7 @@ versions.
 - Credentials and encryption: the protocol is plaintext and intends to run over
   a trusted network until authentication is designed.
 
-[Unreleased]: https://github.com/cubsync/CubSync/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/cubsync/CubSync/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/cubsync/CubSync/releases/tag/v0.3.0
 [0.2.0]: https://github.com/cubsync/CubSync/releases/tag/v0.2.0
 [0.1.0]: https://github.com/cubsync/CubSync/releases/tag/v0.1.0

@@ -59,13 +59,17 @@ class LanBackend(
     override val displayName: String,
     private val connection: LanConnection,
     private val chunkSize: Int = ChunkPlan.DEFAULT_CHUNK_SIZE,
+    /** What the peer said about itself during the handshake. */
+    val peerAppVersion: String = "",
+    val peerProtocolVersion: Int = Protocol.VERSION,
 ) : RemoteBackend {
 
     override val capabilities: Long get() = connection.negotiatedCapabilities
 
     val remoteAddress: String get() = connection.remoteAddress
     val isOpen: Boolean get() = connection.isOpen
-    val negotiationNote: String get() = "protocol ${Protocol.VERSION}"
+    val negotiationNote: String get() =
+        if (peerAppVersion.isBlank()) "protocol $peerProtocolVersion" else "v$peerAppVersion, protocol $peerProtocolVersion"
 
     /** Asks the peer which trees it is willing to serve. */
     override suspend fun roots(): List<RootRef> =
@@ -348,6 +352,8 @@ class LanBackend(
                 id = "lan:${dataSocket.inetAddress.hostAddress}:$port",
                 displayName = reply.deviceName.ifBlank { "$host:$port" },
                 connection = connection,
+                peerAppVersion = reply.appVersion,
+                peerProtocolVersion = reply.protocolVersion,
             )
         }
 

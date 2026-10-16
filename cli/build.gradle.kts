@@ -4,9 +4,7 @@ plugins {
 }
 
 dependencies {
-    implementation(project(":core"))
-    implementation(project(":backends:local"))
-    implementation(project(":backends:lan"))
+    implementation(project(":service"))
     implementation(libs.kotlinx.coroutines.core)
 
     testImplementation(kotlin("test"))

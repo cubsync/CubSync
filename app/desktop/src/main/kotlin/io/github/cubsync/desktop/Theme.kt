@@ -1,0 +1,158 @@
+package io.github.cubsync.desktop
+
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+
+/**
+ * The design's colour tokens, taken from the prototype so the application and the
+ * prototype cannot drift apart.
+ *
+ * Dark is the default, and the light palette is the same set of names with the
+ * prototype's light values rather than a second design. Nothing in a screen refers
+ * to a raw colour, so switching the theme cannot leave one panel unreadable.
+ *
+ * One deliberate difference from the prototype: the prototype carries both a
+ * Windows accent (`--win-accent`) and a Material accent (`--m3-primary`). The
+ * desktop window uses the Windows one, which is what the design document specifies
+ * for this surface; the Android application uses the Material one.
+ */
+data class CubColors(
+    val isDark: Boolean,
+    val background: Color,
+    val surface: Color,
+    val surfaceRaised: Color,
+    val surfaceSunken: Color,
+    val outline: Color,
+    val outlineStrong: Color,
+    val text: Color,
+    val textDim: Color,
+    val textFaint: Color,
+    val accent: Color,
+    val accentSoft: Color,
+    val accentDeep: Color,
+    val danger: Color,
+    val warning: Color,
+    val success: Color,
+    val conflict: Color,
+    val info: Color,
+    val rail: Color,
+    val hover: Color,
+)
+
+internal val DarkCubColors = CubColors(
+    isDark = true,
+    background = Color(0xFF0F1116),
+    surface = Color(0xFF181B21),
+    surfaceRaised = Color(0xFF1E222A),
+    surfaceSunken = Color(0xFF242932),
+    outline = Color(0xFF2A2F39),
+    outlineStrong = Color(0xFF3A4150),
+    text = Color(0xFFE8EBF1),
+    textDim = Color(0xFF98A1B0),
+    textFaint = Color(0xFF6D7686),
+    accent = Color(0xFF1E88E5),
+    accentSoft = Color(0xFF1D2C3E),
+    accentDeep = Color(0xFF1565C0),
+    danger = Color(0xFFE5484D),
+    warning = Color(0xFFE0A020),
+    success = Color(0xFF2E9E5B),
+    conflict = Color(0xFFF0731F),
+    info = Color(0xFF3B82F6),
+    rail = Color(0xFF181B21),
+    hover = Color(0xFF232833),
+)
+
+internal val LightCubColors = CubColors(
+    isDark = false,
+    background = Color(0xFFE9EDF3),
+    surface = Color(0xFFFFFFFF),
+    surfaceRaised = Color(0xFFF6F8FB),
+    surfaceSunken = Color(0xFFEFF2F7),
+    outline = Color(0xFFDDE3EA),
+    outlineStrong = Color(0xFFC3CBD6),
+    text = Color(0xFF161A20),
+    textDim = Color(0xFF637085),
+    textFaint = Color(0xFF8B97A8),
+    accent = Color(0xFF1E88E5),
+    accentSoft = Color(0xFFE6F0FB),
+    accentDeep = Color(0xFF1565C0),
+    danger = Color(0xFFE5484D),
+    warning = Color(0xFFE0A020),
+    success = Color(0xFF2E9E5B),
+    conflict = Color(0xFFF0731F),
+    info = Color(0xFF3B82F6),
+    rail = Color(0xFFFFFFFF),
+    hover = Color(0xFFF0F3F8),
+)
+
+val LocalCubColors = staticCompositionLocalOf { DarkCubColors }
+
+/** `CubTheme.colors.text` reads better in a layout than a colour literal does. */
+object CubTheme {
+    val colors: CubColors
+        @Composable @ReadOnlyComposable
+        get() = LocalCubColors.current
+}
+
+/**
+ * Type scale.
+ *
+ * Sizes are the ones from the design document, kept as named styles so no screen
+ * invents a 9sp label that nobody can read on a scaled display.
+ */
+object CubType {
+    val windowTitle = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+    val sectionTitle = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+    val cardTitle = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Medium)
+    val body = TextStyle(fontSize = 12.5.sp, lineHeight = 18.sp)
+    val label = TextStyle(fontSize = 11.5.sp, fontWeight = FontWeight.Medium)
+    val meta = TextStyle(fontSize = 10.5.sp)
+    val big = TextStyle(fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+    val mono = TextStyle(fontSize = 11.sp, fontFamily = FontFamily.Monospace, lineHeight = 16.sp)
+    val monoDim = TextStyle(fontSize = 10.5.sp, fontFamily = FontFamily.Monospace, lineHeight = 15.sp)
+}
+
+@Composable
+fun CubTheme(dark: Boolean, content: @Composable () -> Unit) {
+    val cub = if (dark) DarkCubColors else LightCubColors
+    val material = if (dark) {
+        darkColorScheme(
+            primary = cub.accent,
+            onPrimary = Color.White,
+            background = cub.background,
+            onBackground = cub.text,
+            surface = cub.surface,
+            onSurface = cub.text,
+            surfaceVariant = cub.surfaceRaised,
+            onSurfaceVariant = cub.textDim,
+            outline = cub.outline,
+            error = cub.danger,
+        )
+    } else {
+        lightColorScheme(
+            primary = cub.accent,
+            onPrimary = Color.White,
+            background = cub.background,
+            onBackground = cub.text,
+            surface = cub.surface,
+            onSurface = cub.text,
+            surfaceVariant = cub.surfaceRaised,
+            onSurfaceVariant = cub.textDim,
+            outline = cub.outline,
+            error = cub.danger,
+        )
+    }
+    CompositionLocalProvider(LocalCubColors provides cub) {
+        MaterialTheme(colorScheme = material, content = content)
+    }
+}

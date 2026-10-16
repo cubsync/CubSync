@@ -138,6 +138,10 @@ class SyncConfigCodecTest {
         assertTrue(SyncDirection.MIRROR_LEFT_TO_RIGHT.mirror)
         assertTrue(SyncDirection.MIRROR_LEFT_TO_RIGHT.deletesAllowed)
         assertTrue(!SyncDirection.UPDATE_LEFT_TO_RIGHT.deletesAllowed)
+        // Two-way propagates deletions too: they are discovered by comparing with the
+        // snapshot, not decided by the direction.
+        assertTrue(SyncDirection.TWO_WAY.deletesAllowed)
+        assertTrue(!SyncDirection.UPDATE_RIGHT_TO_LEFT.deletesAllowed)
         assertTrue(!SyncDirection.CUSTOM.supported)
         assertTrue(SyncDirection.TWO_WAY.supported)
     }
