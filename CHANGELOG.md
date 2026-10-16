@@ -8,6 +8,41 @@ with the pre-1.0 rules described in [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-16
+
+The release where the interface catches up with the design document.
+
+### Added
+
+- The transfer screen's display bar: five display modes, a row density you can type as a
+  percentage, a column count for the grid modes, pane direction, and item scale.
+- A per-pane menu: sort key and direction, folders first, and the three 作用范围 scopes.
+- The connect screen's run mode card, channel list, account and connection state, and
+  recent transfers.
+- The sync screen's preview and configuration-detail layers.
+- A job detail screen on both ends: result banner, thirteen key/value rows, file-level
+  transferred and skipped groups, that run's log inline, and the actions it ended with.
+- Nine settings fields — default display mode, item scale, show metadata, header address
+  lines, pane direction, buffer blocks, default receive folder, resume, delete to trash —
+  plus theme and accent.
+- A drawer: favourites grouped by device, accounts with their state, and roots.
+- `service`: `UiSpec` (the names and step counts both ends share), `AppSettings` (the
+  settings and the three-layer 作用范围 rule), `JobDetailsFactory`, `SyncPreview`,
+  `DrawerModel`.
+
+### Changed
+
+- Sync direction, comparison, conflict and deletion moved out of the settings screen and
+  into the configuration they govern.
+- Every visible word, step count and state meaning now comes from `UiSpec`, so the two
+  ends cannot describe the same thing differently.
+- The Android launcher icon has a white ground and a 48dp mark instead of 66dp.
+
+### Fixed
+
+- Pressing 新建文件夹 twice quickly created one folder: the name was chosen from a listing
+  taken before the first creation, so both presses aimed at the same path.
+
 ## [0.3.0] - 2026-10-16
 
 First release with an interface, on both desktop and Android.
@@ -99,7 +134,9 @@ stable yet — the wire format and the engine's public API can still change.
 - Android and desktop targets are not built yet.
 - `SyncDirection.CUSTOM` is not implemented; planning refuses it rather than guessing.
 
-[Unreleased]: https://github.com/cubsync/CubSync/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/cubsync/CubSync/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/cubsync/CubSync/releases/tag/v0.3.1
+
 [0.3.0]: https://github.com/cubsync/CubSync/releases/tag/v0.3.0
 [0.2.0]: https://github.com/cubsync/CubSync/releases/tag/v0.2.0
 [0.1.0]: https://github.com/cubsync/CubSync/releases/tag/v0.1.0
