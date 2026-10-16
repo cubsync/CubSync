@@ -230,34 +230,21 @@ jobs:
           #
           # The guard asks the API rather than `gh release view`, because a draft is
           # invisible to the latter and a second run would try to create it again.
-          # Idempotent on purpose: both jobs in this workflow need the release to exist,
-          # they run at the same time, and whoever loses the race gets "already exists"
-          # rather than a second release. Asking first, then tolerating the failure and
-          # asking again, is what makes that a race rather than a bug — it produced two
-          # drafts for v0.3.5 before it looked like this.
-          ensure_release() {
-            for attempt in 1 2 3 4 5; do
-              if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" >/dev/null 2>&1; then
-                return 0
-              fi
-              if [ -f "$NOTES" ]; then
-                gh release create "$GITHUB_REF_NAME" \
-                  --title "CubSync ${GITHUB_REF_NAME#v}" \
-                  --notes-file "$NOTES" \
-                  --draft 2>/dev/null && return 0
-              else
-                # A tag with no notes still gets a release, so the artefacts are never
-                # orphaned.
-                gh release create "$GITHUB_REF_NAME" \
-                  --title "CubSync ${GITHUB_REF_NAME#v}" \
-                  --generate-notes \
-                  --draft 2>/dev/null && return 0
-              fi
-              sleep 3
-            done
-            return 1
-          }
-          ensure_release
+          # Only the windows job creates the release.
+          #
+          # A draft release is not unique per tag: GitHub allows several with the same
+          # tag_name, so two jobs racing to create one produce two drafts — one holding
+          # the artefacts, one holding nothing. v0.3.5 and v0.3.6 both came out that way.
+          # An idempotent create cannot prevent it, because the loser does not get
+          # "already exists"; it gets a second release. So this job only waits: the
+          # release is created once, by the job that also builds the installer.
+          for attempt in $(seq 1 20); do
+            if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 15
+          done
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" >/dev/null
           # Whichever APK the build produced: release-signed when the signing secret is
           # present, the debug one when it is not. The glob covers both.
           gh release upload "$GITHUB_REF_NAME" CubSync-*.apk --clobber
