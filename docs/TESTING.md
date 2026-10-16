@@ -65,6 +65,15 @@ moves real files. They run on the JVM, so they cannot prove that an API exists o
 device — which is exactly the class of bug that shipped `Files.readString` in 0.3.0
 and was only caught by building the Android application.
 
+They also render every phone screen off screen. `PhoneScreenshotTest` drives a real
+composition under Robolectric (`@GraphicsMode(NATIVE)`) and draws the window into a
+bitmap itself, because Compose's `captureToImage` waits on a window traversal that
+never happens off a device. The images land in `app/android/build/screenshots-phone`,
+and they are the only way a phone layout gets looked at before somebody installs an
+APK — which is how a release once shipped with the whole bottom bar missing its icons.
+The test is debug-only: it needs `ui-test-manifest` to declare `ComponentActivity`, and
+that manifest is debug-only on purpose.
+
 **CLI tests** (`cli/src/test`) cover argument parsing, the quirks of flags that take
 no value, and the summary format.
 

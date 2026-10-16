@@ -8,6 +8,49 @@ with the pre-1.0 rules described in [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-16
+
+The release where the phone is laid out the way the design lays it out, and where an icon
+is a shape rather than a character.
+
+### Added
+
+- `service`: `IconPaths`, the icon geometry both interfaces draw — five navigation marks,
+  the three pane states, and the chrome. SVG path data, because a glyph has a font behind
+  it and a font is a thing that may not have an opinion about `☰`.
+- `service`: `Peers.localNics()`, which lists this machine's interfaces with the address
+  each can be reached at, and names what kind of card each one is.
+- `service`: `AppSettings.channelNics`, the 传输通道 selection — empty means every card.
+- A phone screenshot test: eleven screens composed off screen with Robolectric and written
+  to PNGs, so a layout can be looked at without a device or an emulator.
+
+### Changed
+
+- 运行模式 on the phone is a card whose heading carries the active mode and whose body
+  folds away, instead of three rows always on screen.
+- 传输通道 on the phone lists the interfaces that exist, each with a switch and a live
+  count of what is selected, instead of a fixed list of three channel kinds.
+- 同步方向, 比较方式, 冲突时 and 删除时 are rows that open a list rather than dropdowns,
+  which is the phone's version of the same six values.
+- 差异预览 leads with the counts and groups by folder pair.
+- 正在同步 reports per-pair progress, which is the granularity the engine actually
+  reports, rather than a bar that would have to guess between pairs.
+- 设置 is ordered appearance first, then browsing and transfer, as the design has it.
+- The drawer is headed by the product's mark, drawn from the same three numbers the logo
+  build uses.
+- Android: one type scale for the phone — card titles 14, row names 14, row details 11.5,
+  card buttons 14 — with icons at 20dp inside 38–40dp targets and rows at 56dp.
+
+### Fixed
+
+- The phone's bottom bar and the desktop's rail no longer lose their icons to a font
+  without the glyph: every mark is an `ImageVector` now.
+- A notice on the phone disappears on its own after four seconds.
+- The Android launcher icon's white ground, which the previous release changed for the
+  legacy mipmap sizes but not for the adaptive layer.
+- The phone screenshot test is debug-only: `ui-test-manifest` declares an activity the
+  release APK does not have, and shipping it to make a test pass would be the wrong trade.
+
 ## [0.3.1] - 2026-10-16
 
 The release where the interface catches up with the design document.

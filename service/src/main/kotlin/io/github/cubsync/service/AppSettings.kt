@@ -240,6 +240,20 @@ class AppSettings(private val storage: SettingsStorage = SettingsStorage.memory(
             persist()
         }
 
+    /**
+     * 传输通道 — the network cards this machine offers the peer.
+     *
+     * Empty means every card, which is what a first run should do: somebody who has never
+     * touched this has no opinion about which interface to use, and the answer "all of
+     * them" is the one that works.
+     */
+    var channelNics: List<String>
+        get() = values[KEY_CHANNEL_NICS].orEmpty().lines().filter { it.isNotBlank() }
+        set(list) {
+            values[KEY_CHANNEL_NICS] = list.distinct().joinToString("\n")
+            persist()
+        }
+
     /** The name this machine announces during a handshake. */
     var serverNodeName: String
         get() = values[KEY_NODE_NAME].orEmpty()
@@ -389,6 +403,7 @@ class AppSettings(private val storage: SettingsStorage = SettingsStorage.memory(
         const val KEY_KNOWN_PEERS = "peer.known"
         const val KEY_SHARED_ROOTS = "server.roots"
         const val KEY_SHARE_PORT = "server.port"
+        const val KEY_CHANNEL_NICS = "server.nics"
         const val KEY_NODE_NAME = "server.nodeName"
         const val KEY_RECENT_FOLDERS = "browse.recent"
         const val KEY_FAVOURITES = "browse.favourites"

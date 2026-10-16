@@ -105,11 +105,30 @@ object CubTheme {
 object CubType {
     val windowTitle = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
     val sectionTitle = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-    val cardTitle = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium)
+
+    /** The title in the top bar, and the one an opened screen wears (37 §7). */
+    val topTitle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+
+    /** The small label above a group of cards (§7: `.a-sec`). */
+    val sectionLabel = TextStyle(fontSize = 11.5.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+
+    val cardTitle = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+
+    /** A row's name and its second line — the two sizes every card row uses. */
+    val rowTitle = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+    val rowDetail = TextStyle(fontSize = 11.5.sp)
+
+    /** A card's full-width button (§7: `.a-btn`). */
+    val buttonLabel = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+
     val body = TextStyle(fontSize = 13.5.sp, lineHeight = 19.sp)
     val label = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
     val meta = TextStyle(fontSize = 11.5.sp)
     val big = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+
+    /** The percentage on the running screen, which is the one number that matters there. */
+    val huge = TextStyle(fontSize = 34.sp, fontWeight = FontWeight.Bold)
+
     val mono = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace, lineHeight = 17.sp)
 }
 

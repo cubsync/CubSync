@@ -196,4 +196,40 @@ class SyncServiceTest {
         assertTrue(first.startsWith("job-"))
         assertTrue(first < second, "'$first' should sort before '$second'")
     }
+
+    /**
+     * 新增 and 更新 are about the comparison, not about the action.
+     *
+     * A copied file is a copy whether the other side had nothing there or had an older
+     * copy, so counting by action kind reported every addition as an update and left 新增
+     * counting directories only — a preview that disagreed with its own byte total.
+     */
+    @Test
+    fun the_preview_calls_a_new_file_new_and_a_changed_file_updated() = runBlocking {
+        val left = tempDir("left-")
+        val right = tempDir("right-")
+        val service = service()
+        val config = config(left, right, direction = SyncDirection.UPDATE_LEFT_TO_RIGHT)
+
+        // Two new files and a new folder: all additions.
+        Files.writeString(left.resolve("fresh.txt"), "fresh")
+        Files.createDirectories(left.resolve("nested"))
+        Files.writeString(left.resolve("nested/deep.txt"), "deep")
+        val first = service.preview(config).totals
+        assertTrue(first.create >= 2, "both new files should count as 新增, got ${first.create}")
+        assertEquals(0, first.update, "a file the other side has never had is not an update")
+        assertEquals(0, first.delete)
+
+        // Now change one of them and compare again: that one is an update.
+        service.run(config)
+        Files.writeString(left.resolve("fresh.txt"), "changed and longer")
+        Files.setLastModifiedTime(
+            left.resolve("fresh.txt"),
+            java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 5_000),
+        )
+        val second = service.preview(config).totals
+        assertEquals(0, second.create, "nothing is new the second time round")
+        assertEquals(1, second.update, "the changed file should count as 更新")
+        assertEquals(0, second.delete)
+    }
 }

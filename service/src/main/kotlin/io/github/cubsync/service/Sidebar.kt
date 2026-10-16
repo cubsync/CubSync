@@ -64,20 +64,42 @@ object Peers {
     /** A name and address that can be shown as this machine. */
     data class Local(val name: String, val addresses: List<String>)
 
+    /**
+     * One network card, as 传输通道 lists it.
+     *
+     * The name is the system's (`wlan0`, `rmnet_data0`), which is what the interface is
+     * actually called; [kind] is what a person would call it.
+     */
+    data class Nic(val name: String, val address: String) {
+        val kind: String
+            get() = when {
+                name.startsWith("wlan") || name.startsWith("ap") || name.startsWith("wireless") -> "Wi-Fi"
+                name.startsWith("eth") || name.startsWith("ethernet") ||
+                    name.startsWith("usb") || name.startsWith("rndis") -> "有线 / USB"
+                name.startsWith("rmnet") || name.startsWith("ccmni") || name.startsWith("radio") -> "移动网络"
+                name.startsWith("tun") || name.startsWith("ppp") || name.startsWith("wg") -> "VPN"
+                else -> name
+            }
+    }
+
     fun local(): Local {
         val name = runCatching { java.net.InetAddress.getLocalHost().hostName }.getOrDefault("CubSync")
         val addresses = runCatching { localAddresses() }.getOrDefault(emptyList())
         return Local(name, addresses)
     }
 
+    /** Every card that is up, with the address it can be reached at. */
+    fun localNics(): List<Nic> = runCatching {
+        NetworkInterface.getNetworkInterfaces()
+            .toList()
+            .filter { runCatching { it.isUp && !it.isLoopback }.getOrDefault(false) }
+            .flatMap { card -> card.inetAddresses.toList().filterIsInstance<Inet4Address>().map { card.name to it } }
+            .mapNotNull { (name, address) -> address.hostAddress?.let { Nic(name, it) } }
+            .filterNot { it.address.startsWith("169.254.") }
+            .distinctBy { it.address }
+            .sortedWith(compareBy({ it.kind }, { it.address }))
+    }.getOrDefault(emptyList())
+
     /** Every non-loopback IPv4 address, which is what a peer would type. */
-    fun localAddresses(): List<String> = NetworkInterface.getNetworkInterfaces()
-        .toList()
-        .filter { runCatching { it.isUp && !it.isLoopback }.getOrDefault(false) }
-        .flatMap { card -> card.inetAddresses.toList().map { card.name to it } }
-        .filter { (_, address) -> address is Inet4Address }
-        .map { (_, address) -> address.hostAddress }
-        .filterNotNull()
-        .distinct()
-        .sorted()
+    fun localAddresses(): List<String> = localNics().map { it.address }
 }

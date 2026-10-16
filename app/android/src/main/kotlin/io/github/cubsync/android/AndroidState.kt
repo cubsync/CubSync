@@ -23,6 +23,7 @@ import io.github.cubsync.service.LogEntry
 import io.github.cubsync.service.LogLevel
 import io.github.cubsync.service.PathTools
 import io.github.cubsync.service.PeerSession
+import io.github.cubsync.service.Peers
 import io.github.cubsync.service.RunMode
 import io.github.cubsync.service.Section
 import io.github.cubsync.service.ServerController
@@ -49,11 +50,17 @@ data class RunningJob(
     val jobId: String,
     val configName: String,
     val dryRun: Boolean,
-    val pairCount: Int,
+    val pairs: List<String>,
     val startedAtMs: Long,
+    val currentPair: String = "",
     val finishedPairs: Int = 0,
     val bytes: Long = 0,
 ) {
+    val pairCount: Int get() = pairs.size
+
+    /** Whole pairs only: the engine reports a pair when it is done, not while it runs. */
+    val fraction: Float get() = if (pairCount == 0) 0f else finishedPairs.toFloat() / pairCount
+
     val label: String get() = if (dryRun) "试运行" else "同步中"
 }
 
@@ -68,6 +75,9 @@ sealed interface Route {
     data object Tabs : Route
     data class Config(val configId: String) : Route
     data class Preview(val configId: String) : Route
+
+    /** 正在同步: its own screen while a run is in flight, as the design has it. */
+    data class Running(val jobId: String) : Route
     data class Job(val jobId: String) : Route
     data class PickFolder(val side: Side) : Route
 }
@@ -122,6 +132,13 @@ class AndroidAppState(
     var actionSheet by mutableStateOf<ActionSheet?>(null)
     var showSoloLocal by mutableStateOf(false)
     var showSoloRemote by mutableStateOf(false)
+
+    /** The top bar's ⋮ menu, which is a different list on every screen. */
+    var screenMenu by mutableStateOf(false)
+
+    /** The two sheets the ⋮ menu opens on 连接: an address to dial, and the shared roots. */
+    var connectSheet by mutableStateOf(false)
+    var sharedSheet by mutableStateOf(false)
 
     /**
      * Bumped when a browsing or settings preference changes.
@@ -360,6 +377,48 @@ class AndroidAppState(
 
     fun drawer(): DrawerModel = service.drawer(serverState)
 
+    /** 收藏 a configuration — the star in the top bar of its screen. */
+    fun toggleConfigStar() {
+        val config = selectedConfig ?: return
+        val favourite = Favorite(Words.LOCAL, EndpointId.LOCAL, config.configId, config.name)
+        service.settings.toggleFavourite(favourite)
+        revision++
+        notify(
+            if (service.settings.isFavourite(EndpointId.LOCAL, config.configId)) "已收藏「${config.name}」" else "已取消收藏",
+            NoticeKind.INFO,
+        )
+    }
+
+    /** Writes a run out as a text file, in the application's own directory. */
+    fun exportReport(job: io.github.cubsync.service.JobRecord) {
+        val detail = detailsOf(job)
+        val text = buildString {
+            appendLine(detail.title)
+            appendLine(detail.headline + " —— " + detail.summary)
+            appendLine()
+            for ((key, value) in detail.rows) appendLine("$key\t$value")
+            appendLine()
+            appendLine("已传输 ${detail.transferredTotal} 项")
+            for (line in detail.transferred) appendLine("  ${line.relPath}\t${Format.bytes(line.bytes)}")
+            if (detail.moreTransferred > 0) appendLine("  还有 ${detail.moreTransferred} 项")
+            appendLine("已跳过 ${detail.skippedTotal} 项")
+            for (line in detail.skipped) appendLine("  ${line.relPath}\t${line.note}")
+            if (detail.moreSkipped > 0) appendLine("  还有 ${detail.moreSkipped} 项")
+        }
+        val file = File(appDirectory, "${detail.title.replace(':', '-')}.txt")
+        runCatching { file.writeText(text, Charsets.UTF_8) }
+            .onSuccess { notify("报告已保存到 ${file.absolutePath}", NoticeKind.SUCCESS) }
+            .onFailure { notify("保存失败：${it.message}", NoticeKind.ERROR) }
+    }
+
+    /** Takes a run out of the list without touching anything on disk. */
+    fun forgetJob(jobId: String) {
+        runCatching { service.history.forget(jobId) }
+        reloadJobs()
+        if (route is Route.Job && (route as Route.Job).jobId == jobId) back()
+        notify("已从列表里去掉这次记录", NoticeKind.INFO)
+    }
+
     fun newPairDraft(existing: List<FolderPair>): FolderPair {
         val peer = peers.firstOrNull()
         return FolderPair(
@@ -388,14 +447,23 @@ class AndroidAppState(
         }
         val jobId = SyncService.newJobId()
         val prepared = config.copy(dryRun = dryRun)
-        running = RunningJob(jobId, prepared.name, dryRun, prepared.pairs.size, System.currentTimeMillis())
+        running = RunningJob(
+            jobId = jobId,
+            configName = prepared.name,
+            dryRun = dryRun,
+            pairs = prepared.pairs.map { it.name.ifEmpty { it.pairId } },
+            startedAtMs = System.currentTimeMillis(),
+        )
         dismissNotice()
+        open(Route.Running(jobId))
 
         runTask = scope.launch {
             try {
                 val result = service.run(prepared, jobId = jobId, observer = PhoneObserver())
                 reloadJobs()
                 go(Section.JOBS)
+                // The run screen becomes the job's detail screen when it finishes, which
+                // is what the design does: one screen, two states.
                 open(Route.Job(result.jobId))
                 notify(summaryLine(result), toneFor(result.status))
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
@@ -446,8 +514,16 @@ class AndroidAppState(
     }
 
     private inner class PhoneObserver : SyncObserver {
+        override fun onPairStarted(pair: FolderPair) {
+            running = running?.copy(currentPair = pair.name.ifEmpty { pair.pairId })
+        }
+
         override fun onPairFinished(outcome: PairOutcome) {
-            running = running?.copy(finishedPairs = (running?.finishedPairs ?: 0) + 1, bytes = 0)
+            running = running?.copy(
+                finishedPairs = (running?.finishedPairs ?: 0) + 1,
+                currentPair = "",
+                bytes = 0,
+            )
         }
 
         override fun onBytesTransferred(total: Long) {
@@ -553,6 +629,34 @@ class AndroidAppState(
         if (mode == RunMode.ROOT) {
             notify("已切到 Root 模式：设备需要已获取 Root 权限，普通模式下这一档不会生效", NoticeKind.WARNING)
         }
+    }
+
+    // ------------------------------------------------------------ 传输通道
+
+    /** The cards 传输通道 offers, taken from the system rather than invented. */
+    fun nics(): List<Peers.Nic> = Peers.localNics()
+
+    /**
+     * Whether a card takes part. An empty selection means every card, so the first run
+     * shows all of them on — which is also what makes the answer true.
+     */
+    fun nicSelected(address: String): Boolean {
+        val chosen = service.settings.channelNics
+        return chosen.isEmpty() || chosen.contains(address)
+    }
+
+    fun toggleNic(address: String) {
+        val available = nics().map { it.address }
+        val chosen = service.settings.channelNics.ifEmpty { available }
+        val next = if (chosen.contains(address)) chosen - address else chosen + address
+        if (next.isEmpty()) {
+            notify("至少要留一张网卡，否则这台机器没法被连上", NoticeKind.WARNING)
+            return
+        }
+        if (next.size < chosen.size) {
+            notify("多链路还没实现：选中的网卡协议会协商，传输本身仍走其中一条", NoticeKind.INFO)
+        }
+        changeSettings { it.channelNics = next }
     }
 
     // ----------------------------------------------------------------------- text

@@ -166,8 +166,11 @@ same setting differently.
 
 **连接** — the run mode card first, because on a phone it is the question underneath
 everything else, and collapsed, because somebody who is not fighting permissions should not
-have to read about them. Then the channels, then sharing, then the peers, then the last few
-transfers.
+have to read about them. Then the channels — one switch per network card this machine
+actually has, with the address it can be reached at — then sharing, then the accounts and
+their state, then the last few transfers.
+
+![The phone's connect screen](docs/screenshots/phone-connect.png)
 
 **传输** — the same two panes, with the design's own sub-row: ☰ for the drawer, a
 three-way switch between both panes and either one alone, 显示方式▾, and ⋮. The display bar
@@ -175,14 +178,27 @@ hangs under it with the five modes, 行密度 as a percentage you can type, 列�
 modes, 分栏方向 and 条目缩放. A long press on a row opens its action panel; the header of a
 pane is its address, exactly as on the desktop.
 
-**同步** — the list of configurations, and each of them opened with `←`: the policy, the
-pairs, the filter, then 预览 as a layer of its own.
+![The phone's transfer screen](docs/screenshots/phone-transfer.png)
+
+**同步** — the list of configurations, and each of them opened with `←`: the policy as four
+rows that open a list, the pairs, the filter, then 预览 as a layer of its own. A value with
+six choices is a row rather than a dropdown, because a dropdown is a mouse's affordance;
+the values are the same on both ends either way.
+
+![The phone's difference preview](docs/screenshots/phone-sync-preview.png)
+![A run in flight on the phone](docs/screenshots/phone-running.png)
 
 **作业** — every run, and one run opened in full: the result, the thirteen detail rows, the
 file-level lists, that run's log inline, and the actions it ended with. 日志 is the second
 segment of this tab rather than a tab of its own.
 
-**设置** — the same nine fields as the desktop, in the same order, with the same defaults.
+**设置** — the same nine fields as the desktop, in the same order, with the same defaults,
+and the appearance above them.
+
+![The phone's settings screen](docs/screenshots/phone-settings.png)
+
+Those five images are not mock-ups: `PhoneScreenshotTest` composes every phone screen on the
+JVM and writes it to a PNG. See [docs/TESTING.md](docs/TESTING.md).
 
 ## Using the command line
 

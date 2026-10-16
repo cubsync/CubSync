@@ -51,6 +51,7 @@ import io.github.cubsync.service.Density
 import io.github.cubsync.service.Difference
 import io.github.cubsync.service.DisplayMode
 import io.github.cubsync.service.Format
+import io.github.cubsync.service.IconPaths
 import io.github.cubsync.service.ItemScale
 import io.github.cubsync.service.PaneDirection
 import io.github.cubsync.service.PaneState
@@ -139,7 +140,11 @@ private fun SubRow(state: AppState, left: PaneState, right: PaneState, busy: Boo
         ) {
             Text("显示方式：${active.displayMode.label}", style = CubType.label, color = colors.text)
             Spacer(Modifier.width(5.dp))
-            Text(if (settings.displayBarOpen) "▴" else "▾", style = CubType.meta, color = colors.textDim)
+            CubIcon(
+                if (settings.displayBarOpen) IconPaths.CHEVRON_DOWN else IconPaths.CHEVRON_RIGHT,
+                size = 13,
+                tint = colors.textDim,
+            )
         }
         Spacer(Modifier.width(8.dp))
         QuietButton(Words.NEW_FOLDER) { state.newFolder(settings.activeSide) }
@@ -325,7 +330,7 @@ private fun PaneHeader(state: AppState, side: Side, pane: PaneState, active: Boo
             Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            GlyphButton("←", size = 26) { state.browsing.up(side) }
+            IconButton(IconPaths.BACK, size = 26) { state.browsing.up(side) }
             Spacer(Modifier.width(4.dp))
             Field(
                 value = typed,
@@ -336,10 +341,16 @@ private fun PaneHeader(state: AppState, side: Side, pane: PaneState, active: Boo
                 style = CubType.meta,
             )
             Spacer(Modifier.width(4.dp))
-            GlyphButton(if (state.service.settings.isFavourite(pane.backendId, pane.path)) "★" else "☆", size = 26) {
-                state.toggleFavourite(side)
+            val starred = state.service.settings.isFavourite(pane.backendId, pane.path)
+            IconButton(
+                IconPaths.STAR,
+                size = 26,
+                mark = 16,
+                tint = if (starred) colors.accent else null,
+            ) { state.toggleFavourite(side) }
+            IconButton(IconPaths.MORE, size = 26, mark = 18, stroke = 3.4f) {
+                state.paneMenu = io.github.cubsync.desktop.PaneMenu(side)
             }
-            GlyphButton("...", size = 26) { state.paneMenu = io.github.cubsync.desktop.PaneMenu(side) }
         }
         Breadcrumbs(state, side, pane)
     }
@@ -505,7 +516,7 @@ private fun RowLine(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            if (entry.isDirectory) "▸" else " ",
+            if (entry.isDirectory) "​" else "​",
             style = CubType.meta,
             color = colors.textFaint,
             modifier = Modifier.width(14.dp),
@@ -536,7 +547,9 @@ private fun RowLine(
                 modifier = Modifier.width(72.dp),
             )
         }
-        GlyphButton("...", size = 22) { state.actionSheet = io.github.cubsync.desktop.ActionSheet(side, entry.relPath, entry.isDirectory) }
+        IconButton(IconPaths.MORE, size = 22, mark = 16, stroke = 3.4f) {
+            state.actionSheet = io.github.cubsync.desktop.ActionSheet(side, entry.relPath, entry.isDirectory)
+        }
     }
 }
 
@@ -565,7 +578,11 @@ private fun GridList(state: AppState, side: Side, pane: PaneState, columns: Int,
                     .padding(8.dp),
                 verticalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(if (entry.isDirectory) "▸" else "•", style = CubType.sectionTitle, color = colors.textFaint)
+                CubIcon(
+                    if (entry.isDirectory) IconPaths.FOLDER else IconPaths.DOT,
+                    size = 15,
+                    tint = colors.textFaint,
+                )
                 Column {
                     Text(
                         Browsing.name(entry.relPath),

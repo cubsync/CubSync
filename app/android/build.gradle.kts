@@ -52,6 +52,14 @@ android {
         resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "/META-INF/DEPENDENCIES")
     }
 
+    testOptions {
+        unitTests {
+            // Robolectric needs the module's resources, which is what makes the theme
+            // and the launcher icon resolvable in a unit test.
+            isIncludeAndroidResources = true
+        }
+    }
+
     lint {
         // Lint findings are worth reading, not worth failing a build over while the
         // project is pre-1.0.
@@ -74,4 +82,32 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(kotlin("test"))
+
+    // The phone's screens are composed off screen and written to PNGs, which is how a
+    // layout gets looked at without a device or an emulator. Robolectric drives a real
+    // composition on the JVM; the test rule is what lets it be captured.
+    testImplementation(libs.robolectric)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+
+/**
+ * Robolectric fetches its `android-all` jar on first use, from Maven Central.
+ *
+ * On a machine that reaches Maven Central through a proxy, the proxy has to be passed
+ * down to the forked test JVM; on CI there is no proxy set and this is a no-op rather
+ * than a hard-coded one that would break there.
+ *
+ * The screenshot test runs on the debug variant only: it needs `ui-test-manifest` to
+ * declare `ComponentActivity`, and that manifest is debug-only on purpose — shipping it
+ * in a release APK would declare an activity the application does not have.
+ */
+tasks.withType<Test>().configureEach {
+    listOf("http.proxyHost", "http.proxyPort", "https.proxyHost", "https.proxyPort").forEach { key ->
+        providers.systemProperty(key).orNull?.let { systemProperty(key, it) }
+    }
+    if (name.contains("Release")) {
+        filter.excludeTestsMatching("*PhoneScreenshotTest*")
+    }
 }
