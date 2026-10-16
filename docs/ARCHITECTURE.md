@@ -8,6 +8,7 @@ backends/local/  the filesystem as a RemoteBackend
 backends/lan/    a peer's tree as a RemoteBackend, over the first-party protocol
 service/         the application layer: configs, peers, runs, the folder server, the log
 app/desktop/     the desktop application (Compose Multiplatform)
+app/android/     the Android application (Compose, Material 3)
 cli/             the command line entry point
 testing/         test-only fixtures: an in-memory backend and a fault injector
 ```
@@ -41,6 +42,18 @@ It holds:
 
 The rule that keeps it honest: a front end may format what `service` returns, and
 may not decide anything about how a sync happens.
+
+## What is shared, and what is not
+
+The logic is shared and the screens are not. The two front ends describe the same
+policies with the same words — `Format` and `policySentence` live in `service` for
+exactly that reason — but a desktop has a rail, two panels and a mouse, and a phone
+has four tabs, one screen at a time and a thumb. A list beside an editor is not a
+layout that survives being 390 pixels wide, and pretending otherwise produces the
+worst of both.
+
+The consequence worth knowing: a change to what a policy *means* goes in `service`
+and reaches both ends; a change to how it is *shown* has to be made twice.
 
 ## The three decisions worth knowing
 

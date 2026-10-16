@@ -17,10 +17,13 @@
    release. A release with a window in it should also have been looked at:
    `./gradlew :app:desktop:test` writes a picture of every screen to
    `app/desktop/build/screenshots`.
-6. **Package what a user will download.** `./gradlew :app:desktop:packageMsi` and
-   `./gradlew :app:desktop:createDistributable`. The MSI step downloads WiX the
-   first time it runs. Attach both to the release; a tag alone is not a Windows
-   application.
+6. **Package what a user will download.** `./gradlew :app:desktop:packageMsi`,
+   `./gradlew :app:desktop:createDistributable` and
+   `./gradlew :app:android:assembleDebug`. The MSI step downloads WiX the first time
+   it runs. Attach all three to the release; a tag alone is not an application. The
+   Android artefact is the debug APK until there is a keystore and a decision about
+   where the application is distributed — say so in the release notes rather than
+   quietly shipping something unsigned.
 7. **Commit.** `chore(release): 0.2.0` — one commit, version and changelog together.
 8. **Tag.** Annotated, on `main`:
    `git tag -a v0.2.0 -m "CubSync 0.2.0" && git push origin v0.2.0`.

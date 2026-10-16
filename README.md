@@ -6,10 +6,10 @@ CubSync keeps folders in sync between your devices over your own network. Androi
 desktop, and headless (daemon) in one codebase, driven by a single synchronization
 engine that is agnostic to the transport underneath it.
 
-> Status: **usable, early**. Version 0.3.0 has the engine, the protocol, two
-> backends, a CLI and a Windows desktop application that can be installed and used
-> without a terminal. Android is next. The wire format can still change between
-> minor versions — see [docs/VERSIONING.md](docs/VERSIONING.md).
+> Status: **usable, early**. Version 0.4.0 has the engine, the protocol, two
+> backends, a CLI, a Windows desktop application and an Android application. The
+> wire format can still change between minor versions — see
+> [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ![The connect screen](docs/screenshots/connect.png)
 
@@ -51,7 +51,7 @@ More detail, including the decisions that are easy to get wrong, in
 | Headless CLI + daemon | works (JVM 17+) |
 | Desktop — Windows (Compose Multiplatform) | works; MSI and application image |
 | Desktop — macOS / Linux | builds from source; no packaged artefact yet |
-| Android (Compose + Material 3) | next |
+| Android (Compose + Material 3) | works; sideload the APK from the release |
 
 Single-language codebase: **Kotlin** (Kotlin Multiplatform + Compose Multiplatform)
 for every target. `core` is already a multiplatform source set, so the Android and
@@ -65,6 +65,7 @@ backends/local/ the filesystem as a backend
 backends/lan/   a peer's tree over the first-party protocol
 service/        the application layer: configs, peers, runs, the folder server, the log
 app/desktop/    the desktop application (Compose Multiplatform)
+app/android/    the Android application (Compose, Material 3)
 cli/            the command line entry point
 testing/        test-only fixtures (in-memory backend, fault injector)
 docs/           architecture, versioning, testing, releasing
@@ -94,9 +95,21 @@ Or build something to hand to somebody:
 ./gradlew :app:desktop:createDistributable   # a self-contained folder with CubSync.exe
 ```
 
-Packaging an MSI makes the build download WiX, so that step needs network access
-the first time. The Android target is not wired up yet, so no SDK is needed to
-build what is here today.
+Packaging an MSI makes the build download WiX, so that step needs network access the
+first time.
+
+The Android application needs the SDK (API 36 and build-tools 36), pointed at by
+either `ANDROID_HOME` or a `local.properties` with `sdk.dir`. It is the only module
+that needs one; everything else builds with a JDK alone.
+
+```
+./gradlew :app:android:assembleDebug        # app/android/build/outputs/apk/debug/
+./gradlew :app:android:installDebug         # straight onto a connected device
+```
+
+There is no signed release build yet: that needs a keystore, and a keystore is a
+decision about distribution rather than a build step. The APK on each release is the
+debug one, which sideloads normally.
 
 ## Using the desktop application
 
@@ -126,6 +139,29 @@ from, and the theme. The dark and light palettes are the ones in the design
 prototype; dark is the default.
 
 ![The jobs screen](docs/screenshots/jobs.png)
+
+## On a phone
+
+The Android application has four tabs and the same words as the desktop, on the
+landing points a phone can use.
+
+**连接** — the same two halves: choose the folders this phone shares, start, and read
+out the address; or type the other machine's address and connect. The paths a phone
+is likely to want are offered as suggestions you can tap, and there is a field for
+anything else.
+
+**同步** — the list of configurations, and one configuration opened as its own
+screen. Policies first, then the folder pairs; each side is a device and a folder, and
+the folders the peer exposes are offered as buttons. 试运行 compares without writing;
+立即同步 does the work.
+
+**作业** — what each run did, and one run in detail: the result, the files, what was
+skipped and why, and the log entries written between the run's start and its end. The
+log belongs to the job here rather than to a tab of its own, because on a phone the
+question after a run is what that run did.
+
+**设置** — the state directory, the theme, and the defaults a new configuration
+starts from.
 
 ## Using the command line
 
@@ -180,8 +216,9 @@ Every suite in the repository: the protocol codec and its malformed inputs, the
 filter dialect, the comparison and planning matrices, chunk reordering,
 configuration codecs, both backends against real sockets and real files, the engine
 driving an in-memory backend that shares no code with the local one, the application
-layer over real directories, and the desktop window — which is composed off screen
-in the test suite, so a screen that fails to lay out fails the build.
+layer over real directories, the Android application's state and navigation, and the
+desktop window — which is composed off screen in the test suite, so a screen that
+fails to lay out fails the build.
 
 What each layer is for, and the end-to-end acceptance procedure, are in
 [docs/TESTING.md](docs/TESTING.md).
@@ -241,6 +278,7 @@ Trademarks belong to their respective owners; see [NOTICE](NOTICE).
 | Direction | one-way, server-driven | bidirectional, peer-to-peer |
 | Protocol | first-party only | pluggable backends (SPI) |
 | Desktop | command line | GUI (Compose Multiplatform) |
+| Android | — | GUI (Compose, Material 3) |
 | Resume | limited | staging file + explicit resume offset + snapshots |
 | Deletions | — | propagated with a recoverable trash |
 | License | GPL-3.0 | Apache-2.0 |
