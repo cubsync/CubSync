@@ -62,7 +62,7 @@ More detail, including the decisions that are easy to get wrong, in
 | Headless CLI + daemon | works (JVM 17+) |
 | Desktop — Windows (Compose Multiplatform) | works; MSI and application image |
 | Desktop — macOS / Linux | builds from source; no packaged artefact yet |
-| Android (Compose + Material 3) | works; sideload the APK from the release |
+| Android (Compose + Material 3) | works; sideload the APK from the release, release-signed when a key is configured |
 
 Single-language codebase: **Kotlin** (Kotlin Multiplatform + Compose Multiplatform)
 for every target. `core` is already a multiplatform source set, so the Android and
@@ -118,9 +118,11 @@ that needs one; everything else builds with a JDK alone.
 ./gradlew :app:android:installDebug         # straight onto a connected device
 ```
 
-There is no signed release build yet: that needs a keystore, and a keystore is a
-decision about distribution rather than a build step. The APK on each release is the
-debug one, which sideloads normally.
+The Android APK is signed with a release key when one is configured, and is the debug
+APK when one is not — a build never fails for the lack of a key a checkout should not
+hold. The key itself is never in the repository: how a laptop and a CI runner each
+supply it is in [docs/SIGNING.md](docs/SIGNING.md). Signing matters before a store does,
+because an APK signed by a different key cannot replace an installed one.
 
 ### Using the desktop application
 
@@ -383,7 +385,7 @@ SMB、SFTP、FTP 和本地文件系统，都只是这个接口的实现。引擎
 | 无头 CLI + 守护进程 | 可用（JVM 17+） |
 | 桌面 —— Windows（Compose Multiplatform） | 可用；MSI 与应用镜像 |
 | 桌面 —— macOS / Linux | 可从源码构建；尚无打包产物 |
-| Android（Compose + Material 3） | 可用；从发布页侧载 APK |
+| Android（Compose + Material 3） | 可用；从发布页侧载 APK，配置密钥后为 release 签名 |
 
 单一语言代码库：每个目标都用 **Kotlin**（Kotlin Multiplatform + Compose Multiplatform）。
 `core` 本身已经是多平台源集，所以 Android 与桌面目标只是新增，而不是重构。
@@ -435,8 +437,10 @@ Android 应用需要 SDK（API 36 与 build-tools 36），通过 `ANDROID_HOME` 
 ./gradlew :app:android:installDebug         # 直接装到已连接的设备上
 ```
 
-目前还没有签名的 release 构建：那需要密钥库，而密钥库是一个关于分发方式的决定，不是一个构建
-步骤。每次发布附带的 APK 是 debug 包，正常侧载即可。
+Android 的 APK 在配置了 release 密钥时用该密钥签名，没有配置时就是 debug 包 —— 构建不会因为
+一个本不该由它持有的密钥而失败。密钥本身永不入库：笔记本与 CI 各自如何提供它，见
+[docs/SIGNING.md](docs/SIGNING.md)。签名在商店之前就有意义，因为不同密钥签出的 APK 无法覆盖
+已安装的那一份。
 
 ### 桌面应用怎么用
 

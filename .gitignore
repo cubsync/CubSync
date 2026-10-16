@@ -76,3 +76,7 @@ out/
 *.tmp
 *.cubtmp
 .cub_trash/
+
+# Python (tools/)
+__pycache__/
+*.pyc
