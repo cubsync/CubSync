@@ -1,8 +1,11 @@
 package io.github.cubsync.android
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -10,20 +13,25 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import io.github.cubsync.service.AppSettings
+import io.github.cubsync.service.Accent
 import io.github.cubsync.service.ThemeMode
 
 /**
- * The design's colour tokens.
+ * The phone's tokens, which are the prototype's `--m3-*` set and **not** the desktop's.
  *
- * The same names and the same values as the desktop's, drawn through Material 3 because
- * that is what this platform's widgets expect. Sharing the palette is what keeps a
- * screenshot of one end recognisable in the other; not sharing every widget is what keeps
- * each feeling like it belongs where it is.
+ * `--m3-surface` is `#141318`, `--m3-surface-2` is `#1f1f26`, `--m3-on` is `#e6e1e9`,
+ * `--m3-onv` is `#c9c5d0`, `--m3-primary` is `#4c6ef5`. An earlier version reused the
+ * desktop palette here, which is why the phone read as a small desktop rather than as the
+ * other end of the same product: the two ends are supposed to share structure and words,
+ * not hex.
+ *
+ * `--line` is the one token both ends do share, so the outline is the same value as the
+ * desktop's and comes from the same declaration.
  */
 data class CubColors(
     val isDark: Boolean,
@@ -48,44 +56,44 @@ data class CubColors(
 
 internal val DarkCubColors = CubColors(
     isDark = true,
-    background = Color(0xFF0F1116),
-    surface = Color(0xFF181B21),
-    surfaceRaised = Color(0xFF1E222A),
-    surfaceSunken = Color(0xFF242932),
+    background = Color(0xFF141318),
+    surface = Color(0xFF141318),
+    surfaceRaised = Color(0xFF1F1F26),
+    surfaceSunken = Color(0xFF1F1F26),
     outline = Color(0xFF2A2F39),
-    outlineStrong = Color(0xFF3A4150),
-    text = Color(0xFFE8EBF1),
-    textDim = Color(0xFF98A1B0),
-    textFaint = Color(0xFF6D7686),
-    accent = Color(0xFF3A5CCC),
-    accentContainer = Color(0xFF232B4A),
+    outlineStrong = Color(0xFFC9C5D0),
+    text = Color(0xFFE6E1E9),
+    textDim = Color(0xFFC9C5D0),
+    textFaint = Color(0xFFC9C5D0),
+    accent = Color(0xFF4C6EF5),
+    accentContainer = Color(0xFF4C6EF5).copy(alpha = 0.18f),
     danger = Color(0xFFE5484D),
     warning = Color(0xFFE0A020),
     success = Color(0xFF2E9E5B),
     conflict = Color(0xFFF0731F),
-    info = Color(0xFF1FA8A0),
-    rail = Color(0xFF181B21),
+    info = Color(0xFF3B82F6),
+    rail = Color(0xFF1F1F26),
 )
 
 internal val LightCubColors = CubColors(
     isDark = false,
-    background = Color(0xFFE9EDF3),
-    surface = Color(0xFFFFFFFF),
-    surfaceRaised = Color(0xFFF6F8FB),
-    surfaceSunken = Color(0xFFEFF2F7),
+    background = Color(0xFFFBF8FF),
+    surface = Color(0xFFFBF8FF),
+    surfaceRaised = Color(0xFFF2EEF9),
+    surfaceSunken = Color(0xFFF2EEF9),
     outline = Color(0xFFDDE3EA),
-    outlineStrong = Color(0xFFC3CBD6),
-    text = Color(0xFF161A20),
-    textDim = Color(0xFF637085),
-    textFaint = Color(0xFF8B97A8),
-    accent = Color(0xFF3A5CCC),
-    accentContainer = Color(0xFFE4E9FA),
+    outlineStrong = Color(0xFF44464F),
+    text = Color(0xFF1B1B1F),
+    textDim = Color(0xFF44464F),
+    textFaint = Color(0xFF44464F),
+    accent = Color(0xFF4C6EF5),
+    accentContainer = Color(0xFF4C6EF5).copy(alpha = 0.18f),
     danger = Color(0xFFE5484D),
     warning = Color(0xFFE0A020),
     success = Color(0xFF2E9E5B),
     conflict = Color(0xFFF0731F),
-    info = Color(0xFF1FA8A0),
-    rail = Color(0xFFFFFFFF),
+    info = Color(0xFF3B82F6),
+    rail = Color(0xFFF2EEF9),
 )
 
 val LocalCubColors = staticCompositionLocalOf { DarkCubColors }
@@ -97,29 +105,35 @@ object CubTheme {
 }
 
 /**
- * Type scale.
+ * Type scale, from the prototype's phone declarations.
  *
- * Larger than the desktop's throughout: these are held at arm's length rather than read
- * from a monitor, and the design's sizes for this end say so.
+ * `.a-topbar .h` 22 for a top-level screen and `.h.sm` 17 for one opened from it, `.a-sec`
+ * 11.5/700, `.a-card .ttl` 14/650, `.a-li .tx .n` 14/600 with an 11.5 second line,
+ * `.a-btn` 14/650, `.a-nav .nv` 10.5/600.
  */
 object CubType {
-    val windowTitle = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-    val sectionTitle = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-
-    /** The title in the top bar, and the one an opened screen wears (37 §7). */
+    /** The heading in the top bar. The prototype uses the 17px variant on every screen. */
     val topTitle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
 
-    /** The small label above a group of cards (§7: `.a-sec`). */
+    /** `.h` without `.sm`, kept for the one screen that asks for it. */
+    val topTitleLarge = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+
+    /** `.a-sec`. */
     val sectionLabel = TextStyle(fontSize = 11.5.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
 
+    /** `.a-card .ttl` and `.a-btn`. */
     val cardTitle = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+    val buttonLabel = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
 
-    /** A row's name and its second line — the two sizes every card row uses. */
+    /** `.a-li .tx .n` and its `.s` — the two sizes every card row uses. */
     val rowTitle = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
     val rowDetail = TextStyle(fontSize = 11.5.sp)
 
-    /** A card's full-width button (§7: `.a-btn`). */
-    val buttonLabel = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+    /** `.a-chip` and `.a-seg button`: 12/600. */
+    val chip = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+
+    /** `.a-nav .nv`. */
+    val navLabel = TextStyle(fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
 
     val body = TextStyle(fontSize = 13.5.sp, lineHeight = 19.sp)
     val label = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
@@ -132,18 +146,28 @@ object CubType {
     val mono = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace, lineHeight = 17.sp)
 }
 
-/** `#RRGGBB` as a colour, with the brand's indigo as the fallback. */
+/** `#RRGGBB` as a colour, with the prototype's phone accent as the fallback. */
 fun parseHexColour(hex: String): Color {
     val clean = hex.removePrefix("#").trim()
-    if (clean.length != 6) return Color(0xFF3A5CCC)
-    val parsed = clean.toLongOrNull(16) ?: return Color(0xFF3A5CCC)
+    if (clean.length != 6) return Color(0xFF4C6EF5)
+    val parsed = clean.toLongOrNull(16) ?: return Color(0xFF4C6EF5)
     return Color(0xFF000000L or parsed)
 }
 
+/**
+ * The theme.
+ *
+ * Three ways the accent can arrive, in this order: 动态取色 takes the wallpaper's primary
+ * through Material You (Android 12 and up, which is what the prototype's switch promises),
+ * a chosen hue chip gives a fixed value, and failing both the palette's own
+ * `--m3-primary` stands. Surfaces are never taken from Material You, because the
+ * prototype fixes them and a wallpaper is not a reason to change a card's colour.
+ */
 @Composable
 fun CubAndroidTheme(
     mode: ThemeMode,
-    accentHex: String = AppSettings.ACCENT_DEFAULT,
+    accentHex: String = Accent.DEFAULT.hex,
+    dynamicColour: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val dark = when (mode) {
@@ -152,14 +176,19 @@ fun CubAndroidTheme(
         ThemeMode.DARK -> true
     }
     val base = if (dark) DarkCubColors else LightCubColors
-    val cub = if (accentHex.equals(AppSettings.ACCENT_DEFAULT, ignoreCase = true)) {
+    val context = LocalContext.current
+    val wallpaper = if (dynamicColour && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        runCatching {
+            if (dark) dynamicDarkColorScheme(context).primary else dynamicLightColorScheme(context).primary
+        }.getOrNull()
+    } else {
+        null
+    }
+    val chosen = wallpaper ?: parseHexColour(accentHex.ifEmpty { Accent.DEFAULT.hex })
+    val cub = if (chosen == base.accent) {
         base
     } else {
-        val accent = parseHexColour(accentHex)
-        base.copy(
-            accent = accent,
-            accentContainer = lerp(accent, base.background, 0.80f),
-        )
+        base.copy(accent = chosen, accentContainer = chosen.copy(alpha = 0.18f))
     }
 
     val scheme = if (dark) {
@@ -194,3 +223,6 @@ fun CubAndroidTheme(
         MaterialTheme(colorScheme = scheme, content = content)
     }
 }
+
+/** Kept so the light/dark pair can be blended where a border needs a mid tone. */
+internal fun blend(a: Color, b: Color, t: Float): Color = lerp(a, b, t)

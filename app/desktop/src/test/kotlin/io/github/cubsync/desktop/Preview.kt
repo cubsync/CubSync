@@ -1,5 +1,6 @@
 package io.github.cubsync.desktop
 
+import androidx.compose.ui.Modifier
 import io.github.cubsync.core.engine.ActionKind
 import io.github.cubsync.core.engine.JobItem
 import io.github.cubsync.core.engine.JobResult
@@ -19,6 +20,7 @@ import io.github.cubsync.service.KnownPeer
 import io.github.cubsync.service.Section
 import io.github.cubsync.service.ServerController
 import io.github.cubsync.service.Side
+import io.github.cubsync.desktop.ui.WindowChrome
 import io.github.cubsync.service.SyncService
 import io.github.cubsync.service.ThemeMode
 import kotlinx.coroutines.CoroutineScope
@@ -52,6 +54,21 @@ private fun seedFile(directory: Path, name: String, length: Int) {
  * nothing about the layout that matters.
  */
 object Preview {
+
+    /**
+     * A window that does not exist.
+     *
+     * The title bar is drawn by the application rather than by the system, so a screenshot
+     * of the window has to supply the four things its buttons would do. Here they do
+     * nothing, which is what a still image needs.
+     */
+    val chrome: WindowChrome = WindowChrome(
+        minimise = {},
+        toggleMaximise = {},
+        close = {},
+        maximised = true,
+        dragModifier = Modifier,
+    )
 
     /** One screenshot to take. */
     data class Shot(val name: String, val section: Section, val dark: Boolean, val jobDetail: Boolean = false)

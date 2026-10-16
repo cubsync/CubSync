@@ -28,8 +28,12 @@ class AppSettingsTest {
         assertEquals(Buffering.DEFAULT, s.bufferBlocks)
         assertTrue(s.resumeEnabled)
         assertTrue(s.deleteToTrash)
-        assertEquals(ThemeMode.DARK, s.theme)
-        assertEquals(AppSettings.ACCENT_DEFAULT, s.accent)
+        // 跟随系统 is the prototype's default on both ends; the phone hands it to
+        // isSystemInDarkTheme and the desktop, which has no such query, draws dark.
+        assertEquals(ThemeMode.SYSTEM, s.theme)
+        // No accent is chosen until somebody chooses one: the desktop then uses the
+        // prototype's --win-accent and the phone its --m3-primary, which stay apart.
+        assertEquals("", s.accent)
     }
 
     @Test

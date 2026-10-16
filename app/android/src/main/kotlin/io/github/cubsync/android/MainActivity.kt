@@ -3,6 +3,7 @@ package io.github.cubsync.android
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,8 +15,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import io.github.cubsync.service.Accent
 import io.github.cubsync.service.AppLog
-import io.github.cubsync.service.AppSettings
 import io.github.cubsync.service.ServerController
 import io.github.cubsync.service.SyncService
 import io.github.cubsync.service.ThemeMode
@@ -43,6 +44,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Edge to edge, so the system bars sit over the app rather than above it — and the
+        // app then has to keep its own content out from under them, which `CubAndroidApp`
+        // does with the status-bar and navigation-bar insets. Without this line the status
+        // bar is opaque and the top bar is pushed down; with it and without the insets the
+        // clock lands on top of the title. Both are wrong; the pair is right.
+        enableEdgeToEdge()
 
         val storage = AndroidSettings(applicationContext)
         val log = AppLog()
@@ -70,7 +77,8 @@ class MainActivity : ComponentActivity() {
             val current = state
             CubAndroidTheme(
                 mode = current?.liveSettings?.theme ?: ThemeMode.DARK,
-                accentHex = current?.liveSettings?.accent ?: AppSettings.ACCENT_DEFAULT,
+                accentHex = current?.liveSettings?.phoneAccent() ?: Accent.DEFAULT.hex,
+                dynamicColour = current?.liveSettings?.dynamicColour ?: true,
             ) {
                 if (current == null) LoadingScreen() else CubAndroidApp(current)
             }
@@ -94,6 +102,6 @@ private fun LoadingScreen() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("CubSync", style = CubType.sectionTitle)
+        Text("CubSync", style = CubType.topTitle)
     }
 }

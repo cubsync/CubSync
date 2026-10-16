@@ -256,3 +256,14 @@ private fun AboutPanel(state: AppState) {
 
 /** The accents offered. The first is the brand's; the rest are there so it can be changed. */
 private val ACCENTS = listOf("#3A5CCC", "#1FA8A0", "#7A5AF8", "#D9480F", "#2E9E5B")
+
+/**
+ * 设置's `.chead .acts`.
+ *
+ * The prototype puts a 保存 button here. Every field on this screen writes to the settings
+ * store as it changes, so a save button would be a control that does nothing; it is left
+ * out rather than drawn hollow.
+ */
+@Composable
+fun SettingsHeadActions(state: AppState) {
+}

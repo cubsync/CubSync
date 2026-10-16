@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import io.github.cubsync.service.Accent
 import io.github.cubsync.service.AppSettings
 import io.github.cubsync.service.Buffering
 import io.github.cubsync.service.BuildInfo
@@ -67,11 +68,19 @@ fun SettingsScreen(state: AndroidAppState) {
             SettingRow("当前生效", if (colors.isDark) "深色" else "浅色") {
                 CubIcon(IconPaths.PALETTE, size = 20, tint = colors.textDim)
             }
-            CardDesc("与电脑端同一套令牌：跟随系统时按系统的深浅色切换。")
-            GroupLabel("强调色")
+            CardRow(
+                title = "动态取色（Material You）",
+                detail = "从壁纸提取主色",
+                icon = IconPaths.PALETTE,
+                trailing = {
+                    Toggle(settings.dynamicColour) { value ->
+                        state.changeSettings { it.dynamicColour = value }
+                    }
+                },
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                for (swatch in ACCENTS) {
-                    val active = settings.accent.equals(swatch.hex, ignoreCase = true)
+                for (swatch in Accent.SWATCHES) {
+                    val active = !settings.dynamicColour && settings.accentHue == swatch.hue
                     val shape = RoundedCornerShape(99.dp)
                     Row(
                         Modifier
@@ -79,24 +88,29 @@ fun SettingsScreen(state: AndroidAppState) {
                             .clip(shape)
                             .background(if (active) parseHexColour(swatch.hex) else Color.Transparent)
                             .border(1.dp, if (active) parseHexColour(swatch.hex) else colors.outlineStrong, shape)
-                            .clickable { state.changeSettings { it.accent = swatch.hex } }
+                            .clickable {
+                                state.changeSettings {
+                                    it.dynamicColour = false
+                                    it.accentHue = swatch.hue
+                                    it.accent = ""
+                                }
+                            }
                             .padding(horizontal = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            swatch.name,
+                            swatch.label,
                             style = CubType.label,
                             color = if (active) Color.White else colors.textDim,
                         )
                     }
                 }
             }
-            QuietButton("回到品牌靛蓝") { state.changeSettings { it.accent = AppSettings.ACCENT_DEFAULT } }
         }
 
         SectionLabel("浏览与传输")
         Panel(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-            SettingRow("默认显示方式", "新打开的一栏用什么样子") {
+            SettingRow("默认显示方式", "${settings.defaultDisplayMode.label}（条目 40dp · 行高 72dp）") {
                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     for (mode in DisplayMode.entries) {
                         val active = settings.defaultDisplayMode == mode
@@ -113,7 +127,7 @@ fun SettingsScreen(state: AndroidAppState) {
                 }
             }
 
-            SettingRow("条目缩放", "双指缩放 ${ItemScale.MIN}–${ItemScale.MAX}% · 双击复位") {
+            SettingRow("条目缩放", "双指缩放 0.7×–2.0× · 双击复位") {
                 StepperField(
                     value = settings.itemScale,
                     onChange = { value -> state.changeSettings { it.itemScale = value } },
@@ -124,13 +138,13 @@ fun SettingsScreen(state: AndroidAppState) {
                 )
             }
 
-            SettingRow("显示元数据", "列表里显示大小 · 修改时间") {
+            SettingRow("显示元数据", "列表里显示大小 · 修改时间（关＝更紧凑）") {
                 Toggle(settings.showMetadata) { value -> state.changeSettings { it.showMetadata = value } }
             }
 
             SettingRow(
                 "栏头地址行数",
-                if (settings.headerAdaptive) "自适应：单栏 / 宽栏恒 1 行" else "恒定 ${settings.headerLines} 行，不看栏宽",
+                if (settings.headerAdaptive) "自适应＝按栏宽自动（窄栏分行 · 宽栏单行）" else "恒定 ${settings.headerLines} 行",
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Toggle(settings.headerAdaptive) { value -> state.changeSettings { it.headerAdaptive = value } }
@@ -145,7 +159,7 @@ fun SettingsScreen(state: AndroidAppState) {
                 }
             }
 
-            SettingRow("分栏方向", "自动＝容器宽 ≥ 高 × 1.15 时左右") {
+            SettingRow("分栏方向", "双栏浏览与对比视图共用 · 自动＝宽 ≥ 高 时左右，否则上下") {
                 ChoiceChips(
                     options = PaneDirection.entries,
                     selected = settings.paneDirection,
@@ -154,7 +168,7 @@ fun SettingsScreen(state: AndroidAppState) {
                 )
             }
 
-            SettingRow("缓冲块数", "1MB × ${settings.bufferBlocks}，同时留多少块在传输中") {
+            SettingRow("缓冲块数", "1MB × ${settings.bufferBlocks}") {
                 StepperField(
                     value = settings.bufferBlocks,
                     onChange = { value -> state.changeSettings { it.bufferBlocks = value } },
@@ -164,7 +178,7 @@ fun SettingsScreen(state: AndroidAppState) {
                 )
             }
 
-            SettingRow("默认接收目录", "对面还没打开文件夹时，传送落到这里") {
+            SettingRow("默认接收目录", "/storage/emulated/0/Download") {
                 Field(
                     value = settings.defaultReceiveDir,
                     onValueChange = { value -> state.changeSettings { it.defaultReceiveDir = value } },
@@ -205,16 +219,6 @@ fun SettingsScreen(state: AndroidAppState) {
                 style = CubType.rowDetail,
                 color = colors.warning,
             )
-            Text(
-                "作用范围越具体越优先：${Scope.entries.joinToString(" > ") { it.label }} > 出厂默认。",
-                style = CubType.rowDetail,
-                color = colors.textFaint,
-            )
-            Text(
-                "两个目录的命名口径：${Words.LOCAL} / ${Words.REMOTE}，${Words.TRASH}不叫垃圾箱。",
-                style = CubType.rowDetail,
-                color = colors.textFaint,
-            )
         }
         Spacer(Modifier.height(16.dp))
     }
@@ -223,10 +227,3 @@ fun SettingsScreen(state: AndroidAppState) {
 /** An accent, with the name the design gives it. */
 private data class Accent(val name: String, val hex: String)
 
-private val ACCENTS = listOf(
-    Accent("靛蓝", "#3A5CCC"),
-    Accent("紫", "#7A5AF8"),
-    Accent("青", "#1FA8A0"),
-    Accent("绿", "#2E9E5B"),
-    Accent("橙", "#D9480F"),
-)

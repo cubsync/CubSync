@@ -7,7 +7,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -50,7 +57,15 @@ fun CubAndroidApp(state: AndroidAppState) {
     val route = state.route
 
     Box(Modifier.fillMaxSize().background(colors.background)) {
-        Column(Modifier.fillMaxSize()) {
+        // The system bars sit over the app (MainActivity calls enableEdgeToEdge), so the
+        // content has to keep itself out from under them. Without the top inset the clock
+        // lands on the title; without the bottom one the tab bar lands on the gesture bar.
+        Column(
+            Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .windowInsetsPadding(WindowInsets.navigationBars),
+        ) {
             // The transfer screen carries its own two ends rather than a bar.
             if (!(route is Route.Tabs && state.tab == Section.TRANSFER)) {
                 TopBar(state)
@@ -75,6 +90,31 @@ fun CubAndroidApp(state: AndroidAppState) {
         }
         Overlays(state)
         if (state.drawerOpen) Drawer(state)
+
+        // The drawer also opens with a left swipe, which is what the design document lists
+        // in its gesture table; the menu mark is the second way in, not the only one.
+        if (!state.drawerOpen) {
+            Box(
+                Modifier
+                    .width(24.dp)
+                    .fillMaxHeight()
+                    .align(Alignment.CenterStart)
+                    .pointerInput(Unit) {
+                        var travelled = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { travelled = 0f },
+                            onDragEnd = { travelled = 0f },
+                        ) { change, amount ->
+                            change.consume()
+                            travelled += amount
+                            if (travelled > 48f) {
+                                state.drawerOpen = true
+                                travelled = 0f
+                            }
+                        }
+                    },
+            )
+        }
     }
 }
 
@@ -166,7 +206,7 @@ private fun BottomBar(state: AndroidAppState) {
     Column {
         HorizontalDivider(color = colors.outline)
         Row(
-            Modifier.fillMaxWidth().background(colors.surfaceRaised).padding(vertical = 5.dp),
+            Modifier.fillMaxWidth().height(64.dp).background(colors.surfaceRaised),
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
             for (section in Section.entries.filter { it.onPhoneBar }) {
@@ -194,7 +234,7 @@ private fun BottomBar(state: AndroidAppState) {
                     Spacer(Modifier.height(3.dp))
                     Text(
                         section.label,
-                        style = CubType.meta,
+                        style = CubType.navLabel,
                         color = if (selected) colors.accent else colors.textDim,
                     )
                 }
