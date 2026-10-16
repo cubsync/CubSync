@@ -29,6 +29,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -317,6 +323,39 @@ private fun DisplayBar(state: AndroidAppState) {
     }
 }
 
+
+/**
+ * 条目缩放的手势：双指捏合连续调，双击复位 100%。
+ *
+ * 只在**两指**时接管事件。单指的拖动留给列表滚动、单击留给行 —— 一个无条件的
+ * transform 检测器会把这两件事一起吃掉，那是比缺少手势更糟的 bug。
+ */
+@Composable
+private fun Modifier.itemScaleGestures(state: AndroidAppState): Modifier = this
+    .pointerInput(Unit) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false)
+            while (true) {
+                val event = awaitPointerEvent()
+                if (event.changes.none { it.pressed }) break
+                val zoom = event.calculateZoom()
+                val pan = event.calculatePan()
+                val twoFingers = event.changes.count { it.pressed } >= 2
+                if (twoFingers && (zoom != 1f || pan != Offset.Zero)) {
+                    event.changes.forEach { it.consume() }
+                    if (zoom != 1f) {
+                        state.changeSettings { it.itemScale = ItemScale.zoomBy(it.itemScale, zoom) }
+                    }
+                }
+            }
+        }
+    }
+    .pointerInput(Unit) {
+        detectTapGestures(onDoubleTap = {
+            state.changeSettings { it.itemScale = ItemScale.DEFAULT }
+        })
+    }
+
 // ------------------------------------------------------------------------ pane
 
 @Composable
@@ -330,7 +369,7 @@ private fun Pane(state: AndroidAppState, side: Side, pane: PaneState, modifier: 
         modifier.fillMaxHeight().background(if (active) colors.accent.copy(alpha = 0.05f) else Color.Transparent),
     ) {
         PaneHeader(state, side, pane, active)
-        Box(Modifier.weight(1f).fillMaxWidth()) {
+        Box(Modifier.weight(1f).fillMaxWidth().itemScaleGestures(state)) {
             when {
                 pane.error.isNotEmpty() -> EmptyState("读不了这个文件夹", pane.error)
                 pane.entries.isEmpty() && !pane.loading ->

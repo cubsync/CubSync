@@ -1,5 +1,6 @@
 package io.github.cubsync.service
 
+import kotlin.math.roundToInt
 import io.github.cubsync.core.protocol.Capabilities
 
 /**
@@ -303,6 +304,22 @@ object ItemScale {
 
     /** How much a panel action moves it. */
     const val STEP = 10
+
+    /**
+     * What a pinch does to the current value.
+     *
+     * [factor] is the gesture's own scale delta: 1.0 means unchanged, 1.05 means five per
+     * cent bigger. Multiplicative rather than additive, because that is what a gesture
+     * feels like — the same finger movement changes the size by the same proportion
+     * whether the rows are already large or small.
+     *
+     * The arithmetic lives here, away from the gesture handler, because it is the part a
+     * test can reach. The handler around it is a thin shell.
+     */
+    fun zoomBy(current: Int, factor: Float): Int {
+        if (!factor.isFinite() || factor <= 0f) return clamp(current)
+        return clamp((current * factor).roundToInt())
+    }
 }
 
 /** 列数: the shortcuts on the expand bar, and the range a typed value may take. */
