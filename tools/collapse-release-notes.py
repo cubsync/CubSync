@@ -5,20 +5,23 @@ A release page exists to hand somebody a file, and the notes sit above the downl
 release with a lot to say is exactly the release where "a lot to say" pushes the download
 link below the fold — so the notes ship closed and the reader opens the language they read.
 
-Two levels, and they behave differently on purpose:
+**One level collapses: the language.** The sections inside it are ordinary headings, and the
+reader who opened a language gets the whole thing at once.
 
-* the **language** block starts closed, because that is the scroll nobody wants;
-* each **section** inside starts open, because a reader who has chosen a language has
-  chosen to read it, and a second round of clicking is a second round of work.
+Sections used to collapse too, each one `<details open>` inside the language block. That was
+dropped, for a reason that is GitHub's and not a taste: a nested `<details>` gets no
+indentation. Its arrow sits at the same x as its parent's, so the two levels read as one
+level, and the only way to fake the indent is to wrap the inner block in a blockquote and
+live with the vertical rule it draws. On top of that the sections opened by default, so the
+second level of disclosure was a control that never had anything to disclose — the same
+content, one click more fragile.
 
-The section headings are drawn as real headings (`h4`, `h5`, …) inside their `<summary>`,
-keeping the depth the file already had. Wrapping them in `<b>` — which the first version of
-this script did — made a `##` and an `h4` look identical, which is what "你好像没排版" was
-about: the notes had lost their outline.
-
-The **language** label is a real heading as well, one level above the sections. It has to be
-the bigger of the two: with a plain `<b>` on the label and `h3` on the sections, the child
-rendered larger than its parent.
+The section headings are drawn as real headings, one level below the language label
+(`h4`, `h5`, …), keeping the depth the file already had. Wrapping them in `<b>` — which the
+first version of this script did — made a `##` and an `h4` look identical, which is what
+"你好像没排版" was about: the notes had lost their outline. The language label is a real
+heading too, one level above: with a plain `<b>` on the label and `h3` on the sections, the
+child rendered larger than its parent.
 
     python tools/collapse-release-notes.py docs/releases/v0.4.0.md
 
@@ -36,8 +39,8 @@ RULE = re.compile(r"^-{3,}\s*$")
 LANGUAGE_WORDS = {"english", "中文", "说明", "中文说明"}
 
 
-def section_details(text: str) -> str:
-    """One `<details open>` per heading, with the heading kept as a heading."""
+def section_headings(text: str) -> str:
+    """Keep every heading a heading, one level below the language label, nothing collapsed."""
     blocks: list[tuple[str | None, int, list[str]]] = []
     title: str | None = None
     depth = 0
@@ -64,11 +67,8 @@ def section_details(text: str) -> str:
             if inner:
                 rendered.append(inner)
             continue
-        tag = "h%d" % min(6, 4 + (level - top))
-        rendered.append(
-            "<details open>\n<summary><%s>%s</%s></summary>\n\n%s\n\n</details>"
-            % (tag, heading, tag, inner)
-        )
+        hashes = "#" * min(6, 4 + (level - top))
+        rendered.append("%s %s\n\n%s" % (hashes, heading, inner))
     return "\n\n".join(rendered)
 
 
@@ -97,13 +97,15 @@ def collapse(path: pathlib.Path) -> bool:
             count=1,
             flags=re.M | re.I,
         )
-        body = section_details(half.strip("\n"))
+        body = section_headings(half.strip("\n"))
         if body:
             parts.append(
                 "<details>\n<summary><h3>%s</h3></summary>\n\n%s\n\n</details>" % (label, body)
             )
 
-    path.write_text("\n\n".join(parts) + "\n", encoding="utf-8")
+    # `.gitattributes` says `*.md text eol=lf`, so write LF even on Windows rather than
+    # letting the platform default put CRLF in the working tree.
+    path.write_text("\n\n".join(parts) + "\n", encoding="utf-8", newline="\n")
     return True
 
 
