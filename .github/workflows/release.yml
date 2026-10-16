@@ -11,6 +11,13 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# One run per tag at a time. The two jobs below both need the release to exist before
+# they can upload to it, and "does it exist" is a question whose answer changes while
+# the other job is asking it.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -88,21 +95,34 @@ jobs:
           #
           # The guard asks the API rather than `gh release view`, because a draft is
           # invisible to the latter and a second run would try to create it again.
-          if ! gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            if [ -f "$NOTES" ]; then
-              gh release create "$GITHUB_REF_NAME" \
-                --title "CubSync ${GITHUB_REF_NAME#v}" \
-                --notes-file "$NOTES" \
-                --draft
-            else
-              # A tag with no notes still gets a release, so the artefacts are never
-              # orphaned.
-              gh release create "$GITHUB_REF_NAME" \
-                --title "CubSync ${GITHUB_REF_NAME#v}" \
-                --generate-notes \
-                --draft
-            fi
-          fi
+          # Idempotent on purpose: both jobs in this workflow need the release to exist,
+          # they run at the same time, and whoever loses the race gets "already exists"
+          # rather than a second release. Asking first, then tolerating the failure and
+          # asking again, is what makes that a race rather than a bug — it produced two
+          # drafts for v0.3.5 before it looked like this.
+          ensure_release() {
+            for attempt in 1 2 3 4 5; do
+              if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" >/dev/null 2>&1; then
+                return 0
+              fi
+              if [ -f "$NOTES" ]; then
+                gh release create "$GITHUB_REF_NAME" \
+                  --title "CubSync ${GITHUB_REF_NAME#v}" \
+                  --notes-file "$NOTES" \
+                  --draft 2>/dev/null && return 0
+              else
+                # A tag with no notes still gets a release, so the artefacts are never
+                # orphaned.
+                gh release create "$GITHUB_REF_NAME" \
+                  --title "CubSync ${GITHUB_REF_NAME#v}" \
+                  --generate-notes \
+                  --draft 2>/dev/null && return 0
+              fi
+              sleep 3
+            done
+            return 1
+          }
+          ensure_release
           gh release upload "$GITHUB_REF_NAME" \
             app/desktop/build/compose/binaries/main/msi/*.msi \
             CubSync-*-windows-x64.zip \
@@ -165,21 +185,34 @@ jobs:
           #
           # The guard asks the API rather than `gh release view`, because a draft is
           # invisible to the latter and a second run would try to create it again.
-          if ! gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            if [ -f "$NOTES" ]; then
-              gh release create "$GITHUB_REF_NAME" \
-                --title "CubSync ${GITHUB_REF_NAME#v}" \
-                --notes-file "$NOTES" \
-                --draft
-            else
-              # A tag with no notes still gets a release, so the artefacts are never
-              # orphaned.
-              gh release create "$GITHUB_REF_NAME" \
-                --title "CubSync ${GITHUB_REF_NAME#v}" \
-                --generate-notes \
-                --draft
-            fi
-          fi
+          # Idempotent on purpose: both jobs in this workflow need the release to exist,
+          # they run at the same time, and whoever loses the race gets "already exists"
+          # rather than a second release. Asking first, then tolerating the failure and
+          # asking again, is what makes that a race rather than a bug — it produced two
+          # drafts for v0.3.5 before it looked like this.
+          ensure_release() {
+            for attempt in 1 2 3 4 5; do
+              if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" >/dev/null 2>&1; then
+                return 0
+              fi
+              if [ -f "$NOTES" ]; then
+                gh release create "$GITHUB_REF_NAME" \
+                  --title "CubSync ${GITHUB_REF_NAME#v}" \
+                  --notes-file "$NOTES" \
+                  --draft 2>/dev/null && return 0
+              else
+                # A tag with no notes still gets a release, so the artefacts are never
+                # orphaned.
+                gh release create "$GITHUB_REF_NAME" \
+                  --title "CubSync ${GITHUB_REF_NAME#v}" \
+                  --generate-notes \
+                  --draft 2>/dev/null && return 0
+              fi
+              sleep 3
+            done
+            return 1
+          }
+          ensure_release
           # The debug APK rather than a release build: a signed release needs a
           # keystore, and a keystore is a decision about distribution rather than a
           # build step. A debug APK sideloads normally in the meantime.
