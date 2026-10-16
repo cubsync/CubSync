@@ -79,17 +79,28 @@ jobs:
           # placeholder while the real file sits in the repository is how a release page
           # ends up saying nothing.
           NOTES="docs/releases/$GITHUB_REF_NAME.md"
-          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+          # A draft, not an announcement.
+          #
+          # A tag here means "here is a build to look at", and the person looking at it is
+          # the one who decides whether it is a release. A draft keeps the tag, keeps the
+          # artefacts downloadable, and stays off the public releases list until somebody
+          # publishes it — which is a decision rather than a side effect of pushing a tag.
+          #
+          # The guard asks the API rather than `gh release view`, because a draft is
+          # invisible to the latter and a second run would try to create it again.
+          if ! gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" >/dev/null 2>&1; then
             if [ -f "$NOTES" ]; then
               gh release create "$GITHUB_REF_NAME" \
                 --title "CubSync ${GITHUB_REF_NAME#v}" \
-                --notes-file "$NOTES"
+                --notes-file "$NOTES" \
+                --draft
             else
               # A tag with no notes still gets a release, so the artefacts are never
               # orphaned.
               gh release create "$GITHUB_REF_NAME" \
                 --title "CubSync ${GITHUB_REF_NAME#v}" \
-                --generate-notes
+                --generate-notes \
+                --draft
             fi
           fi
           gh release upload "$GITHUB_REF_NAME" \
@@ -145,17 +156,28 @@ jobs:
           # placeholder while the real file sits in the repository is how a release page
           # ends up saying nothing.
           NOTES="docs/releases/$GITHUB_REF_NAME.md"
-          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+          # A draft, not an announcement.
+          #
+          # A tag here means "here is a build to look at", and the person looking at it is
+          # the one who decides whether it is a release. A draft keeps the tag, keeps the
+          # artefacts downloadable, and stays off the public releases list until somebody
+          # publishes it — which is a decision rather than a side effect of pushing a tag.
+          #
+          # The guard asks the API rather than `gh release view`, because a draft is
+          # invisible to the latter and a second run would try to create it again.
+          if ! gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" >/dev/null 2>&1; then
             if [ -f "$NOTES" ]; then
               gh release create "$GITHUB_REF_NAME" \
                 --title "CubSync ${GITHUB_REF_NAME#v}" \
-                --notes-file "$NOTES"
+                --notes-file "$NOTES" \
+                --draft
             else
               # A tag with no notes still gets a release, so the artefacts are never
               # orphaned.
               gh release create "$GITHUB_REF_NAME" \
                 --title "CubSync ${GITHUB_REF_NAME#v}" \
-                --generate-notes
+                --generate-notes \
+                --draft
             fi
           fi
           # The debug APK rather than a release build: a signed release needs a

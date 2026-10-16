@@ -36,6 +36,27 @@
 10. **Confirm.** `gh release view v0.2.0` and `git rev-parse v0.2.0^{commit}` — the
     tag must point at the release commit and be an ancestor of `main`.
 
+## A tag publishes a draft, not a release
+
+Pushing `v*` runs the release workflow, which builds the MSI, the portable zip and the APK
+and attaches all three to a **draft** release for that tag. The tag exists, the artefacts
+are downloadable by whoever is reviewing the build, and the page stays off the public
+releases list until somebody publishes it.
+
+The reason is that "the build succeeded" and "this is ready to hand to a user" are two
+different judgements, and only the second one is a decision. Making a tag publish
+immediately collapses them: every commit worth building becomes an announcement, and the
+releases page stops saying which versions anybody has actually accepted.
+
+So the loop is: tag → CI builds a draft → the draft is reviewed → `gh release edit <tag>
+--draft=false` publishes it. Nothing else about the workflow changes; the artefacts are
+attached either way, and `gh release view <tag>` still finds a draft if you ask for it by
+name.
+
+A tag on its own — without a release — gives only GitHub's generated `Source code` archives,
+which are the repository, not the product. That is why the workflow creates the draft rather
+than stopping at the tag.
+
 ## Release notes are bilingual
 
 The notes live in `docs/releases/<tag>.md`: Chinese first, then a horizontal rule and
