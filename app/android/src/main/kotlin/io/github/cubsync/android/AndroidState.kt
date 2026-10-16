@@ -163,6 +163,15 @@ class AndroidAppState(
             logs = if (next.size > LOG_LIMIT) next.takeLast(LOG_LIMIT) else next
         }
         peerDraft = service.settings.lastPeer
+
+        // 启动服务端 needs something to serve, and a phone that has never been told where
+        // its folders are would answer "choose at least one folder to share" to its owner
+        // with no way to comply. The one folder every phone has is seeded instead, and
+        // 抽屉 → 根 is where it is changed.
+        if (service.settings.sharedRoots.isEmpty()) {
+            usableRoot()?.let { service.settings.sharedRoots = listOf(it) }
+        }
+        rootDraft = service.settings.sharedRoots
         rootDraft = service.settings.sharedRoots
     }
 
@@ -190,6 +199,21 @@ class AndroidAppState(
         tab = target
         route = Route.Tabs
         drawerOpen = false
+        if (target == Section.TRANSFER) openSomethingToLookAt()
+    }
+
+    /**
+     * 传输 opens on something real rather than on `/`.
+     *
+     * A pane on an empty path is not a starting state, it is one that reads 这个文件夹是空的
+     * and looks broken. Done on the way in rather than in the constructor, so that the scan
+     * cannot race one the caller asked for.
+     */
+    private fun openSomethingToLookAt() {
+        if (service.browsing.current(Side.LEFT).path.isNotBlank()) return
+        (rootDraft.firstOrNull() ?: usableRoot())?.let {
+            service.browsing.open(Side.LEFT, EndpointId.LOCAL, it)
+        }
     }
 
     fun open(route: Route) {
@@ -360,6 +384,20 @@ class AndroidAppState(
      * engine works in paths, so a suggestion somebody can correct beats a picker that
      * produces something the engine cannot open.
      */
+    /**
+     * The folder this phone offers when nobody has chosen one.
+     *
+     * 启动服务端 with nothing selected is a button that always fails, which is what the
+     * first cut of this screen shipped. On a real device this is the shared storage the
+     * phone already shows in every file manager; when even that is absent — a test runner,
+     * a device with no external storage — the application's own directory stands in.
+     */
+    fun usableRoot(): String? = listOf(
+        "/storage/emulated/0",
+        "/sdcard",
+        appDirectory.absolutePath,
+    ).firstOrNull { runCatching { File(it).isDirectory }.getOrDefault(false) }
+
     fun localRoots(): List<String> {
         val shared = service.settings.sharedRoots
         val common = listOf(

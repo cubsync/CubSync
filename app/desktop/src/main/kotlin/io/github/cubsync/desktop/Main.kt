@@ -25,6 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import java.awt.Dimension
+import java.awt.MouseInfo
 import java.awt.Point
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -91,14 +92,34 @@ fun main(arguments: Array<String>) {
             val revision = state.settingsRevision
             val mode = if (revision >= 0) state.liveSettings.theme else ThemeMode.DARK
 
+            // Dragging reads the pointer's *screen* position rather than the drag delta.
+            //
+            // The delta is measured inside this composable, so the moment the window moves
+            // the pointer's local coordinates change by the same amount the window did —
+            // which feeds the movement back in and walks the window off the screen. The
+            // screen position does not move when the window does, so it has no such loop.
             val drag = Modifier
                 .pointerInput(Unit) {
-                    detectDragGestures { change, amount ->
+                    var grabbedAt: java.awt.Point? = null
+                    var windowAt: java.awt.Point? = null
+                    detectDragGestures(
+                        onDragStart = {
+                            grabbedAt = MouseInfo.getPointerInfo()?.location
+                            windowAt = window.location
+                        },
+                        onDragEnd = { grabbedAt = null; windowAt = null },
+                        onDragCancel = { grabbedAt = null; windowAt = null },
+                    ) { change, _ ->
                         change.consume()
-                        window.location = Point(
-                            window.x + amount.x.toInt(),
-                            window.y + amount.y.toInt(),
-                        )
+                        val pointer = MouseInfo.getPointerInfo()?.location
+                        val from = windowAt
+                        val start = grabbedAt
+                        if (pointer != null && from != null && start != null) {
+                            window.location = Point(
+                                from.x + pointer.x - start.x,
+                                from.y + pointer.y - start.y,
+                            )
+                        }
                     }
                 }
                 .pointerInput(Unit) {

@@ -290,6 +290,10 @@ private fun Drawer(state: AndroidAppState) {
                     .width(282.dp)
                     .fillMaxSize()
                     .background(colors.surface)
+                    // The prototype draws its drawer under a 34px status strip; on a phone
+                    // that strip is the real one, so the drawer keeps clear of it too.
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .windowInsetsPadding(WindowInsets.navigationBars)
                     .verticalScroll(rememberScrollState())
                     .padding(vertical = 16.dp),
             ) {

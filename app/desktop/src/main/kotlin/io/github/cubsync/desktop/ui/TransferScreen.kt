@@ -61,6 +61,8 @@ import io.github.cubsync.service.Side
 import io.github.cubsync.service.SortKey
 import io.github.cubsync.service.Words
 import io.github.cubsync.service.resolveDirection
+import io.github.cubsync.service.fileIcon
+import io.github.cubsync.service.viewIcon
 
 /**
  * 传输: two panes, a display menu that acts on the pane you touched last, and the arrow
@@ -85,10 +87,10 @@ fun TransferScreen(state: AppState) {
     val sideBySide = direction == PaneDirection.SIDE_BY_SIDE
 
     Column(Modifier.fillMaxSize()) {
-        SubRow(state, left, right, busy)
-        if (settings.displayBarOpen) {
-            DisplayBar(state)
-        }
+        // The prototype's transfer screen has no sub-row and no standing display bar: the
+        // three verbs are on `.chead .acts`, and 显示方式 opens a drop-down from there. Both
+        // were added here and both are gone, because a screen with two ways to reach one
+        // control is a screen with one control too many.
         HorizontalDivider(color = colors.outline)
 
         if (sideBySide) {
@@ -118,11 +120,11 @@ fun TransferScreen(state: AppState) {
  */
 @Composable
 fun TransferHeadActions(state: AppState) {
-    val settings = state.liveSettings
-    QuietButton("显示方式：${settings.defaultDisplayMode.label} ▾") {
-        settings.displayBarOpen = !settings.displayBarOpen
-        state.touchBrowsing()
-    }
+    // The prototype's `.btn.bview`: the current mode on the button, and the five modes plus
+    // their parameters in a drop-down. There is no standing display bar — that was added
+    // here and is gone, because the design keeps this control in one place.
+    val active = state.browsing.prefsOf(state.liveSettings.activeSide)
+    QuietButton("显示方式：${active.displayMode.label} ▾") { state.displayMenu = true }
     QuietButton(Words.NEW_FOLDER) { state.newFolder(state.liveSettings.activeSide) }
     QuietButton("同步…") { state.goTo(Section.SYNC) }
 }
@@ -532,11 +534,12 @@ private fun RowLine(
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            if (entry.isDirectory) "​" else "​",
-            style = CubType.meta,
-            color = colors.textFaint,
-            modifier = Modifier.width(14.dp),
+        // `.drow .ico`: folder, image, video or document, before the name.
+        CubIcon(
+            fileIcon(Browsing.name(entry.relPath), entry.isDirectory),
+            size = 15,
+            tint = if (entry.isDirectory) colors.textDim else colors.textFaint,
+            modifier = Modifier.width(20.dp),
         )
         Text(
             Browsing.name(entry.relPath),
@@ -701,28 +704,54 @@ private fun TransferArrow(state: AppState, left: PaneState, right: PaneState, bu
     val movableRight = left.selection.isNotEmpty() || left.entries.isNotEmpty()
     val movableLeft = right.selection.isNotEmpty() || right.entries.isNotEmpty()
 
+    // The prototype's `.midbar`: `→` sends to the far pane and `←` brings back, and
+    // nothing else. Drawn as a narrow strip so it reads as belonging to neither pane,
+    // which two bare buttons between them did not.
     if (horizontal) {
         Column(
-            Modifier.width(84.dp).fillMaxHeight().padding(top = 70.dp),
+            Modifier
+                .width(46.dp)
+                .fillMaxHeight()
+                .background(colors.surfaceSunken),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("已选 ${left.selection.size + right.selection.size}", style = CubType.meta, color = colors.textFaint)
-            Spacer(Modifier.height(6.dp))
-            QuietButton("送过去", enabled = !busy && movableRight) { state.transfer(Side.LEFT) }
-            Spacer(Modifier.height(2.dp))
-            QuietButton("取回来", enabled = !busy && movableLeft) { state.transfer(Side.RIGHT) }
-            Spacer(Modifier.height(10.dp))
-            Text("两端", style = CubType.meta, color = colors.textFaint)
+            Spacer(Modifier.height(72.dp))
+            IconButton(
+                IconPaths.ARROW_RIGHT,
+                size = 30,
+                mark = 16,
+                enabled = !busy && movableRight,
+            ) { state.transfer(Side.LEFT) }
+            Spacer(Modifier.height(8.dp))
+            IconButton(
+                IconPaths.ARROW_LEFT,
+                size = 30,
+                mark = 16,
+                enabled = !busy && movableLeft,
+            ) { state.transfer(Side.RIGHT) }
         }
     } else {
         Row(
-            Modifier.fillMaxWidth().height(40.dp),
+            Modifier
+                .fillMaxWidth()
+                .height(40.dp)
+                .background(colors.surfaceSunken),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            QuietButton("取回来", enabled = !busy && movableLeft) { state.transfer(Side.RIGHT) }
-            Text("  传输方向  ", style = CubType.meta, color = colors.textFaint)
-            QuietButton("送过去", enabled = !busy && movableRight) { state.transfer(Side.LEFT) }
+            IconButton(
+                IconPaths.ARROW_RIGHT,
+                size = 30,
+                mark = 16,
+                enabled = !busy && movableRight,
+            ) { state.transfer(Side.LEFT) }
+            Spacer(Modifier.width(16.dp))
+            IconButton(
+                IconPaths.ARROW_LEFT,
+                size = 30,
+                mark = 16,
+                enabled = !busy && movableLeft,
+            ) { state.transfer(Side.RIGHT) }
         }
     }
 }
@@ -790,8 +819,9 @@ private fun Overlays(state: AppState) {
     val paneMenu = state.paneMenu
     val sheet = state.actionSheet
     val detail = state.detailOf
+    val displayMenu = state.displayMenu
 
-    if (paneMenu == null && sheet == null && detail == null) return
+    if (paneMenu == null && sheet == null && detail == null && !displayMenu) return
 
     Box(Modifier.fillMaxSize()) {
         Scrim {
@@ -799,12 +829,135 @@ private fun Overlays(state: AppState) {
             state.actionSheet = null
             state.detailOf = null
             state.renaming = null
+            state.displayMenu = false
+        }
+        if (displayMenu) {
+            // Anchored where the prototype anchors it: under the button that opened it, at
+            // the right end of the heading — which is where that button is.
+            Box(Modifier.fillMaxSize().padding(top = 112.dp, end = 22.dp), contentAlignment = Alignment.TopEnd) {
+                DisplayModeMenuCard(state)
+            }
         }
         Box(Modifier.fillMaxSize().padding(40.dp), contentAlignment = Alignment.Center) {
             when {
                 paneMenu != null -> PaneMenuCard(state, paneMenu.side)
                 sheet != null -> ActionSheetCard(state, sheet.side, sheet.name, sheet.isDirectory)
                 detail != null -> DetailCard(state, detail.first, detail.second)
+            }
+        }
+    }
+}
+
+/**
+ * 显示方式, as the prototype draws it: a drop-down from the heading.
+ *
+ * Five modes each behind its own mark, then 行密度, then 列数 when the mode has columns,
+ * then 分栏方向. The marks come from `IconPaths.VIEW_*`, which are the prototype's
+ * `⋮≡ ☰ ▤ ▦ ⇄` drawn as paths — a menu of five words where the design has five pictures is
+ * the kind of difference that makes two interfaces stop looking like one product.
+ */
+@Composable
+private fun DisplayModeMenuCard(state: AppState) {
+    val colors = CubTheme.colors
+    val settings = state.liveSettings
+    val side = settings.activeSide
+    val prefs = state.browsing.prefsOf(side)
+    val paneName = if (side == Side.LEFT) Words.LOCAL_PANE else Words.REMOTE_PANE
+
+    FloatingCard(width = 330) {
+        FloatingHeader("显示方式 · 作用于$paneName（高亮那栏）") { state.displayMenu = false }
+
+        Block("") {
+            for (mode in DisplayMode.entries) {
+                val active = prefs.displayMode == mode
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable {
+                            state.setDisplayMode(side, mode)
+                            state.touchBrowsing()
+                        }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CubIcon(
+                        viewIcon(mode),
+                        size = 16,
+                        tint = if (active) colors.accent else colors.textDim,
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        mode.label,
+                        style = CubType.body,
+                        color = if (active) colors.accent else colors.text,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (active) CubIcon(IconPaths.CHECK, size = 14, tint = colors.accent)
+                }
+            }
+        }
+
+        Block("行密度") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                StepperField(
+                    value = settings.rowDensity,
+                    onChange = { value -> state.changeSettings { s -> s.rowDensity = Density.clamp(value) } },
+                    canDecrease = Density.canDecrease(settings.rowDensity),
+                    canIncrease = Density.canIncrease(settings.rowDensity),
+                    step = Density.STEP,
+                    suffix = "%",
+                )
+                Spacer(Modifier.width(10.dp))
+                Text("100% ＝出厂行高，50–250", style = CubType.tiny, color = colors.textFaint)
+            }
+        }
+
+        if (prefs.displayMode.hasColumns) {
+            Block("${prefs.displayMode.label} · 列数") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    for (count in Columns.SHORTCUTS) {
+                        QuietButton(count.toString()) {
+                            state.changeSettings { s -> s.columns = count }
+                            state.touchBrowsing()
+                        }
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    StepperField(
+                        value = settings.columns,
+                        onChange = { value ->
+                            state.changeSettings { s -> s.columns = Columns.clamp(value) }
+                            state.touchBrowsing()
+                        },
+                        canDecrease = settings.columns > Columns.MIN,
+                        canIncrease = settings.columns < Columns.MAX,
+                        fieldWidth = 30,
+                    )
+                }
+            }
+        }
+
+        Block("分栏方向 · 本窗口") {
+            for ((option, note) in listOf(
+                PaneDirection.AUTO to "宽 ≥ 高 时左右，否则上下",
+                PaneDirection.SIDE_BY_SIDE to "左栏${Words.LOCAL} · 右栏${Words.REMOTE}",
+                PaneDirection.STACKED to "上排${Words.LOCAL} · 下排${Words.REMOTE}",
+            )) {
+                val active = settings.paneDirection == option
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { state.changeSettings { s -> s.paneDirection = option } }
+                        .padding(horizontal = 8.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    StatusDot(if (active) colors.accent else colors.textFaint, size = 7)
+                    Spacer(Modifier.width(9.dp))
+                    Text(option.label, style = CubType.body, color = colors.text)
+                    Spacer(Modifier.weight(1f))
+                    Text(note, style = CubType.tiny, color = colors.textFaint)
+                }
             }
         }
     }

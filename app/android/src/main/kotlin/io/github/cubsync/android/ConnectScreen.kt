@@ -127,17 +127,12 @@ fun ConnectScreen(state: AndroidAppState) {
                 }
             }
 
-            SectionLabel("账户与连接状态")
+            // The prototype's 连接 screen stops after the two buttons and 最近. An
+            // 账户与连接状态 card was added here; accounts are a thing the drawer already
+            // lists, and a screen that says the same thing twice is a screen with one
+            // section too many.
+            SectionLabel("最近")
             Panel(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-                CardRow(
-                    title = "本机 · ${settings.serverNodeName.ifEmpty { Peers.local().name }}",
-                    detail = if (server.running) {
-                        "服务端运行中 · 端口 ${server.port} · 共享 ${server.roots.size} 个文件夹"
-                    } else {
-                        "服务端未启动 · 共享 ${state.rootDraft.size} 个文件夹"
-                    },
-                    icon = IconPaths.SHARE,
-                )
                 for (peer in state.peers) {
                     CardRow(
                         title = peer.nodeName.ifEmpty { peer.backendId },
@@ -171,7 +166,6 @@ fun ConnectScreen(state: AndroidAppState) {
                 }
             }
 
-            SectionLabel("最近")
             Panel(Modifier.fillMaxWidth().padding(horizontal = 12.dp), outlined = true) {
                 if (state.jobs.isEmpty()) {
                     CardDesc("还没有跑过同步。")

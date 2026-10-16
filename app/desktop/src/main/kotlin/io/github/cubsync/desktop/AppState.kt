@@ -123,6 +123,9 @@ class AppState(
     var drawerOpen by mutableStateOf(false)
     var displayBarOpen by mutableStateOf(false)
     var paneMenu by mutableStateOf<PaneMenu?>(null)
+
+    /** The 显示方式 drop-down on the transfer heading. */
+    var displayMenu by mutableStateOf(false)
     var actionSheet by mutableStateOf<ActionSheet?>(null)
     var editingAddress by mutableStateOf<Side?>(null)
     var renaming by mutableStateOf<String?>(null)
@@ -157,6 +160,12 @@ class AppState(
             logs = if (next.size > LOG_LIMIT) next.takeLast(LOG_LIMIT) else next
         }
         peerDraft = service.settings.lastPeer
+        // A server with nothing shared cannot be started, so the first run seeds the list
+        // with the one folder every machine has. 添加文件夹 changes it afterwards; the
+        // point is that 启动服务端 works before anybody has been taught where to click.
+        if (service.settings.sharedRoots.isEmpty()) {
+            localRoots().firstOrNull()?.let { service.settings.sharedRoots = listOf(it) }
+        }
         rootDraft = service.settings.sharedRoots
     }
 
@@ -179,6 +188,21 @@ class AppState(
 
     fun goTo(target: Section) {
         section = target
+        if (target == Section.TRANSFER) openSomethingToLookAt()
+    }
+
+    /**
+     * 传输 opens on something real.
+     *
+     * Done when the screen is first shown rather than in the constructor: opening a pane
+     * starts a directory scan, and a scan the window did not ask for is a scan that can
+     * race the one it did. An empty address is not a starting state — it is a pane that
+     * looks broken, which is what the first screenshot of 0.3.3 showed — so this runs
+     * exactly once, on the way in.
+     */
+    private fun openSomethingToLookAt() {
+        if (service.browsing.current(Side.LEFT).path.isNotBlank()) return
+        localRoots().firstOrNull()?.let { service.browsing.open(Side.LEFT, EndpointId.LOCAL, it) }
     }
 
     fun selectConfig(configId: String?) {
@@ -567,6 +591,12 @@ class AppState(
                 peers = peers.filterNot { it.backendId == session.backendId } + session
                 service.settings.lastPeer = text
                 settingsRevision++
+                // The far end just said which folders it offers; the right pane opens on one
+                // of them, because a pane that stays empty after a successful handshake
+                // reads as a failed handshake.
+                session.roots.firstOrNull()?.let { root ->
+                    service.browsing.open(Side.RIGHT, session.backendId, root)
+                }
                 notify("已连接 ${session.nodeName}", NoticeKind.SUCCESS)
             } catch (failure: Throwable) {
                 peerError = failure.message ?: "连接失败"
