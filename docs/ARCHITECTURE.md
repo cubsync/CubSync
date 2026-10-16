@@ -69,6 +69,33 @@ Moving the screens into a shared module means converting `core`, `backends/local
 is a worthwhile change and a separate one. Until then the rule is: behaviour in
 `service`, pixels per platform, and the same words in both.
 
+### The words, and the rules about where a change lands
+
+Two files in `service` exist for the same reason: there were about to be two interfaces.
+
+`UiSpec` holds every visible word, every list of steps, and every default — the five display
+modes, the three pane directions, the three 作用范围 scopes, the bounds on row density and
+column count, the thirteen rows of a job's detail. A front end chooses how to draw them and
+not what they say. This is not tidiness: the design's consistency table says the two ends
+must use one name for one thing, and two copies of a list is how that stops being true
+without anybody deciding it should.
+
+`AppSettings` holds the settings screen's contents *and* the rule for how far a change
+reaches:
+
+```
+current folder  >  this pane  >  both panes  >  factory default
+```
+
+That rule is implemented here, once, because "I changed it and nothing happened" is what
+happens when each screen implements its own version of it. Writing at 本栏全局 clears this
+pane's per-folder record, or the more specific old value keeps winning; writing at 两栏共用
+clears both panes' narrower layers in both directions, or the change looks like it only
+reached one pane.
+
+Platforms supply only the store: a `.properties` file on the desktop, `SharedPreferences`
+on a phone, the same string keys either way.
+
 ## The three decisions worth knowing
 
 **Backends are an interface, not a protocol.** `RemoteBackend` exposes list, stat,

@@ -229,6 +229,39 @@ class FolderBrowserTest {
         assertEquals("/", session.left.value.path, "the root is its own parent")
     }
 
+    @Test
+    fun a_new_folder_is_created_and_a_second_one_does_not_overwrite_it() = runBlocking {
+        val dir = tempDir("mkdir-")
+        val session = BrowserSession(FolderBrowser(pool()), CoroutineScope(Dispatchers.IO + SupervisorJob()))
+        session.open(Side.LEFT, EndpointId.LOCAL, dir.toAbsolutePath().toString().replace('\\', '/'))
+        awaitUntil("the folder to list") { !session.left.value.loading }
+
+        session.makeFolder(Side.LEFT)
+        awaitUntil("the first folder") { Files.list(dir).use { it.count() } == 1L }
+        session.makeFolder(Side.LEFT)
+        awaitUntil("the second folder") { Files.list(dir).use { it.count() } == 2L }
+
+        val names = Files.list(dir).use { stream -> stream.map { it.fileName.toString() }.toList() }
+        assertEquals(2, names.toSet().size, "the second folder must not reuse the first one's name")
+    }
+
+    @Test
+    fun a_deleted_row_goes_to_the_trash_and_a_renamed_one_keeps_its_content() = runBlocking {
+        val dir = tempDir("edit-")
+        Files.write(dir.resolve("draft.txt"), "draft".toByteArray())
+        val session = BrowserSession(FolderBrowser(pool()), CoroutineScope(Dispatchers.IO + SupervisorJob()))
+        session.open(Side.LEFT, EndpointId.LOCAL, dir.toAbsolutePath().toString().replace('\\', '/'))
+        awaitUntil("the file to list") { session.left.value.entries.any { it.relPath == "draft.txt" } }
+
+        session.renameEntry(Side.LEFT, "draft.txt", "final.txt")
+        awaitUntil("the rename") { Files.exists(dir.resolve("final.txt")) }
+        assertEquals("draft", Files.readAllBytes(dir.resolve("final.txt")).decodeToString())
+
+        session.delete(Side.LEFT, listOf("final.txt"), toTrash = true)
+        awaitUntil("the delete") { !Files.exists(dir.resolve("final.txt")) }
+        assertTrue(Files.isDirectory(dir.resolve(".cub_trash")), "the default delete has to be recoverable")
+    }
+
     private suspend fun awaitUntil(what: String, timeoutMs: Long = 20_000, condition: () -> Boolean) {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {

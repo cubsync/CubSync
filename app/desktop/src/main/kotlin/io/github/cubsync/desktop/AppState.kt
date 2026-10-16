@@ -11,34 +11,42 @@ import io.github.cubsync.core.model.FolderPair
 import io.github.cubsync.core.model.Ids
 import io.github.cubsync.core.model.SyncConfig
 import io.github.cubsync.core.protocol.Protocol
+import io.github.cubsync.service.AppSettings
 import io.github.cubsync.service.ConfigStore
+import io.github.cubsync.service.DisplayMode
+import io.github.cubsync.service.DrawerModel
 import io.github.cubsync.service.EndpointId
+import io.github.cubsync.service.Favorite
 import io.github.cubsync.service.Format
+import io.github.cubsync.service.JobDetails
+import io.github.cubsync.service.JobDetailsFactory
 import io.github.cubsync.service.JobRecord
 import io.github.cubsync.service.LogEntry
 import io.github.cubsync.service.LogLevel
 import io.github.cubsync.service.PathTools
 import io.github.cubsync.service.PeerSession
+import io.github.cubsync.service.Scope
+import io.github.cubsync.service.Section
 import io.github.cubsync.service.ServerController
 import io.github.cubsync.service.ServerState
+import io.github.cubsync.service.Side
 import io.github.cubsync.service.SyncObserver
+import io.github.cubsync.service.SyncPreview
 import io.github.cubsync.service.SyncService
+import io.github.cubsync.service.Words
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-enum class Section(val label: String, val hint: String) {
-    CONNECT("连接", "共享本机文件夹，或连上另一台设备"),
-    TRANSFER("传输", "两栏对照，把选中的东西送过去"),
-    SYNC("同步", "配置要同步的文件夹对，然后运行"),
-    JOBS("作业", "每次运行的结果与明细"),
-    LOGS("日志", "连接、比较、写入的实时记录"),
-    SETTINGS("设置", "状态目录、默认策略与外观"),
-}
-
 enum class NoticeKind { INFO, SUCCESS, WARNING, ERROR }
 
 data class Notice(val text: String, val kind: NoticeKind, val atMs: Long = System.currentTimeMillis())
+
+/** Which layer of the sync section is open. The desktop puts them side by side. */
+enum class SyncLayer { LIST, DETAIL, PREVIEW }
+
+/** The two halves of the jobs section. On the desktop the log also has its own entry. */
+enum class JobsSegment(val label: String) { JOBS("作业"), LOGS("日志") }
 
 /** A run that is in flight, as the window needs to show it. */
 data class RunningJob(
@@ -54,13 +62,24 @@ data class RunningJob(
     val label: String get() = if (dryRun) "试运行" else "同步中"
 }
 
+/** Which pane's ⋮ menu is open, if any. */
+data class PaneMenu(val side: Side)
+
+/** The long-press action panel for one row. */
+data class ActionSheet(val side: Side, val name: String, val isDirectory: Boolean)
+
 /**
  * Everything the window is showing.
  *
  * One object rather than a view model per screen, because the screens are not
- * independent: a run started on the sync screen has to appear on the jobs screen,
- * and a peer connected on the connect screen is what the pair editor offers as a
- * destination. Keeping that in one place is what stops the two from disagreeing.
+ * independent: a run started on the sync screen has to appear on the jobs screen, and a
+ * peer connected on the connect screen is what the pair editor offers as a destination.
+ * Keeping that in one place is what stops the two from disagreeing.
+ *
+ * The preference fields are read through [liveSettings], which registers the Compose
+ * read that makes a change redraw the window. Settings live in the shared layer because
+ * both ends read the same ones, so this class cannot own them; it can only say when they
+ * changed.
  */
 class AppState(
     val service: SyncService,
@@ -73,22 +92,53 @@ class AppState(
 
     var configs by mutableStateOf<List<SyncConfig>>(emptyList())
     var selectedConfigId by mutableStateOf<String?>(null)
+    var syncLayer by mutableStateOf(SyncLayer.LIST)
+    var syncSearch by mutableStateOf("")
+    var preview by mutableStateOf<SyncPreview?>(null)
+    var previewing by mutableStateOf(false)
+
     var jobs by mutableStateOf<List<JobRecord>>(emptyList())
     var selectedJobId by mutableStateOf<String?>(null)
+    var jobsSegment by mutableStateOf(JobsSegment.JOBS)
+
     var logs by mutableStateOf<List<LogEntry>>(emptyList())
     var logMinimumLevel by mutableStateOf(LogLevel.INFO)
+
     var peers by mutableStateOf<List<PeerSession>>(emptyList())
     var peerError by mutableStateOf<String?>(null)
     var peerDraft by mutableStateOf("")
     var connecting by mutableStateOf(false)
+
     var running by mutableStateOf<RunningJob?>(null)
     var notice by mutableStateOf<Notice?>(null)
 
     /** Roots the server editor is holding before it is started. */
     var rootDraft by mutableStateOf<List<String>>(emptyList())
 
+    // ---------------------------------------------------------------- transfer page
+
+    var drawerOpen by mutableStateOf(false)
+    var displayBarOpen by mutableStateOf(false)
+    var paneMenu by mutableStateOf<PaneMenu?>(null)
+    var actionSheet by mutableStateOf<ActionSheet?>(null)
+    var editingAddress by mutableStateOf<Side?>(null)
+    var renaming by mutableStateOf<String?>(null)
+    var detailOf by mutableStateOf<Pair<Side, String>?>(null)
+    var nameCounter by mutableStateOf(0)
+
     private var runTask: Job? = null
     private var logSubscription: AutoCloseable? = null
+
+    /**
+     * The live settings, read through a revision counter.
+     *
+     * Settings belong to the shared layer; this only makes reading them observable, so a
+     * checkbox that writes one redraws the screen that shows it.
+     */
+    val liveSettings: AppSettings get() = service.settings.also { settingsRevision }
+
+    var settingsRevision by mutableStateOf(0)
+        private set
 
     val stateDirectory: String get() = service.stateDirectory.toString()
 
@@ -103,8 +153,8 @@ class AppState(
             val next = logs + entry
             logs = if (next.size > LOG_LIMIT) next.takeLast(LOG_LIMIT) else next
         }
-        peerDraft = settings.lastPeer
-        rootDraft = settings.sharedRoots
+        peerDraft = service.settings.lastPeer
+        rootDraft = service.settings.sharedRoots
     }
 
     fun close() {
@@ -115,6 +165,13 @@ class AppState(
         server.stop()
     }
 
+    /** Writes a setting and asks the window to look again. */
+    fun changeSettings(change: (AppSettings) -> Unit) {
+        change(service.settings)
+        settingsRevision++
+        if (section == Section.TRANSFER) service.browsing.resort()
+    }
+
     // ---------------------------------------------------------------- navigation
 
     fun goTo(target: Section) {
@@ -123,6 +180,7 @@ class AppState(
 
     fun selectConfig(configId: String?) {
         selectedConfigId = configId
+        if (configId != null) syncLayer = SyncLayer.DETAIL
     }
 
     fun selectJob(jobId: String?) {
@@ -134,6 +192,16 @@ class AppState(
 
     val selectedJob: JobRecord?
         get() = selectedJobId?.let { id -> jobs.firstOrNull { it.jobId == id } }
+
+    /** The job detail for the selected run, built once per frame from the same factory. */
+    val selectedJobDetail: JobDetails?
+        get() = selectedJob?.let { JobDetailsFactory.of(it, service.log) }
+
+    fun matchingConfigs(): List<SyncConfig> {
+        val needle = syncSearch.trim()
+        if (needle.isEmpty()) return configs
+        return configs.filter { it.name.contains(needle, ignoreCase = true) }
+    }
 
     // ------------------------------------------------------------------ messages
 
@@ -162,17 +230,34 @@ class AppState(
         if (selectedJobId != null && jobs.none { it.jobId == selectedJobId }) selectedJobId = null
     }
 
-    /** A new configuration with the defaults a person chose in the settings screen. */
+    /**
+     * A new configuration.
+     *
+     * The policy defaults come from the model rather than from the settings screen,
+     * because the design moved 同步方向 / 比较方式 / 冲突 / 删除 out of settings and into
+     * the configuration they belong to — the same numbers apply to every configuration,
+     * so asking for them once per install never made sense.
+     */
     fun newConfigDraft(): SyncConfig = SyncConfig(
         configId = Ids.newConfigId(),
-        name = "新建同步",
-        direction = settings.defaultDirection,
-        compare = settings.defaultCompare,
-        conflict = settings.defaultConflict,
-        delete = settings.defaultDelete,
-        parallelism = settings.defaultParallelism,
+        name = newConfigName(),
         pairs = emptyList(),
     )
+
+    private fun newConfigName(): String {
+        val base = "新建同步"
+        val taken = configs.map { it.name }.toSet()
+        return PathTools.uniqueName(taken, base)
+    }
+
+    /** 另存为: the same configuration under a name that is free. */
+    fun duplicateConfig(config: SyncConfig) {
+        val copy = config.copy(
+            configId = Ids.newConfigId(),
+            name = PathTools.uniqueName(configs.map { it.name }.toSet(), "${config.name} 副本"),
+        )
+        saveConfig(copy)
+    }
 
     fun saveConfig(config: SyncConfig) {
         runCatching { service.configs.save(config) }
@@ -189,8 +274,6 @@ class AppState(
         reloadConfigs()
         if (removed) notify("已删除配置", NoticeKind.INFO)
     }
-
-    fun renameConfig(config: SyncConfig, name: String): SyncConfig = config.copy(name = name)
 
     /** Writes a configuration out as a `.cubcfg` that another machine can import. */
     fun exportConfig(config: SyncConfig) {
@@ -219,6 +302,7 @@ class AppState(
                 )
                 reloadConfigs()
                 selectedConfigId = service.configs.load(saved).configId
+                syncLayer = SyncLayer.DETAIL
                 notify(
                     if (clash) "导入了一个同名配置，已另存为新配置" else "已导入「${imported.name}」",
                     NoticeKind.SUCCESS,
@@ -233,20 +317,26 @@ class AppState(
      * Bumped whenever a browsing preference changes.
      *
      * The preferences live in the shared layer as plain mutable state, because both
-     * front ends read the same ones; this is how a screen announces that it changed
-     * one, so the layout knows to look again.
+     * front ends read the same ones; this is how a screen announces that it changed one,
+     * so the layout knows to look again.
      */
     var browserRevision by mutableStateOf(0)
         private set
 
-    fun changeBrowserSettings(change: (io.github.cubsync.service.BrowserSettings) -> Unit) {
-        change(service.browsing.settings)
-        service.browsing.resort()
+    fun touchBrowsing() {
         browserRevision++
     }
 
-    /** Copies one pane's selection into the other, and says what happened. */
-    fun transfer(from: io.github.cubsync.service.Side) {
+    /** The session both panes are a view of. */
+    val browsing get() = service.browsing
+
+    fun openPane(side: Side, path: String, backendId: String = EndpointId.LOCAL) {
+        service.browsing.open(side, backendId, path)
+        service.settings.rememberFolder(path)
+        settingsRevision++
+    }
+
+    fun transfer(from: Side) {
         service.browsing.transfer(from) { outcome ->
             val tone = if (outcome.ok) NoticeKind.SUCCESS else NoticeKind.WARNING
             val text = when {
@@ -255,26 +345,94 @@ class AppState(
                 else -> "已传送 ${outcome.copied} 项（${Format.bytes(outcome.bytes)}）"
             }
             notify(text, tone)
+            touchBrowsing()
+        }
+    }
+
+    fun toggleFavourite(side: Side) {
+        val pane = service.browsing.current(side)
+        val device = if (pane.backendId == EndpointId.LOCAL) Words.LOCAL else peerFor(pane.backendId)?.nodeName ?: Words.REMOTE
+        val favourite = Favorite(device, pane.backendId, pane.path)
+        service.settings.toggleFavourite(favourite)
+        settingsRevision++
+        notify(
+            if (service.settings.isFavourite(device, pane.path)) "已收藏 ${pane.path}" else "已取消收藏",
+            NoticeKind.INFO,
+        )
+    }
+
+    fun applyPrefs(side: Side, scope: Scope, change: (io.github.cubsync.service.BrowsePrefs) -> io.github.cubsync.service.BrowsePrefs) {
+        val prefs = service.browsing.prefsOf(side)
+        service.browsing.applyPrefs(side, scope, change(prefs))
+        touchBrowsing()
+        settingsRevision++
+    }
+
+    fun setDisplayMode(side: Side, mode: DisplayMode) {
+        service.browsing.setDisplayMode(side, mode)
+        touchBrowsing()
+        settingsRevision++
+    }
+
+    fun newFolder(side: Side) {
+        service.browsing.makeFolder(side, Words.NEW_FOLDER) { error ->
+            if (error == null) {
+                notify("已新建文件夹", NoticeKind.SUCCESS)
+            } else {
+                notify("新建文件夹失败：$error", NoticeKind.ERROR)
+            }
+            touchBrowsing()
+        }
+    }
+
+    fun rename(side: Side, from: String, to: String) {
+        service.browsing.renameEntry(side, from, to) { error ->
+            if (error == null) notify("已重命名为 $to", NoticeKind.SUCCESS) else notify(error, NoticeKind.ERROR)
+            touchBrowsing()
+        }
+        renaming = null
+    }
+
+    fun deleteSelection(side: Side) {
+        val pane = service.browsing.current(side)
+        val names = pane.targetNames()
+        if (names.isEmpty()) {
+            notify(Words.EMPTY_FOLDER, NoticeKind.WARNING)
+            return
+        }
+        service.browsing.delete(side, names, toTrash = service.settings.deleteToTrash) { done, failures ->
+            notify(
+                if (failures.isEmpty()) {
+                    "已删除 $done 项，进${Words.TRASH}"
+                } else {
+                    "删除了 $done 项，${failures.size} 项失败：${failures.first()}"
+                },
+                if (failures.isEmpty()) NoticeKind.SUCCESS else NoticeKind.WARNING,
+            )
+            touchBrowsing()
         }
     }
 
     /**
      * Folders worth opening in a pane.
      *
-     * The folders this machine shares come first, because those are the ones somebody
-     * has deliberately decided to work with; then the home folder and the drives, so a
-     * pane is never stuck with nowhere to go.
+     * The folders this machine shares come first, because those are the ones somebody has
+     * deliberately decided to work with; then the folders recently opened; then the home
+     * folder and the drives, so a pane is never stuck with nowhere to go.
      */
     fun localRoots(): List<String> {
-        val shared = settings.sharedRoots
+        val shared = service.settings.sharedRoots
         val home = runCatching { java.nio.file.Paths.get(System.getProperty("user.home")).toString() }.getOrNull()
         val drives = runCatching { java.io.File.listRoots().map { it.absolutePath }.toList() }.getOrDefault(emptyList())
-        return (shared + listOfNotNull(home) + drives).distinct()
+        return (shared + service.settings.recentFolders + listOfNotNull(home) + drives).distinct()
     }
 
+    /** The drawer's contents, rebuilt on demand from live state. */
+    fun drawer(): DrawerModel = service.drawer(serverState)
+
     /**
-     * A pair with the sensible default: the local side is this machine and the other
-     * side is the peer that is connected, if there is one.
+     * A pair with the sensible default: the local side is this machine and the other side
+     * is the peer that is connected, if there is one.
      */
     fun newPairDraft(existing: List<FolderPair>): FolderPair {
         val peer = peers.firstOrNull()
@@ -319,6 +477,7 @@ class AppState(
                 val result = service.run(prepared, jobId = jobId, observer = WindowObserver())
                 reloadJobs()
                 selectedJobId = result.jobId
+                jobsSegment = JobsSegment.JOBS
                 goTo(Section.JOBS)
                 notify(summaryLine(result), toneFor(result.status))
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
@@ -336,6 +495,25 @@ class AppState(
         val task = runTask ?: return
         running = null
         task.cancel()
+    }
+
+    /** Compares without writing, and shows what would happen. */
+    fun previewConfig(config: SyncConfig) {
+        if (config.pairs.isEmpty()) {
+            notify("这个配置还没有文件夹对", NoticeKind.WARNING)
+            return
+        }
+        previewing = true
+        syncLayer = SyncLayer.PREVIEW
+        scope.launch {
+            try {
+                preview = service.preview(config)
+            } catch (failure: Throwable) {
+                notify("预览失败：${failure.message ?: failure::class.simpleName}", NoticeKind.ERROR)
+            } finally {
+                previewing = false
+            }
+        }
     }
 
     private fun summaryLine(result: JobResult): String {
@@ -382,14 +560,14 @@ class AppState(
         connecting = true
         scope.launch {
             try {
-                val session = service.browsePool.probe(endpoint.host!!, endpoint.port!!)
+                val session = service.connect(endpoint.host!!, endpoint.port!!)
                 peers = peers.filterNot { it.backendId == session.backendId } + session
-                settings.lastPeer = text
-                settings.save()
+                service.settings.lastPeer = text
+                settingsRevision++
                 notify("已连接 ${session.nodeName}", NoticeKind.SUCCESS)
             } catch (failure: Throwable) {
                 peerError = failure.message ?: "连接失败"
-                notify("连接失败：${peerError}", NoticeKind.ERROR)
+                notify("连接失败：$peerError", NoticeKind.ERROR)
             } finally {
                 connecting = false
             }
@@ -397,11 +575,27 @@ class AppState(
     }
 
     fun disconnectPeer(backendId: String) {
-        service.browsePool.disconnect(backendId)
+        service.disconnect(backendId)
         peers = peers.filterNot { it.backendId == backendId }
     }
 
     fun peerFor(backendId: String): PeerSession? = peers.firstOrNull { it.backendId == backendId }
+
+    /** Re-reads what the peers expose; the button on the connect screen says 刷新设备. */
+    fun refreshPeers() {
+        val current = peers
+        if (current.isEmpty()) {
+            notify("还没有连上任何设备", NoticeKind.INFO)
+            return
+        }
+        scope.launch {
+            peers = current.mapNotNull { session ->
+                runCatching { service.browsePool.probe(session.host, session.port) }
+                    .getOrElse { null }
+            }
+            notify("已刷新 ${peers.size} 台设备", NoticeKind.INFO)
+        }
+    }
 
     // --------------------------------------------------------------------- server
 
@@ -428,10 +622,10 @@ class AppState(
             nodeName = nodeName,
         )
         if (state.running) {
-            settings.sharePort = state.port
-            settings.serverNodeName = state.nodeName
-            settings.sharedRoots = state.roots
-            settings.save()
+            service.settings.sharePort = state.port
+            service.settings.serverNodeName = state.nodeName
+            service.settings.sharedRoots = state.roots
+            settingsRevision++
             notify("已在端口 ${state.port} 共享 ${state.roots.size} 个文件夹", NoticeKind.SUCCESS)
         } else {
             notify(state.error, NoticeKind.ERROR)
@@ -444,8 +638,8 @@ class AppState(
     }
 
     private fun rememberServer() {
-        settings.sharedRoots = rootDraft
-        settings.save()
+        service.settings.sharedRoots = rootDraft
+        settingsRevision++
     }
 
     // ----------------------------------------------------------------------- text
@@ -459,7 +653,7 @@ class AppState(
     fun statusLine(server: ServerState = serverState): String {
         val parts = mutableListOf<String>()
         parts += if (server.running) "共享中 :${server.port}" else "未共享"
-        parts += if (peers.isEmpty()) "未连接远端" else "已连接 ${peers.size} 台设备"
+        parts += if (peers.isEmpty()) "未连接${Words.REMOTE}" else "已连接 ${peers.size} 台设备"
         running?.let { parts += "${it.label}「${it.configName}」" }
         return parts.joinToString("  ·  ")
     }

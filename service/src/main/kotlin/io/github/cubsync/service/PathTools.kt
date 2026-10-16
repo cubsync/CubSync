@@ -58,6 +58,23 @@ object PathTools {
         return ".../" + parts.takeLast(segments).joinToString("/")
     }
 
+    /**
+     * The anchor a path hangs from: `/` on Unix, `D:` for a Windows drive.
+     *
+     * This is the string form of "the top", not the backend's notion of a shared root —
+     * a backend may expose `D:/photos` and nothing above it, in which case going "to the
+     * root" from inside means `D:/photos`. The caller knows which of the two it wants;
+     * this only splits the string.
+     */
+    fun rootOf(path: String): String {
+        val normalized = normalizeRoot(path)
+        if (normalized.isEmpty()) return ""
+        if (normalized.startsWith("/")) return "/"
+        val colon = normalized.indexOf(':')
+        if (colon > 0) return normalized.substring(0, colon + 1)
+        return normalized.substringBefore('/')
+    }
+
     /** True when [child] is [parent] itself or lives inside it. */
     fun isInside(child: String, parent: String): Boolean {
         val a = normalizeRoot(absolute(child))

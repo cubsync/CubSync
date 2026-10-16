@@ -11,133 +11,190 @@ import io.github.cubsync.core.model.FolderPair
 import io.github.cubsync.core.model.Ids
 import io.github.cubsync.core.model.SyncConfig
 import io.github.cubsync.core.protocol.Protocol
-import io.github.cubsync.service.ConfigStore
+import io.github.cubsync.service.AppSettings
+import io.github.cubsync.service.DrawerModel
 import io.github.cubsync.service.EndpointId
+import io.github.cubsync.service.Favorite
 import io.github.cubsync.service.Format
+import io.github.cubsync.service.JobDetails
+import io.github.cubsync.service.JobDetailsFactory
 import io.github.cubsync.service.JobRecord
 import io.github.cubsync.service.LogEntry
 import io.github.cubsync.service.LogLevel
 import io.github.cubsync.service.PathTools
 import io.github.cubsync.service.PeerSession
+import io.github.cubsync.service.RunMode
+import io.github.cubsync.service.Section
 import io.github.cubsync.service.ServerController
 import io.github.cubsync.service.ServerState
+import io.github.cubsync.service.Side
 import io.github.cubsync.service.SyncObserver
+import io.github.cubsync.service.SyncPreview
 import io.github.cubsync.service.SyncService
+import io.github.cubsync.service.Words
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.io.File
 
-enum class Tab(val label: String) {
-    CONNECT("连接"),
-    TRANSFER("传输"),
-    SYNC("同步"),
-    JOBS("作业"),
-    SETTINGS("设置"),
-}
-
-/** Where the phone is. A phone shows one thing at a time, so a detail is a place. */
-sealed interface Route {
-    data object Tabs : Route
-    data class ConfigDetail(val configId: String) : Route
-    data class JobDetail(val jobId: String) : Route
-}
-
 enum class NoticeKind { INFO, SUCCESS, WARNING, ERROR }
 
-data class Notice(val text: String, val kind: NoticeKind)
+data class Notice(val text: String, val kind: NoticeKind, val atMs: Long = System.currentTimeMillis())
 
+/** Which half of the jobs tab is showing. On a phone the log lives inside the job. */
+enum class JobsSegment(val label: String) { JOBS("作业"), LOGS("日志") }
+
+/** A run that is in flight. */
 data class RunningJob(
     val jobId: String,
     val configName: String,
     val dryRun: Boolean,
     val pairCount: Int,
+    val startedAtMs: Long,
     val finishedPairs: Int = 0,
-    val currentPair: String = "",
     val bytes: Long = 0,
 ) {
     val label: String get() = if (dryRun) "试运行" else "同步中"
 }
 
 /**
+ * Where the phone is.
+ *
+ * The design's second-level screens — a configuration, a preview, a job, the folder
+ * picker — are routes rather than tabs: the bottom bar keeps the parent tab lit, which is
+ * the rule that stops a phone from ever showing a page that belongs to nothing.
+ */
+sealed interface Route {
+    data object Tabs : Route
+    data class Config(val configId: String) : Route
+    data class Preview(val configId: String) : Route
+    data class Job(val jobId: String) : Route
+    data class PickFolder(val side: Side) : Route
+}
+
+/** A row's long-press panel. */
+data class ActionSheet(val side: Side, val name: String, val isDirectory: Boolean)
+
+/**
  * Everything the phone is showing.
  *
- * The same shape as the desktop window's state object, for the same reason: the
- * screens are not independent, and a run started on one has to appear on another.
- * The difference is navigation — a phone shows one screen, so a configuration detail
- * is a route rather than a panel beside a list.
+ * One object for the same reason the desktop has one: a run started on one screen has to
+ * appear on another, and a peer connected on one screen is what the folder picker offers.
+ * The preferences themselves live in the shared layer; this only says when one changed.
  */
 class AndroidAppState(
     val service: SyncService,
     val server: ServerController,
-    val preferences: Preferences,
-    private val scope: CoroutineScope,
+    val scope: CoroutineScope,
     val appDirectory: File,
 ) {
 
-    var tab by mutableStateOf(Tab.CONNECT)
+    var tab by mutableStateOf(Section.CONNECT)
     var route by mutableStateOf<Route>(Route.Tabs)
 
     var configs by mutableStateOf<List<SyncConfig>>(emptyList())
+    var selectedConfigId by mutableStateOf<String?>(null)
+    var preview by mutableStateOf<SyncPreview?>(null)
+    var previewing by mutableStateOf(false)
+
     var jobs by mutableStateOf<List<JobRecord>>(emptyList())
+    var jobsSegment by mutableStateOf(JobsSegment.JOBS)
+
     var logs by mutableStateOf<List<LogEntry>>(emptyList())
     var logMinimumLevel by mutableStateOf(LogLevel.INFO)
+
     var peers by mutableStateOf<List<PeerSession>>(emptyList())
     var peerError by mutableStateOf<String?>(null)
     var peerDraft by mutableStateOf("")
     var connecting by mutableStateOf(false)
+
     var running by mutableStateOf<RunningJob?>(null)
     var notice by mutableStateOf<Notice?>(null)
+
     var rootDraft by mutableStateOf<List<String>>(emptyList())
+    var rootDraftInput by mutableStateOf("")
 
-    private var runTask: Job? = null
+    // ------------------------------------------------------------------ transfer
 
-    /** Bumped when a browsing preference changes, so the layout looks again. */
-    var browserRevision by mutableStateOf(0)
+    var drawerOpen by mutableStateOf(false)
+    var displayBarOpen by mutableStateOf(false)
+    var paneMenu by mutableStateOf<Side?>(null)
+    var actionSheet by mutableStateOf<ActionSheet?>(null)
+    var showSoloLocal by mutableStateOf(false)
+    var showSoloRemote by mutableStateOf(false)
+
+    /**
+     * Bumped when a browsing or settings preference changes.
+     *
+     * The preferences belong to the shared layer as plain mutable state, because both
+     * ends read the same ones; this is how a screen announces that it changed one.
+     */
+    var revision by mutableStateOf(0)
         private set
 
-    val stateDirectory: String get() = service.stateDirectory.toString()
+    val liveSettings: AppSettings get() = service.settings.also { revision }
+
+    private var runTask: Job? = null
+    private var logSubscription: AutoCloseable? = null
 
     init {
         reloadConfigs()
         reloadJobs()
         logs = service.log.entries()
-        service.log.subscribe { entry ->
+        logSubscription = service.log.subscribe { entry ->
             val next = logs + entry
             logs = if (next.size > LOG_LIMIT) next.takeLast(LOG_LIMIT) else next
         }
-        peerDraft = preferences.lastPeer
-        rootDraft = preferences.sharedRoots
+        peerDraft = service.settings.lastPeer
+        rootDraft = service.settings.sharedRoots
     }
 
     fun close() {
+        logSubscription?.close()
+        logSubscription = null
         runTask?.cancel()
         service.close()
         server.stop()
     }
 
+    fun touch() {
+        revision++
+    }
+
+    fun changeSettings(change: (AppSettings) -> Unit) {
+        change(service.settings)
+        revision++
+        service.browsing.resort()
+    }
+
     // ---------------------------------------------------------------- navigation
 
-    fun go(target: Tab) {
+    fun go(target: Section) {
         tab = target
+        route = Route.Tabs
+        drawerOpen = false
+    }
+
+    fun open(route: Route) {
+        this.route = route
+    }
+
+    fun back() {
         route = Route.Tabs
     }
 
-    fun open(target: Route) {
-        route = target
+    val selectedConfig: SyncConfig?
+        get() = selectedConfigId?.let { id -> configs.firstOrNull { it.configId == id } }
+
+    fun matchingConfigs(needle: String): List<SyncConfig> {
+        val text = needle.trim()
+        if (text.isEmpty()) return configs
+        return configs.filter { it.name.contains(text, ignoreCase = true) }
     }
 
-    fun back(): Boolean {
-        if (route is Route.ConfigDetail || route is Route.JobDetail) {
-            route = Route.Tabs
-            return true
-        }
-        return false
-    }
+    fun selectedJob(jobId: String): JobRecord? = jobs.firstOrNull { it.jobId == jobId }
 
-    fun config(configId: String): SyncConfig? = configs.firstOrNull { it.configId == configId }
-
-    fun job(jobId: String): JobRecord? = jobs.firstOrNull { it.jobId == jobId }
+    fun detailsOf(job: JobRecord): JobDetails = JobDetailsFactory.of(job, service.log)
 
     // ------------------------------------------------------------------ messages
 
@@ -153,6 +210,9 @@ class AndroidAppState(
 
     fun reloadConfigs() {
         configs = service.configs.list()
+        if (selectedConfigId != null && configs.none { it.configId == selectedConfigId }) {
+            selectedConfigId = configs.firstOrNull()?.configId
+        }
     }
 
     fun reloadJobs() {
@@ -161,11 +221,7 @@ class AndroidAppState(
 
     fun newConfigDraft(): SyncConfig = SyncConfig(
         configId = Ids.newConfigId(),
-        name = "新建同步",
-        direction = preferences.defaultDirection,
-        compare = preferences.defaultCompare,
-        conflict = preferences.defaultConflict,
-        delete = preferences.defaultDelete,
+        name = PathTools.uniqueName(configs.map { it.name }.toSet(), "新建同步"),
         pairs = emptyList(),
     )
 
@@ -173,71 +229,144 @@ class AndroidAppState(
         runCatching { service.configs.save(config) }
             .onSuccess {
                 reloadConfigs()
+                selectedConfigId = config.configId
                 notify("已保存「${config.name}」", NoticeKind.SUCCESS)
             }
             .onFailure { notify("保存失败：${it.message}", NoticeKind.ERROR) }
     }
 
+    fun duplicateConfig(config: SyncConfig) {
+        saveConfig(
+            config.copy(
+                configId = Ids.newConfigId(),
+                name = PathTools.uniqueName(configs.map { it.name }.toSet(), "${config.name} 副本"),
+            ),
+        )
+    }
+
     fun deleteConfig(configId: String) {
-        if (service.configs.delete(configId)) {
-            reloadConfigs()
-            route = Route.Tabs
-            notify("已删除配置", NoticeKind.INFO)
-        }
+        service.configs.delete(configId)
+        reloadConfigs()
+        if (route is Route.Config && (route as Route.Config).configId == configId) back()
+        notify("已删除配置", NoticeKind.INFO)
+    }
+
+    fun exportConfig(config: SyncConfig) {
+        val target = File(appDirectory, "${config.name.ifBlank { config.configId }}.cubcfg")
+        runCatching { service.configs.export(config, target.toPath()) }
+            .onSuccess { notify("已导出到 ${target.absolutePath}", NoticeKind.SUCCESS) }
+            .onFailure { notify("导出失败：${it.message}", NoticeKind.ERROR) }
     }
 
     // ------------------------------------------------------------------- browsing
 
-    fun changeBrowserSettings(change: (io.github.cubsync.service.BrowserSettings) -> Unit) {
-        change(service.browsing.settings)
-        service.browsing.resort()
-        browserRevision++
+    val browsing get() = service.browsing
+
+    fun openPane(side: Side, path: String, backendId: String = EndpointId.LOCAL) {
+        service.browsing.open(side, backendId, path)
+        service.settings.rememberFolder(path)
+        revision++
     }
 
-    /** Copies one pane's selection into the other, and says what happened. */
-    fun transfer(from: io.github.cubsync.service.Side) {
+    fun transfer(from: Side) {
         service.browsing.transfer(from) { outcome ->
             val tone = if (outcome.ok) NoticeKind.SUCCESS else NoticeKind.WARNING
             val text = when {
-                !outcome.ok -> "传送了 ${outcome.copied} 项，${outcome.failures.size} 项失败：${outcome.failures.first()}"
+                !outcome.ok -> "传送了 ${outcome.copied} 项，${outcome.failures.size} 项失败"
                 outcome.copied == 0 -> "没有需要传送的内容"
                 else -> "已传送 ${outcome.copied} 项（${Format.bytes(outcome.bytes)}）"
             }
             notify(text, tone)
+            revision++
+        }
+    }
+
+    fun toggleFavourite(side: Side) {
+        val pane = service.browsing.current(side)
+        val device = if (pane.backendId == EndpointId.LOCAL) {
+            Words.LOCAL
+        } else {
+            peerFor(pane.backendId)?.nodeName ?: Words.REMOTE
+        }
+        val favourite = Favorite(device, pane.backendId, pane.path)
+        service.settings.toggleFavourite(favourite)
+        revision++
+        notify(
+            if (service.settings.isFavourite(device, pane.path)) "已收藏 ${pane.path}" else "已取消收藏",
+            NoticeKind.INFO,
+        )
+    }
+
+    fun applyPrefs(side: Side, scope: io.github.cubsync.service.Scope, change: (io.github.cubsync.service.BrowsePrefs) -> io.github.cubsync.service.BrowsePrefs) {
+        service.browsing.applyPrefs(side, scope, change(service.browsing.prefsOf(side)))
+        revision++
+    }
+
+    fun setDisplayMode(side: Side, mode: io.github.cubsync.service.DisplayMode) {
+        service.browsing.setDisplayMode(side, mode)
+        revision++
+    }
+
+    fun newFolder(side: Side) {
+        service.browsing.makeFolder(side, Words.NEW_FOLDER) { error ->
+            notify(if (error == null) "已新建文件夹" else "新建文件夹失败：$error", if (error == null) NoticeKind.SUCCESS else NoticeKind.ERROR)
+            revision++
+        }
+    }
+
+    fun rename(side: Side, from: String, to: String) {
+        service.browsing.renameEntry(side, from, to) { error ->
+            notify(if (error == null) "已重命名为 $to" else error, if (error == null) NoticeKind.SUCCESS else NoticeKind.ERROR)
+            revision++
+        }
+    }
+
+    fun deleteSelection(side: Side) {
+        val names = service.browsing.current(side).targetNames()
+        if (names.isEmpty()) {
+            notify(Words.EMPTY_FOLDER, NoticeKind.WARNING)
+            return
+        }
+        service.browsing.delete(side, names, toTrash = service.settings.deleteToTrash) { done, failures ->
+            notify(
+                if (failures.isEmpty()) "已删除 $done 项，进${Words.TRASH}" else "删除了 $done 项，${failures.size} 项失败",
+                if (failures.isEmpty()) NoticeKind.SUCCESS else NoticeKind.WARNING,
+            )
+            revision++
         }
     }
 
     /**
-     * Folders worth opening in a pane, most useful first.
+     * Folders worth opening in a pane.
      *
-     * There is no folder picker on purpose: the platform's picker hands back a content
-     * URI and the engine works in paths, so a wrong guess somebody can correct in a
-     * text field beats a picker that produces something the engine cannot open.
+     * There is no folder picker: the platform's picker hands back a content URI and the
+     * engine works in paths, so a suggestion somebody can correct beats a picker that
+     * produces something the engine cannot open.
      */
     fun localRoots(): List<String> {
-        val shared = preferences.sharedRoots
-        return (shared + localRootsCache).distinct()
-    }
-
-    private val localRootsCache: List<String> = run {
-        val candidates = listOf(
+        val shared = service.settings.sharedRoots
+        val common = listOf(
             "/sdcard/DCIM",
             "/sdcard/Pictures",
             "/sdcard/Download",
             "/sdcard/Documents",
             "/sdcard/Music",
             "/sdcard/Movies",
+            "/storage/emulated/0",
             appDirectory.absolutePath,
-        )
-        candidates.filter { runCatching { File(it).isDirectory }.getOrDefault(false) }
+        ).filter { runCatching { File(it).isDirectory }.getOrDefault(false) }
+        return (shared + service.settings.recentFolders + common).distinct()
     }
+
+    fun drawer(): DrawerModel = service.drawer(serverState)
 
     fun newPairDraft(existing: List<FolderPair>): FolderPair {
         val peer = peers.firstOrNull()
         return FolderPair(
             pairId = Ids.newPairId(),
             order = existing.size,
-            left = Endpoint(EndpointId.LOCAL, localRoots().firstOrNull().orEmpty()),
+            name = "",
+            left = Endpoint(EndpointId.LOCAL, ""),
             right = if (peer != null && peer.roots.isNotEmpty()) {
                 Endpoint(peer.backendId, peer.roots.first())
             } else {
@@ -250,24 +379,24 @@ class AndroidAppState(
 
     fun runConfig(config: SyncConfig, dryRun: Boolean) {
         if (running != null) {
-            notify("已经有一个任务在进行中", NoticeKind.WARNING)
+            notify("已经有一个${running?.label ?: "任务"}在进行中", NoticeKind.WARNING)
             return
         }
         if (config.pairs.isEmpty()) {
             notify("这个配置还没有文件夹对", NoticeKind.WARNING)
             return
         }
-
         val jobId = SyncService.newJobId()
         val prepared = config.copy(dryRun = dryRun)
-        running = RunningJob(jobId, prepared.name, dryRun, prepared.pairs.size)
+        running = RunningJob(jobId, prepared.name, dryRun, prepared.pairs.size, System.currentTimeMillis())
         dismissNotice()
 
         runTask = scope.launch {
             try {
                 val result = service.run(prepared, jobId = jobId, observer = PhoneObserver())
                 reloadJobs()
-                route = Route.JobDetail(result.jobId)
+                go(Section.JOBS)
+                open(Route.Job(result.jobId))
                 notify(summaryLine(result), toneFor(result.status))
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 notify("已取消「${prepared.name}」", NoticeKind.WARNING)
@@ -280,6 +409,24 @@ class AndroidAppState(
         }
     }
 
+    fun previewConfig(config: SyncConfig) {
+        if (config.pairs.isEmpty()) {
+            notify("这个配置还没有文件夹对", NoticeKind.WARNING)
+            return
+        }
+        previewing = true
+        open(Route.Preview(config.configId))
+        scope.launch {
+            try {
+                preview = service.preview(config)
+            } catch (failure: Throwable) {
+                notify("预览失败：${failure.message ?: failure::class.simpleName}", NoticeKind.ERROR)
+            } finally {
+                previewing = false
+            }
+        }
+    }
+
     fun cancelRun() {
         val task = runTask ?: return
         running = null
@@ -288,8 +435,8 @@ class AndroidAppState(
 
     private fun summaryLine(result: JobResult): String {
         val stats = result.stats
-        return "${Format.jobStatus(result.status)}：复制 ${stats.copiedFiles} 个文件" +
-            "（${Format.bytes(stats.copiedBytes)}），删除 ${stats.deletedFiles}，失败 ${stats.failures}"
+        return "${Format.jobStatus(result.status)}：${stats.copiedFiles} 个文件（${Format.bytes(stats.copiedBytes)}），" +
+            "失败 ${stats.failures}，耗时 ${Format.duration(result.durationMs)}"
     }
 
     private fun toneFor(status: JobStatus): NoticeKind = when (status) {
@@ -299,10 +446,6 @@ class AndroidAppState(
     }
 
     private inner class PhoneObserver : SyncObserver {
-        override fun onPairStarted(pair: FolderPair) {
-            running = running?.copy(currentPair = pair.name.ifEmpty { pair.pairId })
-        }
-
         override fun onPairFinished(outcome: PairOutcome) {
             running = running?.copy(finishedPairs = (running?.finishedPairs ?: 0) + 1, bytes = 0)
         }
@@ -316,6 +459,10 @@ class AndroidAppState(
 
     fun connectPeer(spec: String) {
         val text = spec.trim()
+        if (text.isEmpty()) {
+            peerError = "先填 HOST:PORT"
+            return
+        }
         val endpoint = EndpointId.parseOrNull(text)?.takeIf { !it.isLocal }
         if (endpoint == null) {
             peerError = "「$text」看起来不是 HOST:PORT"
@@ -325,9 +472,10 @@ class AndroidAppState(
         connecting = true
         scope.launch {
             try {
-                val session = service.browsePool.probe(endpoint.host!!, endpoint.port!!)
+                val session = service.connect(endpoint.host!!, endpoint.port!!)
                 peers = peers.filterNot { it.backendId == session.backendId } + session
-                preferences.lastPeer = text
+                service.settings.lastPeer = text
+                revision++
                 notify("已连接 ${session.nodeName}", NoticeKind.SUCCESS)
             } catch (failure: Throwable) {
                 peerError = failure.message ?: "连接失败"
@@ -339,11 +487,25 @@ class AndroidAppState(
     }
 
     fun disconnectPeer(backendId: String) {
-        service.browsePool.disconnect(backendId)
+        service.disconnect(backendId)
         peers = peers.filterNot { it.backendId == backendId }
     }
 
     fun peerFor(backendId: String): PeerSession? = peers.firstOrNull { it.backendId == backendId }
+
+    fun refreshPeers() {
+        val current = peers
+        if (current.isEmpty()) {
+            notify("还没有连上任何设备", NoticeKind.INFO)
+            return
+        }
+        scope.launch {
+            peers = current.mapNotNull { session ->
+                runCatching { service.browsePool.probe(session.host, session.port) }.getOrElse { null }
+            }
+            notify("已刷新 ${peers.size} 台设备", NoticeKind.INFO)
+        }
+    }
 
     // --------------------------------------------------------------------- server
 
@@ -355,12 +517,14 @@ class AndroidAppState(
         val absolute = PathTools.normalizeRoot(PathTools.absolute(clean))
         if (rootDraft.any { it == absolute }) return
         rootDraft = rootDraft + absolute
-        preferences.sharedRoots = rootDraft
+        service.settings.sharedRoots = rootDraft
+        revision++
     }
 
     fun removeRoot(path: String) {
         rootDraft = rootDraft.filterNot { it == path }
-        preferences.sharedRoots = rootDraft
+        service.settings.sharedRoots = rootDraft
+        revision++
     }
 
     fun startServer(port: Int, nodeName: String) {
@@ -370,8 +534,9 @@ class AndroidAppState(
             nodeName = nodeName,
         )
         if (state.running) {
-            preferences.sharePort = state.port
-            preferences.sharedRoots = state.roots
+            service.settings.sharePort = state.port
+            service.settings.serverNodeName = state.nodeName
+            revision++
             notify("已在端口 ${state.port} 共享 ${state.roots.size} 个文件夹", NoticeKind.SUCCESS)
         } else {
             notify(state.error, NoticeKind.ERROR)
@@ -383,11 +548,28 @@ class AndroidAppState(
         notify("已停止共享", NoticeKind.INFO)
     }
 
-    companion object {
-        const val LOG_LIMIT: Int = 2_000
+    fun setRunMode(mode: RunMode) {
+        changeSettings { it.runMode = mode }
+        if (mode == RunMode.ROOT) {
+            notify("已切到 Root 模式：设备需要已获取 Root 权限，普通模式下这一档不会生效", NoticeKind.WARNING)
+        }
+    }
 
-        /** Configurations and snapshots live in the app's own directory. */
-        fun stateDirectoryIn(appDirectory: File): java.nio.file.Path =
-            ConfigStore(appDirectory.toPath().resolve("state")).baseDirectory
+    // ----------------------------------------------------------------------- text
+
+    fun clearLogs() {
+        service.log.clear()
+        logs = emptyList()
+    }
+
+    fun statusLine(): String {
+        val parts = mutableListOf<String>()
+        parts += if (serverState.running) "共享中 :${serverState.port}" else "未共享"
+        parts += if (peers.isEmpty()) "未连接${Words.REMOTE}" else "已连接 ${peers.size} 台"
+        return parts.joinToString(" · ")
+    }
+
+    companion object {
+        const val LOG_LIMIT: Int = 1_500
     }
 }

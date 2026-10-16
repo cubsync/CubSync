@@ -1,9 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="160" viewBox="0 0 640 160" role="img" aria-label="CubSync">
+<svg xmlns="http://www.w3.org/2000/svg" width="667" height="166" viewBox="0 0 667 166" role="img" aria-label="CubSync">
   <title>CubSync</title>
-  <g transform="translate(20,20) scale(1.0)">
+  <defs>
+    <mask id="hole"><rect width="120" height="120" fill="#fff"/><circle cx="80.4" cy="76.1" r="8.0" fill="#000"/></mask>
+  </defs>
+  <g transform="translate(-45.35,-45.35) scale(2.0520)" mask="url(#hole)">
     <circle cx="60.0" cy="60.0" r="34.0" fill="#3A5CCC"/>
     <circle cx="80.4" cy="76.1" r="23.0" fill="#1FA8A0"/>
-    <circle cx="80.4" cy="76.1" r="8.0" fill="#FFFFFF"/>
   </g>
-  <text x="180" y="102" font-family="Inter, 'Segoe UI', system-ui, sans-serif" font-size="64" font-weight="600" letter-spacing="-1.5" fill="#1B1F24">Cub<tspan fill="#3A5CCC">Sync</tspan></text>
+  <text x="205" y="124" font-family="Inter, 'Segoe UI', system-ui, sans-serif" font-size="114" font-weight="600" letter-spacing="-1.5" fill="#3A5CCC">Cub<tspan fill="#1FA8A0">Sync</tspan></text>
 </svg>

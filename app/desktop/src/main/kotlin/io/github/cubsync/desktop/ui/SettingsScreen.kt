@@ -1,202 +1,258 @@
 package io.github.cubsync.desktop.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import io.github.cubsync.core.model.CompareMode
-import io.github.cubsync.core.model.ConflictPolicy
-import io.github.cubsync.core.model.DeletePolicy
-import io.github.cubsync.core.model.SyncDirection
 import io.github.cubsync.desktop.AppState
 import io.github.cubsync.desktop.CubTheme
-import io.github.cubsync.desktop.DesktopSettings
 import io.github.cubsync.desktop.CubType
-import io.github.cubsync.service.Format
 import io.github.cubsync.desktop.NoticeKind
-import io.github.cubsync.desktop.Section
-import io.github.cubsync.desktop.copyToClipboard
-import io.github.cubsync.desktop.openDirectory
+import io.github.cubsync.desktop.parseHexColour
+import io.github.cubsync.desktop.pickDirectory
+import io.github.cubsync.service.AppSettings
+import io.github.cubsync.service.Buffering
 import io.github.cubsync.service.BuildInfo
-
-private val PARALLELISM_OPTIONS = listOf(1, 2, 4, 8)
+import io.github.cubsync.service.Columns
+import io.github.cubsync.service.Density
+import io.github.cubsync.service.DisplayMode
+import io.github.cubsync.service.Header
+import io.github.cubsync.service.ItemScale
+import io.github.cubsync.service.PaneDirection
+import io.github.cubsync.service.Scope
+import io.github.cubsync.service.ThemeMode
+import io.github.cubsync.service.Words
 
 /**
- * The settings that are about the application rather than about one configuration.
+ * 设置: the browsing and transfer preferences, and the appearance.
  *
- * The defaults here are what a new configuration starts from, which is the only
- * place where "I always want it this way" can be said once instead of per config.
- * The state directory is shown with its path, because it is the thing somebody has
- * to find when they want to move their setup to another machine.
+ * Nine fields, in the order the design lists them, plus the theme and the accent. The
+ * synchronisation policy is deliberately *not* here — 同步方向, 比较方式, 冲突 and 删除
+ * belong to the configuration they govern, and having them in two places is how the two
+ * places start disagreeing.
  */
 @Composable
 fun SettingsScreen(state: AppState) {
     val colors = CubTheme.colors
+    val settings = state.liveSettings
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp),
-    ) {
-        ScreenHeader(Section.SETTINGS.label, Section.SETTINGS.hint)
-
-        Column(Modifier.padding(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Row(Modifier.fillMaxSize().padding(14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState())) {
             Panel(
-                modifier = Modifier.fillMaxWidth(),
-                title = "状态目录",
-                subtitle = "配置与每对文件夹的历史都放在这里",
+                Modifier.fillMaxWidth(),
+                title = "浏览与传输",
+                subtitle = "新开的窗口、新的配置从这里取值",
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        state.stateDirectory,
-                        style = CubType.mono,
-                        color = colors.text,
-                        modifier = Modifier.weight(1f),
+                SettingRow("默认显示方式", "新打开的一栏用什么样子") {
+                    Segmented(
+                        options = DisplayMode.entries.toList(),
+                        selected = settings.defaultDisplayMode,
+                        label = { it.label },
+                        onSelect = { mode -> state.changeSettings { it.defaultDisplayMode = mode } },
                     )
-                    QuietButton("复制", onClick = { copyToClipboard(state.stateDirectory) })
-                    QuietButton("打开", onClick = { openDirectory(state.stateDirectory) })
                 }
-                Spacer(Modifier.height(8.dp))
+
+                SettingRow("条目缩放", "${ItemScale.MIN}–${ItemScale.MAX}%，100% ＝出厂") {
+                    StepperField(
+                        value = settings.itemScale,
+                        onChange = { value -> state.changeSettings { it.itemScale = value } },
+                        canDecrease = settings.itemScale > ItemScale.MIN,
+                        canIncrease = settings.itemScale < ItemScale.MAX,
+                        step = ItemScale.STEP,
+                        suffix = "%",
+                    )
+                }
+
+                SettingRow("显示元数据", "在详细档显示大小与修改时间") {
+                    Toggle(settings.showMetadata) { value -> state.changeSettings { it.showMetadata = value } }
+                }
+
+                SettingRow(
+                    "栏头地址行数",
+                    if (settings.headerAdaptive) {
+                        "自适应：单栏 / 宽栏恒 1 行，双栏窄栏用 ${settings.headerLines} 行"
+                    } else {
+                        "恒定 ${settings.headerLines} 行，不看栏宽"
+                    },
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Toggle(settings.headerAdaptive) { value -> state.changeSettings { it.headerAdaptive = value } }
+                        Spacer(Modifier.width(8.dp))
+                        StepperField(
+                            value = settings.headerLines,
+                            onChange = { value -> state.changeSettings { it.headerLines = value } },
+                            canDecrease = settings.headerLines > Header.MIN_LINES,
+                            canIncrease = settings.headerLines < Header.MAX_LINES,
+                            fieldWidth = 26,
+                        )
+                    }
+                }
+
+                SettingRow("分栏方向", "自动＝容器宽 ≥ 高 × 1.15 时左右") {
+                    Segmented(
+                        options = PaneDirection.entries.toList(),
+                        selected = settings.paneDirection,
+                        label = { it.label },
+                        onSelect = { value -> state.changeSettings { it.paneDirection = value } },
+                    )
+                }
+
+                SettingRow("缓冲块数", "${Buffering.MIN}–${Buffering.MAX}，同时留多少块在传输中") {
+                    StepperField(
+                        value = settings.bufferBlocks,
+                        onChange = { value -> state.changeSettings { it.bufferBlocks = value } },
+                        canDecrease = settings.bufferBlocks > Buffering.MIN,
+                        canIncrease = settings.bufferBlocks < Buffering.MAX,
+                        fieldWidth = 26,
+                    )
+                }
+
+                SettingRow("默认接收目录", "对面还没打开文件夹时，传送落到这里") {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Field(
+                            value = settings.defaultReceiveDir,
+                            onValueChange = { value -> state.changeSettings { it.defaultReceiveDir = value } },
+                            modifier = Modifier.width(180.dp),
+                            placeholder = "留空＝用对面的当前目录",
+                            style = CubType.meta,
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        QuietButton("选择…") {
+                            val picked = pickDirectory("选择默认接收目录")
+                            if (picked != null) state.changeSettings { it.defaultReceiveDir = picked }
+                        }
+                    }
+                }
+
+                SettingRow("断点续传", "中断后从已确认的块继续，不重传整份") {
+                    Toggle(settings.resumeEnabled) { value -> state.changeSettings { it.resumeEnabled = value } }
+                }
+
+                SettingRow("同步删除走回收站", "关掉就是直接删除，删掉的东西回不来") {
+                    Toggle(settings.deleteToTrash) { value -> state.changeSettings { it.deleteToTrash = value } }
+                }
+
+                Spacer(Modifier.height(6.dp))
                 Text(
-                    "两台设备各自记自己的历史；把这个目录一起带走，删除与新增的判断就不会丢。",
+                    "行密度（${Density.MIN}–${Density.MAX}%）是全局的，两栏同时生效；" +
+                        "排序 / 文件夹优先 / 作用范围在传输页每栏的 ⋯ 里。",
                     style = CubType.meta,
                     color = colors.textFaint,
                 )
             }
 
-            Panel(modifier = Modifier.fillMaxWidth(), title = "外观") {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("深色主题", style = CubType.body, color = colors.text)
-                        Text(
-                            "与设计稿保持同一套配色，深色为默认。",
-                            style = CubType.meta,
-                            color = colors.textFaint,
-                        )
-                    }
-                    Switch(
-                        checked = state.settings.darkTheme,
-                        onCheckedChange = {
-                            state.settings.darkTheme = it
-                            state.settings.save()
-                        },
-                    )
-                }
-            }
+            Spacer(Modifier.height(12.dp))
+            AppearancePanel(state)
+        }
 
-            Panel(
-                modifier = Modifier.fillMaxWidth(),
-                title = "新配置的默认策略",
-                subtitle = "只影响之后新建的配置，不改动已经保存的",
-            ) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Column(Modifier.weight(1f)) {
-                        FieldLabel("同步方向")
-                        Spacer(Modifier.height(5.dp))
-                        Dropdown(
-                            options = SyncDirection.entries.filter { it.supported }
-                                .map { Choice(it, Format.direction(it)) },
-                            selected = state.settings.defaultDirection,
-                            onSelect = {
-                                state.settings.defaultDirection = it
-                                state.settings.save()
-                            },
-                        )
-                    }
-                    Column(Modifier.weight(1f)) {
-                        FieldLabel("比较方式")
-                        Spacer(Modifier.height(5.dp))
-                        Dropdown(
-                            options = CompareMode.entries.map { Choice(it, Format.compare(it)) },
-                            selected = state.settings.defaultCompare,
-                            onSelect = {
-                                state.settings.defaultCompare = it
-                                state.settings.save()
-                            },
-                        )
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Column(Modifier.weight(1f)) {
-                        FieldLabel("冲突时")
-                        Spacer(Modifier.height(5.dp))
-                        Dropdown(
-                            options = ConflictPolicy.entries.map { Choice(it, Format.conflict(it)) },
-                            selected = state.settings.defaultConflict,
-                            onSelect = {
-                                state.settings.defaultConflict = it
-                                state.settings.save()
-                            },
-                        )
-                    }
-                    Column(Modifier.weight(1f)) {
-                        FieldLabel("删除时")
-                        Spacer(Modifier.height(5.dp))
-                        Dropdown(
-                            options = DeletePolicy.entries.map { Choice(it, Format.delete(it)) },
-                            selected = state.settings.defaultDelete,
-                            onSelect = {
-                                state.settings.defaultDelete = it
-                                state.settings.save()
-                            },
-                        )
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    FieldLabel("并行度", Modifier.width(90.dp))
-                    SegmentedChoice(
-                        options = PARALLELISM_OPTIONS.map { Choice(it, it.toString()) },
-                        selected = state.settings.defaultParallelism.coerceIn(1, DesktopSettings.MAX_PARALLELISM),
-                        onSelect = {
-                            state.settings.defaultParallelism = it
-                            state.settings.save()
-                        },
-                    )
-                }
-            }
-
-            Panel(modifier = Modifier.fillMaxWidth(), title = "关于") {
-                KeyValue("版本", BuildInfo.VERSION, wide = true)
-                KeyValue("协议版本", BuildInfo.PROTOCOL_VERSION.toString(), wide = true)
-                KeyValue("平台", BuildInfo.PLATFORM, wide = true)
-                KeyValue("配置数量", Format.count(state.configs.size, "个"), wide = true)
-                KeyValue("本次会话运行", Format.count(state.jobs.size, "次"), wide = true)
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "许可证 Apache-2.0。协议没有加密与鉴权，只应在可信网络里共享文件夹。",
-                    style = CubType.meta,
-                    color = colors.warning,
-                )
-                Spacer(Modifier.height(8.dp))
-                QuietButton(
-                    "在日志页看全部",
-                    onClick = { state.goTo(Section.LOGS) },
-                )
-                Spacer(Modifier.height(6.dp))
-                QuietButton(
-                    "刷新配置列表",
-                    onClick = {
-                        state.reloadConfigs()
-                        state.notify("配置列表已刷新", NoticeKind.INFO)
-                    },
-                )
-            }
+        Column(Modifier.width(320.dp).fillMaxHeight().verticalScroll(rememberScrollState())) {
+            AboutPanel(state)
         }
     }
 }
+
+/** 外观: the theme and the accent. */
+@Composable
+private fun AppearancePanel(state: AppState) {
+    val colors = CubTheme.colors
+    val settings = state.liveSettings
+
+    Panel(Modifier.fillMaxWidth(), title = "外观", subtitle = "深色是默认；两端共用同一套令牌") {
+        SettingRow("主题", settings.theme.label) {
+            Segmented(
+                options = ThemeMode.entries.toList(),
+                selected = settings.theme,
+                label = { it.label },
+                onSelect = { value -> state.changeSettings { it.theme = value } },
+            )
+        }
+
+        SettingRow("取色", "强调色用在选中档、聚焦栏与进度上") {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                for (swatch in ACCENTS) {
+                    Box(
+                        Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(parseHexColour(swatch))
+                            .border(
+                                2.dp,
+                                if (settings.accent.equals(swatch, ignoreCase = true)) colors.text else Color.Transparent,
+                                CircleShape,
+                            )
+                            .clickable { state.changeSettings { it.accent = swatch } },
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
+                QuietButton("回到品牌靛蓝") { state.changeSettings { it.accent = AppSettings.ACCENT_DEFAULT } }
+            }
+        }
+
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "品牌主色 ${AppSettings.ACCENT_DEFAULT}，辅色 #1FA8A0。换成别的颜色是允许的，但标志和界面会开始不像一套。",
+            style = CubType.meta,
+            color = colors.textFaint,
+        )
+    }
+}
+
+/** 关于: where the state lives, and which build this is. */
+@Composable
+private fun AboutPanel(state: AppState) {
+    val colors = CubTheme.colors
+    Panel(Modifier.fillMaxWidth(), title = "关于") {
+        KeyValueRow("版本", BuildInfo.VERSION)
+        KeyValueRow("协议", "v${BuildInfo.PROTOCOL_VERSION}")
+        KeyValueRow("状态目录", state.stateDirectory)
+        KeyValueRow("配置数量", "${state.configs.size} 个")
+        KeyValueRow("作业记录", "${state.jobs.size} 条")
+
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            QuietButton("复制状态目录") {
+                io.github.cubsync.desktop.copyToClipboard(state.stateDirectory)
+                state.notify("已复制状态目录", NoticeKind.SUCCESS)
+            }
+            QuietButton("打开状态目录") {
+                val opened = io.github.cubsync.desktop.openDirectory(state.stateDirectory)
+                if (!opened) state.notify("打不开这个目录", NoticeKind.WARNING)
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "协议目前未加密、未鉴权：共享只适用于可信网络，别把端口开到公网上。",
+            style = CubType.meta,
+            color = colors.warning,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text("作用范围越具体越优先：${Scope.entries.joinToString(" > ") { it.label }} > 出厂默认。", style = CubType.meta, color = colors.textFaint)
+        Text("两个目录的命名口径：${Words.LOCAL} / ${Words.REMOTE}，${Words.TRASH}不叫垃圾箱。", style = CubType.meta, color = colors.textFaint)
+    }
+}
+
+/** The accents offered. The first is the brand's; the rest are there so it can be changed. */
+private val ACCENTS = listOf("#3A5CCC", "#1FA8A0", "#7A5AF8", "#D9480F", "#2E9E5B")

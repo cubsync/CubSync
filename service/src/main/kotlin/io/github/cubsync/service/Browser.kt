@@ -2,109 +2,37 @@ package io.github.cubsync.service
 
 import io.github.cubsync.core.spi.FileMeta
 
-/**
- * How a folder is shown.
- *
- * The five modes are the design's, and they are a decision about *reading*: detailed
- * when you are looking for a thing, compact when you are moving a lot of them, cards
- * and thumbnails when the name is not how you recognise it.
- */
-enum class DisplayMode(val label: String) {
-    COMPACT("紧凑"),
-    DETAILED("详细"),
-    CARD("卡片"),
-    THUMBNAIL("缩略"),
-    COMPARE("对比"),
-    ;
-
-    /** Only the grid modes have a column count; the list modes have a row height. */
-    val grid: Boolean get() = this == CARD || this == THUMBNAIL
-}
-
-enum class SortKey(val label: String) {
-    NAME("名称"),
-    SIZE("大小"),
-    MODIFIED("修改时间"),
-}
-
-enum class ArrangementDirection(val label: String) {
-    AUTO("自动"),
-    SIDE_BY_SIDE("左右"),
-    STACKED("上下"),
-}
-
-/** How far a change reaches. More specific wins, so the order in the enum is the precedence. */
-enum class Scope(val label: String) {
-    CURRENT_DIRECTORY("当前目录"),
-    PANE("本栏全局"),
-    BOTH_PANES("两栏共用"),
-}
-
-/**
- * The browsing preferences, in one place.
- *
- * Deliberately not a Compose state object: the same rules decide what a desktop pane
- * and a phone pane show, and the sorting and the path arithmetic have no business
- * being written twice. A front end may hold this and render it; it may not invent its
- * own answer for what comes first in a list.
- */
-class BrowserSettings {
-    var displayMode: DisplayMode = DisplayMode.DETAILED
-    var sortKey: SortKey = SortKey.NAME
-    var ascending: Boolean = true
-    var foldersFirst: Boolean = true
-
-    /** Row height as a percentage of the factory height, 50..250 in steps of 5. */
-    var rowDensity: Int = 100
-
-    /** Columns for the grid modes, 1..12. */
-    var columns: Int = 4
-
-    var arrangement: ArrangementDirection = ArrangementDirection.AUTO
-
-    fun bumpDensity(delta: Int) {
-        rowDensity = (rowDensity + delta).coerceIn(MIN_DENSITY, MAX_DENSITY)
-    }
-
-    fun applyColumns(value: Int) {
-        columns = value.coerceIn(MIN_COLUMNS, MAX_COLUMNS)
-    }
-
-    /**
-     * Auto is a decision, not a third state to render: a container wider than it is
-     * tall reads better as two columns, and one that is taller than it is wide has to
-     * stack.
-     */
-    fun resolve(widthPx: Int, heightPx: Int): ArrangementDirection = when (arrangement) {
-        ArrangementDirection.AUTO -> if (widthPx >= heightPx * 1.15) {
-            ArrangementDirection.SIDE_BY_SIDE
-        } else {
-            ArrangementDirection.STACKED
-        }
-
-        else -> arrangement
-    }
-
-    companion object {
-        const val MIN_DENSITY: Int = 50
-        const val MAX_DENSITY: Int = 250
-        const val DENSITY_STEP: Int = 5
-        const val MIN_COLUMNS: Int = 1
-        const val MAX_COLUMNS: Int = 12
-    }
-}
-
 /** One part of a breadcrumb. */
 data class Crumb(val label: String, val path: String, val collapsed: Boolean = false)
 
+/** How two rows of the same name differ, in the compare mode. */
+enum class Difference(val label: String) {
+    ONLY_LEFT("仅本机有"),
+    ONLY_RIGHT("仅远端有"),
+    CONTENT_DIFFERS("内容不同"),
+    WILL_CREATE("缺项将创建"),
+    SAME("一致"),
+}
+
+/** One aligned line of the compare view. Either side may be absent. */
+data class CompareRow(
+    val name: String,
+    val left: FileMeta?,
+    val right: FileMeta?,
+    val difference: Difference,
+)
+
 /**
- * Pure browsing arithmetic: order, paths, breadcrumbs.
+ * Pure browsing arithmetic: order, paths, breadcrumbs, differences.
  *
- * Everything here is a function of its arguments, which is what makes it testable as
- * a table and what stops the two front ends from disagreeing about whether "size,
+ * Everything here is a function of its arguments, which is what makes it testable as a
+ * table and what stops the two front ends from disagreeing about whether "size,
  * descending" puts folders at the top.
  */
 object Browsing {
+
+    fun sort(entries: List<FileMeta>, prefs: BrowsePrefs): List<FileMeta> =
+        sort(entries, prefs.sortKey, prefs.ascending, prefs.foldersFirst)
 
     fun sort(
         entries: List<FileMeta>,
@@ -192,6 +120,52 @@ object Browsing {
                 add(Crumb(trailing[index], under(trailing.take(index + 1))))
             }
         }
+    }
+
+    /**
+     * Where an address box's text should land.
+     *
+     * Typing `D:/photos/holiday.jpg` and pressing return means "open the folder this is
+     * in" far more often than it means "open this file" — a file is not a folder, and
+     * refusing the input would be a worse answer than doing the obvious thing. A path
+     * that names something with no extension is left alone, so `D:/photos` still opens
+     * `photos`.
+     */
+    fun resolveTypedPath(typed: String, existsAsFolder: (String) -> Boolean): String {
+        val cleaned = PathTools.normalizeRoot(typed.trim())
+        if (cleaned.isEmpty()) return cleaned
+        if (existsAsFolder(cleaned)) return cleaned
+        val name = PathTools.leafName(cleaned)
+        val looksLikeAFile = name.contains('.') && !name.startsWith('.')
+        return if (looksLikeAFile) parent(cleaned) else cleaned
+    }
+
+    /**
+     * Aligns two listings by name for the compare mode.
+     *
+     * Rows that exist on one side only are kept rather than dropped, because a missing
+     * file is the thing this view exists to show.
+     */
+    fun compare(left: List<FileMeta>, right: List<FileMeta>): List<CompareRow> {
+        val leftBy = left.associateBy { it.relPath }
+        val rightBy = right.associateBy { it.relPath }
+        val names = (leftBy.keys + rightBy.keys).sortedWith(String.CASE_INSENSITIVE_ORDER)
+        return names.map { name ->
+            val l = leftBy[name]
+            val r = rightBy[name]
+            CompareRow(name, l, r, differenceBetween(l, r))
+        }
+    }
+
+    private fun differenceBetween(left: FileMeta?, right: FileMeta?): Difference = when {
+        left == null && right == null -> Difference.SAME
+        right == null -> Difference.ONLY_LEFT
+        left == null -> Difference.ONLY_RIGHT
+        left.isDirectory != right.isDirectory -> Difference.CONTENT_DIFFERS
+        left.isDirectory -> Difference.SAME
+        left.size != right.size -> Difference.CONTENT_DIFFERS
+        left.mtimeMs != right.mtimeMs -> Difference.CONTENT_DIFFERS
+        else -> Difference.SAME
     }
 
     /** The file name that would not collide with what is already there. */

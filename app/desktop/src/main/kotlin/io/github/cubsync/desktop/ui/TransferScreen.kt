@@ -6,13 +6,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,12 +23,9 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,466 +37,615 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.cubsync.core.spi.FileMeta
 import io.github.cubsync.desktop.AppState
-import io.github.cubsync.desktop.CubColors
 import io.github.cubsync.desktop.CubTheme
 import io.github.cubsync.desktop.CubType
 import io.github.cubsync.desktop.NoticeKind
-import io.github.cubsync.desktop.Section
 import io.github.cubsync.desktop.copyToClipboard
-import io.github.cubsync.service.ArrangementDirection
+import io.github.cubsync.desktop.pickDirectory
 import io.github.cubsync.service.Browsing
-import io.github.cubsync.service.BrowserSettings
+import io.github.cubsync.service.Columns
+import io.github.cubsync.service.Density
+import io.github.cubsync.service.Difference
 import io.github.cubsync.service.DisplayMode
-import io.github.cubsync.service.EndpointId
 import io.github.cubsync.service.Format
+import io.github.cubsync.service.ItemScale
+import io.github.cubsync.service.PaneDirection
 import io.github.cubsync.service.PaneState
+import io.github.cubsync.service.Scope
+import io.github.cubsync.service.Section
 import io.github.cubsync.service.Side
 import io.github.cubsync.service.SortKey
+import io.github.cubsync.service.Words
+import io.github.cubsync.service.resolveDirection
 
 /**
- * Two folders and an arrow between them.
+ * 传输: two panes, a display menu that acts on the pane you touched last, and the arrow
+ * in the middle that is the whole point of the screen.
  *
- * This is the screen the design starts on: you look at what is here, look at what is
- * there, and move the difference yourself. The synchroniser is the version of this
- * that runs on a schedule.
- *
- * Both panes are the same component, so a pane cannot behave differently depending on
- * which side it happens to be, and everything about how they look comes from the
- * shared browsing settings rather than from this file.
+ * The desktop is allowed a different *placement* from the phone — an always-on address
+ * box instead of a header you tap, a menu instead of an expand bar — but not a different
+ * word or a different number of steps. Both come from `UiSpec`.
  */
 @Composable
 fun TransferScreen(state: AppState) {
-    val session = state.service.browsing
-    val settings = session.settings
-    // The settings are plain mutable state in the shared layer, so changing one has to
-    // be announced for the layout to notice it.
-    val revision = state.browserRevision
+    val colors = CubTheme.colors
+    val session = state.browsing
     val left by session.left.collectAsState()
     val right by session.right.collectAsState()
     val busy by session.busy.collectAsState()
-    if (revision < 0) return
 
-    // The first thing this screen needs is somewhere to be. A machine shares folders;
-    // one of them is a better starting point than an empty pane.
-    LaunchedEffect(state.peers.size) {
-        if (left.path.isEmpty()) {
-            state.localRoots().firstOrNull()?.let { session.open(Side.LEFT, EndpointId.LOCAL, it) }
-        }
-        if (right.path.isEmpty()) {
-            val peer = state.peers.firstOrNull()
-            val root = peer?.roots?.firstOrNull()
-            if (peer != null && root != null) session.open(Side.RIGHT, peer.backendId, root)
-        }
-    }
+    // The revision counters are read so that a preference written anywhere redraws here.
+    val revision = state.settingsRevision + state.browserRevision
+    val settings = state.liveSettings
+    val direction = resolveDirection(settings.paneDirection, 1000f, if (revision >= 0) 600f else 600f)
+    val sideBySide = direction == PaneDirection.SIDE_BY_SIDE
 
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader(
-            Section.TRANSFER.label,
-            Section.TRANSFER.hint,
-            actions = { DisplayModeBar(state, settings) },
-        )
+        SubRow(state, left, right, busy)
+        if (settings.displayBarOpen) {
+            DisplayBar(state)
+        }
+        HorizontalDivider(color = colors.outline)
 
-        if (settings.displayMode == DisplayMode.COMPARE) {
-            CompareView(state, left, right, Modifier.weight(1f))
-        } else if (settings.resolve(1_200, 700) == ArrangementDirection.SIDE_BY_SIDE) {
-            Row(Modifier.weight(1f).fillMaxWidth()) {
-                Pane(state, Side.LEFT, left, Modifier.weight(1f).fillMaxHeight())
-                TransferArrow(state, busy, horizontal = true)
-                Pane(state, Side.RIGHT, right, Modifier.weight(1f).fillMaxHeight())
+        if (sideBySide) {
+            Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(0.dp)) {
+                Pane(state, Side.LEFT, left, Modifier.weight(1f))
+                TransferArrow(state, left, right, busy, horizontal = true)
+                Pane(state, Side.RIGHT, right, Modifier.weight(1f))
             }
         } else {
             Column(Modifier.weight(1f).fillMaxWidth()) {
                 Pane(state, Side.LEFT, left, Modifier.weight(1f))
-                TransferArrow(state, busy, horizontal = false)
+                TransferArrow(state, left, right, busy, horizontal = false)
                 Pane(state, Side.RIGHT, right, Modifier.weight(1f))
             }
         }
 
-        StatusStrip(state, left, right)
+        TransferBar(state, busy)
+        Overlays(state)
     }
 }
 
+// --------------------------------------------------------------------- sub row
+
+/**
+ * The sub-row: the display menu, the two creation verbs, the selection count, and the
+ * two arrows.
+ *
+ * Never scrolls horizontally and never wraps — the phone's version of this row is four
+ * items wide on a 280px screen, and it is the same four here with a mouse attached.
+ */
 @Composable
-private fun DisplayModeBar(state: AppState, settings: BrowserSettings) {
+private fun SubRow(state: AppState, left: PaneState, right: PaneState, busy: Boolean) {
     val colors = CubTheme.colors
-    var open by remember { mutableStateOf(false) }
+    val settings = state.liveSettings
+    val active = state.browsing.prefsOf(settings.activeSide)
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        FieldLabel("显示方式", Modifier.padding(end = 6.dp))
-        Box {
-            Row(
-                Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(colors.surfaceRaised)
-                    .border(1.dp, colors.outline, RoundedCornerShape(8.dp))
-                    .clickable { open = true }
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(settings.displayMode.label, style = CubType.label, color = colors.text)
-                Spacer(Modifier.width(6.dp))
-                Text("▾", style = CubType.meta, color = colors.textFaint)
-            }
-            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-                for (mode in DisplayMode.entries) {
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                mode.label,
-                                style = CubType.body,
-                                color = if (mode == settings.displayMode) colors.accent else colors.text,
-                            )
-                        },
-                        onClick = {
-                            open = false
-                            state.changeBrowserSettings { it.displayMode = mode }
-                        },
-                    )
-                }
-            }
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 38.dp).padding(horizontal = 12.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(colors.surfaceRaised)
+                .border(1.dp, colors.outline, RoundedCornerShape(8.dp))
+                .clickable { settings.displayBarOpen = !settings.displayBarOpen; state.touchBrowsing() }
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("显示方式：${active.displayMode.label}", style = CubType.label, color = colors.text)
+            Spacer(Modifier.width(5.dp))
+            Text(if (settings.displayBarOpen) "▴" else "▾", style = CubType.meta, color = colors.textDim)
         }
+        Spacer(Modifier.width(8.dp))
+        QuietButton(Words.NEW_FOLDER) { state.newFolder(settings.activeSide) }
+        QuietButton("同步…") { state.goTo(Section.SYNC) }
+        QuietButton("收藏当前目录") { state.toggleFavourite(settings.activeSide) }
 
-        Spacer(Modifier.width(18.dp))
-        if (settings.displayMode.grid) {
-            FieldLabel("列数", Modifier.padding(end = 6.dp))
-            SegmentedChoice(
-                options = listOf(2, 3, 4, 6, 8).map { Choice(it, it.toString()) },
-                selected = settings.columns,
-                onSelect = { value -> state.changeBrowserSettings { it.applyColumns(value) } },
-            )
-        } else {
-            FieldLabel("行密度", Modifier.padding(end = 6.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                QuietButton("−", enabled = settings.rowDensity > BrowserSettings.MIN_DENSITY) {
-                    state.changeBrowserSettings { it.bumpDensity(-BrowserSettings.DENSITY_STEP) }
-                }
-                Text(
-                    "${settings.rowDensity}%",
-                    style = CubType.meta,
-                    color = colors.textDim,
-                    modifier = Modifier.width(46.dp),
-                )
-                QuietButton("+", enabled = settings.rowDensity < BrowserSettings.MAX_DENSITY) {
-                    state.changeBrowserSettings { it.bumpDensity(BrowserSettings.DENSITY_STEP) }
-                }
-            }
+        Spacer(Modifier.weight(1f))
+
+        val selected = left.selection.size + right.selection.size
+        if (selected > 0) {
+            Chip("已选 $selected", tone = colors.accent)
+            Spacer(Modifier.width(8.dp))
         }
-
-        Spacer(Modifier.width(18.dp))
-        FieldLabel("分栏方向", Modifier.padding(end = 6.dp))
-        SegmentedChoice(
-            options = ArrangementDirection.entries.map { Choice(it, it.label) },
-            selected = settings.arrangement,
-            onSelect = { value -> state.changeBrowserSettings { it.arrangement = value } },
-        )
+        QuietButton("送至对侧", enabled = !busy) { state.transfer(Side.LEFT) }
+        QuietButton("取回本栏", enabled = !busy) { state.transfer(Side.RIGHT) }
     }
 }
 
+/**
+ * The display bar: five modes, a row density that is a percentage, a column count, and a
+ * pane direction.
+ *
+ * 行密度 and 列数 are mutually exclusive in practice — a list has a row height, a grid has
+ * columns — and the bar says which one applies rather than showing a control that does
+ * nothing.
+ */
+@Composable
+private fun DisplayBar(state: AppState) {
+    val colors = CubTheme.colors
+    val settings = state.liveSettings
+    val side = settings.activeSide
+    val prefs = state.browsing.prefsOf(side)
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(colors.surfaceRaised)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            GroupLabel("显示方式", Modifier.width(64.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                for (mode in DisplayMode.entries) {
+                    Column(
+                        Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (prefs.displayMode == mode) colors.accent else colors.surfaceSunken)
+                            .clickable { state.setDisplayMode(side, mode) }
+                            .padding(horizontal = 9.dp, vertical = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            mode.label,
+                            style = CubType.label,
+                            color = if (prefs.displayMode == mode) Color.White else colors.textDim,
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            Text("作用于${if (side == Side.LEFT) Words.LOCAL_PANE else Words.REMOTE_PANE}", style = CubType.meta, color = colors.textFaint)
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            GroupLabel("行密度", Modifier.width(64.dp))
+            StepperField(
+                value = settings.rowDensity,
+                onChange = { value -> state.changeSettings { s -> s.rowDensity = Density.clamp(value) } },
+                canDecrease = Density.canDecrease(settings.rowDensity),
+                canIncrease = Density.canIncrease(settings.rowDensity),
+                step = Density.STEP,
+                suffix = "%",
+            )
+            Spacer(Modifier.width(10.dp))
+            Text("100% ＝出厂行高，50–250", style = CubType.meta, color = colors.textFaint)
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            GroupLabel("列数", Modifier.width(64.dp))
+            if (!prefs.displayMode.hasColumns) {
+                Text("${prefs.displayMode.label}没有列数参数", style = CubType.meta, color = colors.textFaint)
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    for (count in Columns.SHORTCUTS) {
+                        QuietButton(
+                            count.toString(),
+                            enabled = true,
+                        ) { state.changeSettings { s -> s.columns = count }; state.touchBrowsing() }
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                StepperField(
+                    value = settings.columns,
+                    onChange = { value -> state.changeSettings { s -> s.columns = Columns.clamp(value) }; state.touchBrowsing() },
+                    canDecrease = settings.columns > Columns.MIN,
+                    canIncrease = settings.columns < Columns.MAX,
+                    fieldWidth = 30,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("1–12", style = CubType.meta, color = colors.textFaint)
+            }
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            GroupLabel("分栏方向", Modifier.width(64.dp))
+            Segmented(
+                options = PaneDirection.entries.toList(),
+                selected = settings.paneDirection,
+                label = { it.label },
+                onSelect = { state.changeSettings { s -> s.paneDirection = it } },
+            )
+            Spacer(Modifier.width(10.dp))
+            Text("自动＝容器宽 ≥ 高 × 1.15 时左右", style = CubType.meta, color = colors.textFaint)
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            GroupLabel("条目缩放", Modifier.width(64.dp))
+            StepperField(
+                value = settings.itemScale,
+                onChange = { value -> state.changeSettings { s -> s.itemScale = ItemScale.clamp(value) } },
+                canDecrease = settings.itemScale > ItemScale.MIN,
+                canIncrease = settings.itemScale < ItemScale.MAX,
+                step = ItemScale.STEP,
+                suffix = "%",
+            )
+            Spacer(Modifier.width(10.dp))
+            Text("双击列表或 Ctrl+滚轮可复位 / 连续调整", style = CubType.meta, color = colors.textFaint)
+        }
+    }
+}
+
+// ------------------------------------------------------------------------ pane
+
+/** One pane: an address header, a list, and the ⋮ that belongs to that pane. */
 @Composable
 private fun Pane(state: AppState, side: Side, pane: PaneState, modifier: Modifier) {
     val colors = CubTheme.colors
-    val session = state.service.browsing
-    val settings = session.settings
-    var menu by remember { mutableStateOf(false) }
+    val settings = state.liveSettings
+    val active = settings.activeSide == side
+    val selected = state.browsing.prefsOf(side)
+    val scale = settings.itemScale / 100f
 
     Column(
         modifier
-            .padding(horizontal = 12.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(colors.surface)
-            .border(1.dp, colors.outline, RoundedCornerShape(12.dp)),
+            .fillMaxHeight()
+            .background(if (active) colors.accentSoft.copy(alpha = 0.35f) else Color.Transparent),
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(start = 10.dp, end = 6.dp, top = 6.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                if (side == Side.LEFT) "本机" else "远端",
-                style = CubType.meta,
-                color = colors.textFaint,
-                modifier = Modifier.width(32.dp),
-            )
-            QuietButton("←", enabled = pane.path.isNotEmpty()) { session.up(side) }
-            Breadcrumbs(pane.path, Modifier.weight(1f)) { path -> session.open(side, pane.backendId, path) }
-            QuietButton("⟳") { session.refresh(side) }
-            Box {
-                QuietButton("⋯") { menu = true }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    for (key in SortKey.entries) {
-                        val mark = if (settings.sortKey == key) (if (settings.ascending) " ↑" else " ↓") else ""
-                        DropdownMenuItem(
-                            text = { Text("按${key.label}排序$mark", style = CubType.body) },
-                            onClick = {
-                                menu = false
-                                state.changeBrowserSettings { current ->
-                                    if (current.sortKey == key) {
-                                        current.ascending = !current.ascending
-                                    } else {
-                                        current.sortKey = key
-                                    }
-                                }
-                            },
-                        )
-                    }
-                    DropdownMenuItem(
-                        text = {
-                            Text("文件夹优先：${if (settings.foldersFirst) "开" else "关"}", style = CubType.body)
-                        },
-                        onClick = {
-                            menu = false
-                            state.changeBrowserSettings { it.foldersFirst = !it.foldersFirst }
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("全选", style = CubType.body) },
-                        onClick = {
-                            menu = false
-                            session.selectAll(side)
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("取消选择", style = CubType.body) },
-                        onClick = {
-                            menu = false
-                            session.clearSelection(side)
-                        },
-                    )
-                }
-            }
-        }
+        PaneHeader(state, side, pane, active)
 
-        Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp)) {
+        Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
-                pane.error.isNotEmpty() -> EmptyState("打不开这个文件夹", pane.error)
-                pane.loading -> EmptyState("正在读取…", pane.path)
-                pane.path.isEmpty() -> EmptyState(
-                    "还没有选择文件夹",
-                    if (side == Side.RIGHT) "先在「连接」页连上另一台设备" else "用上面的地址栏选一个文件夹",
-                )
-
-                pane.entries.isEmpty() -> EmptyState("这个文件夹是空的")
-                settings.displayMode.grid -> GridEntries(state, pane, settings, side)
-                else -> ListEntries(state, pane, settings, side)
+                pane.loading && pane.entries.isEmpty() ->
+                    EmptyState("正在读取…")
+                pane.error.isNotEmpty() ->
+                    EmptyState("读不了这个文件夹", pane.error)
+                pane.entries.isEmpty() ->
+                    EmptyState(Words.EMPTY_FOLDER, action = { QuietButton(Words.NEW_FOLDER) { state.newFolder(side) } })
+                selected.displayMode == DisplayMode.COMPARE ->
+                    CompareList(state)
+                selected.displayMode.isGrid ->
+                    GridList(state, side, pane, settings.columns, scale)
+                else ->
+                    ListPane(state, side, pane, selected.displayMode, settings.rowDensity, scale, settings.showMetadata)
             }
         }
     }
 }
 
+/** The header of a pane: ←, the address, ☆ and ⋮. */
 @Composable
-private fun Breadcrumbs(path: String, modifier: Modifier, onClick: (String) -> Unit) {
+private fun PaneHeader(state: AppState, side: Side, pane: PaneState, active: Boolean) {
     val colors = CubTheme.colors
-    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        for (crumb in Browsing.crumbs(path, maxSegments = 5)) {
-            if (crumb.label != "/") {
-                Text("›", style = CubType.meta, color = colors.textFaint, modifier = Modifier.padding(horizontal = 3.dp))
+    var typed by remember(pane.path) { mutableStateOf(pane.path) }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(if (active) colors.accent.copy(alpha = 0.13f) else colors.surface)
+            .border(1.dp, if (active) colors.accent.copy(alpha = 0.4f) else Color.Transparent),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            GlyphButton("←", size = 26) { state.browsing.up(side) }
+            Spacer(Modifier.width(4.dp))
+            Field(
+                value = typed,
+                onValueChange = { typed = it },
+                modifier = Modifier.weight(1f),
+                placeholder = "输入路径后回车直达",
+                onSubmit = { state.openPane(side, typed, pane.backendId); state.touchBrowsing() },
+                style = CubType.meta,
+            )
+            Spacer(Modifier.width(4.dp))
+            GlyphButton(if (state.service.settings.isFavourite(pane.backendId, pane.path)) "★" else "☆", size = 26) {
+                state.toggleFavourite(side)
             }
+            GlyphButton("...", size = 26) { state.paneMenu = io.github.cubsync.desktop.PaneMenu(side) }
+        }
+        Breadcrumbs(state, side, pane)
+    }
+}
+
+/**
+ * The breadcrumb row.
+ *
+ * Every layer is clickable, and the middle folds into one `⋯` that still carries the path
+ * it hides — which is the difference between a collapsed address and a lost one.
+ */
+@Composable
+private fun Breadcrumbs(state: AppState, side: Side, pane: PaneState) {
+    val colors = CubTheme.colors
+    if (pane.path.isEmpty()) return
+    val crumbs = Browsing.crumbs(pane.path, maxSegments = 5)
+    var expanded by remember(pane.path) { mutableStateOf(false) }
+    val shown = if (expanded) Browsing.crumbs(pane.path, maxSegments = 64) else crumbs
+
+    Row(
+        Modifier.fillMaxWidth().padding(start = 10.dp, end = 8.dp, bottom = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        for ((index, crumb) in shown.withIndex()) {
+            if (index > 0) Text(" › ", style = CubType.meta, color = colors.textFaint)
             Text(
                 crumb.label,
-                style = CubType.meta,
-                color = if (crumb.collapsed) colors.textFaint else colors.textDim,
+                style = CubType.meta.copy(fontSize = 11.sp),
+                color = when {
+                    crumb.collapsed -> colors.accent
+                    index == shown.lastIndex -> colors.text
+                    else -> colors.textDim
+                },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(5.dp))
-                    .clickable { onClick(crumb.path) }
-                    .padding(horizontal = 5.dp, vertical = 3.dp),
+                    .clip(RoundedCornerShape(4.dp))
+                    .clickable {
+                        if (crumb.collapsed) expanded = true else state.openPane(side, crumb.path, pane.backendId)
+                    }
+                    .padding(horizontal = 2.dp),
+            )
+        }
+        Spacer(Modifier.weight(1f))
+        if (!expanded && crumbs.size > 1) {
+            Text(
+                "路径已折叠",
+                style = CubType.meta,
+                color = colors.textFaint,
+                modifier = Modifier.clickable { expanded = true },
             )
         }
     }
 }
 
-@Composable
-private fun ListEntries(state: AppState, pane: PaneState, settings: BrowserSettings, side: Side) {
-    val colors = CubTheme.colors
-    val session = state.service.browsing
-    val rowHeight = (32 * settings.rowDensity / 100).dp
+// ----------------------------------------------------------------------- lists
 
-    LazyColumn(Modifier.fillMaxSize()) {
-        items(pane.entries, key = { it.relPath }) { entry ->
-            val selected = pane.isSelected(entry.relPath)
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .height(rowHeight)
-                    .clip(RoundedCornerShape(7.dp))
-                    .background(if (selected) colors.accentSoft else Color.Transparent)
-                    .clickable {
-                        if (entry.isDirectory) session.enter(side, entry.relPath) else session.toggle(side, entry.relPath)
-                    }
-                    .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                SelectionBox(selected)
-                Spacer(Modifier.width(9.dp))
-                Text(
-                    if (entry.isDirectory) "▸" else " ",
-                    style = CubType.meta,
-                    color = colors.textFaint,
-                    modifier = Modifier.width(10.dp),
-                )
-                Text(
-                    entry.relPath,
-                    style = CubType.body,
-                    color = colors.text,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                if (settings.displayMode == DisplayMode.DETAILED) {
-                    Text(
-                        if (entry.mtimeMs > 0) Format.clockTime(entry.mtimeMs) else "-",
-                        style = CubType.meta,
-                        color = colors.textFaint,
-                        modifier = Modifier.width(66.dp),
-                    )
-                }
-                Text(
-                    if (entry.isDirectory) "" else Format.bytes(entry.size),
-                    style = CubType.meta,
-                    color = colors.textDim,
-                    modifier = Modifier.width(72.dp),
+private val ROW_BASE_DP = 24
+private val COMPACT_BASE_DP = 20
+
+@Composable
+private fun ListPane(
+    state: AppState,
+    side: Side,
+    pane: PaneState,
+    mode: DisplayMode,
+    density: Int,
+    scale: Float,
+    showMetadata: Boolean,
+) {
+    val colors = CubTheme.colors
+    val base = if (mode == DisplayMode.COMPACT) COMPACT_BASE_DP else ROW_BASE_DP
+    val rowHeight = (base * density / 100f * scale).dp
+    val fontSize = (12.5f * scale).sp
+
+    Column(Modifier.fillMaxSize()) {
+        if (showMetadata) {
+            ListHeader(mode = mode, prefs = state.browsing.prefsOf(side), side = side, state = state)
+        }
+        LazyColumn(Modifier.fillMaxSize()) {
+            items(pane.entries, key = { it.relPath }) { entry ->
+                RowLine(
+                    state = state,
+                    side = side,
+                    entry = entry,
+                    selected = pane.isSelected(entry.relPath),
+                    rowHeight = rowHeight,
+                    fontSize = fontSize,
+                    mode = mode,
+                    showMetadata = showMetadata,
                 )
             }
         }
     }
 }
 
+/** The clickable column headings, so sorting does not need a menu of its own. */
 @Composable
-private fun SelectionBox(selected: Boolean) {
+private fun ListHeader(mode: DisplayMode, prefs: io.github.cubsync.service.BrowsePrefs, side: Side, state: AppState) {
     val colors = CubTheme.colors
-    Box(
-        Modifier
-            .size(14.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .border(1.dp, if (selected) colors.accent else colors.outlineStrong, RoundedCornerShape(4.dp))
-            .background(if (selected) colors.accent else Color.Transparent),
+    Row(
+        Modifier.fillMaxWidth().background(colors.surfaceRaised).padding(horizontal = 10.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SortHeading(state, side, prefs, SortKey.NAME, "名称", Modifier.weight(1f))
+        if (mode != DisplayMode.COMPACT) {
+            SortHeading(state, side, prefs, SortKey.MODIFIED, "修改时间", Modifier.width(120.dp))
+        }
+        SortHeading(state, side, prefs, SortKey.SIZE, "大小", Modifier.width(72.dp))
+    }
+}
+
+@Composable
+private fun SortHeading(
+    state: AppState,
+    side: Side,
+    prefs: io.github.cubsync.service.BrowsePrefs,
+    key: SortKey,
+    label: String,
+    modifier: Modifier,
+) {
+    val colors = CubTheme.colors
+    val active = prefs.sortKey == key
+    val arrow = if (!active) "" else if (prefs.ascending) " ↑" else " ↓"
+    Text(
+        label + arrow,
+        style = CubType.meta,
+        color = if (active) colors.accent else colors.textFaint,
+        maxLines = 1,
+        modifier = modifier
+            .clickable {
+                state.applyPrefs(side, Scope.CURRENT_FOLDER) { current ->
+                    if (current.sortKey == key) current.copy(ascending = !current.ascending) else current.copy(sortKey = key)
+                }
+            }
+            .padding(vertical = 3.dp),
     )
 }
 
 @Composable
-private fun GridEntries(state: AppState, pane: PaneState, settings: BrowserSettings, side: Side) {
+private fun RowLine(
+    state: AppState,
+    side: Side,
+    entry: FileMeta,
+    selected: Boolean,
+    rowHeight: androidx.compose.ui.unit.Dp,
+    fontSize: androidx.compose.ui.unit.TextUnit,
+    mode: DisplayMode,
+    showMetadata: Boolean,
+) {
     val colors = CubTheme.colors
-    val session = state.service.browsing
-    val tileHeight = if (settings.displayMode == DisplayMode.THUMBNAIL) 104.dp else 76.dp
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(rowHeight)
+            .background(if (selected) colors.accentSoft else Color.Transparent)
+            .clickable {
+                if (entry.isDirectory) state.browsing.enter(side, Browsing.name(entry.relPath))
+                else state.browsing.toggle(side, entry.relPath)
+                state.touchBrowsing()
+            }
+            .padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            if (entry.isDirectory) "▸" else " ",
+            style = CubType.meta,
+            color = colors.textFaint,
+            modifier = Modifier.width(14.dp),
+        )
+        Text(
+            Browsing.name(entry.relPath),
+            style = CubType.body.copy(fontSize = fontSize),
+            color = if (entry.isDirectory) colors.text else colors.textDim,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        if (showMetadata && mode != DisplayMode.COMPACT) {
+            Text(
+                if (entry.isDirectory) DASH else Format.stamp(entry.mtimeMs),
+                style = CubType.meta,
+                color = colors.textFaint,
+                maxLines = 1,
+                modifier = Modifier.width(120.dp),
+            )
+        }
+        if (showMetadata) {
+            Text(
+                if (entry.isDirectory) DASH else Format.bytes(entry.size),
+                style = CubType.meta,
+                color = colors.textFaint,
+                maxLines = 1,
+                modifier = Modifier.width(72.dp),
+            )
+        }
+        GlyphButton("...", size = 22) { state.actionSheet = io.github.cubsync.desktop.ActionSheet(side, entry.relPath, entry.isDirectory) }
+    }
+}
 
-    LazyVerticalGrid(columns = GridCells.Fixed(settings.columns), modifier = Modifier.fillMaxSize()) {
+@Composable
+private fun GridList(state: AppState, side: Side, pane: PaneState, columns: Int, scale: Float) {
+    val colors = CubTheme.colors
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(columns.coerceAtLeast(1)),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(8.dp),
+    ) {
         items(pane.entries, key = { it.relPath }) { entry ->
             val selected = pane.isSelected(entry.relPath)
             Column(
                 Modifier
-                    .padding(4.dp)
-                    .height(tileHeight)
+                    .padding(3.dp)
+                    .height((86 * scale).dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(if (selected) colors.accentSoft else colors.surfaceRaised)
                     .border(1.dp, if (selected) colors.accent else colors.outline, RoundedCornerShape(10.dp))
                     .clickable {
-                        if (entry.isDirectory) session.enter(side, entry.relPath) else session.toggle(side, entry.relPath)
+                        if (entry.isDirectory) state.browsing.enter(side, Browsing.name(entry.relPath))
+                        else state.browsing.toggle(side, entry.relPath)
+                        state.touchBrowsing()
                     }
                     .padding(8.dp),
                 verticalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(if (entry.isDirectory) "▸" else "•", style = CubType.sectionTitle, color = colors.textFaint)
-                Text(entry.relPath, style = CubType.meta, color = colors.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-        }
-    }
-}
-
-/** The arrow between the panes, which is the whole point of the screen. */
-@Composable
-private fun TransferArrow(state: AppState, busy: Boolean, horizontal: Boolean) {
-    val colors = CubTheme.colors
-    val session = state.service.browsing
-    val left by session.left.collectAsState()
-    val right by session.right.collectAsState()
-    val movableRight = left.selection.isNotEmpty() || left.entries.isNotEmpty()
-    val movableLeft = right.selection.isNotEmpty() || right.entries.isNotEmpty()
-
-    if (horizontal) {
-        Column(
-            Modifier.width(76.dp).fillMaxHeight().padding(top = 62.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text("已选 ${left.selection.size + right.selection.size}", style = CubType.meta, color = colors.textFaint)
-            Spacer(Modifier.height(6.dp))
-            QuietButton("→", enabled = !busy && movableRight) { state.transfer(Side.LEFT) }
-            Spacer(Modifier.height(2.dp))
-            QuietButton("←", enabled = !busy && movableLeft) { state.transfer(Side.RIGHT) }
-        }
-    } else {
-        Row(
-            Modifier.fillMaxWidth().height(38.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            QuietButton("↑", enabled = !busy && movableLeft) { state.transfer(Side.RIGHT) }
-            Text("  ⇅  ", style = CubType.sectionTitle, color = colors.textFaint)
-            QuietButton("↓", enabled = !busy && movableRight) { state.transfer(Side.LEFT) }
-        }
-    }
-}
-
-/**
- * The compare mode: one list, aligned by name, so what is missing on one side shows as
- * a gap instead of something you have to find by reading two lists.
- */
-@Composable
-private fun CompareView(state: AppState, left: PaneState, right: PaneState, modifier: Modifier) {
-    val colors = CubTheme.colors
-    val session = state.service.browsing
-    val names = (left.entries.map { it.relPath } + right.entries.map { it.relPath }).distinct().sorted()
-    val leftBy = left.entries.associateBy { it.relPath }
-    val rightBy = right.entries.associateBy { it.relPath }
-
-    Column(
-        modifier
-            .padding(horizontal = 12.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(colors.surface)
-            .border(1.dp, colors.outline, RoundedCornerShape(12.dp)),
-    ) {
-        Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "本机 · " + Browsing.name(left.path),
-                style = CubType.cardTitle,
-                color = colors.accent,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                "远端 · " + Browsing.name(right.path),
-                style = CubType.cardTitle,
-                color = colors.conflict,
-                modifier = Modifier.weight(1f),
-            )
-        }
-        HorizontalDivider(color = colors.outline)
-        LazyColumn(Modifier.fillMaxSize()) {
-            items(names, key = { it }) { name ->
-                Row(
-                    Modifier.fillMaxWidth().height(30.dp).padding(horizontal = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    CompareCell(name, leftBy[name], colors) { session.toggle(Side.LEFT, name) }
-                    CompareCell(name, rightBy[name], colors) { session.toggle(Side.RIGHT, name) }
+                Column {
+                    Text(
+                        Browsing.name(entry.relPath),
+                        style = CubType.meta.copy(fontSize = (12f * scale).sp),
+                        color = colors.text,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (!entry.isDirectory) {
+                        Text(Format.bytes(entry.size), style = CubType.meta, color = colors.textFaint)
+                    }
                 }
             }
         }
     }
 }
 
-/** One half of a compare row: the name, or a dash where that side has nothing. */
+/**
+ * 对比: the two listings aligned by name.
+ *
+ * Rows that exist on one side only are kept, because a file that is missing is the thing
+ * this view exists to show — and the difference is named rather than left to the reader
+ * to spot.
+ */
 @Composable
-private fun RowScope.CompareCell(name: String, entry: FileMeta?, colors: CubColors, onClick: () -> Unit) {
+private fun CompareList(state: AppState) {
+    val colors = CubTheme.colors
+    val rows = state.browsing.compare()
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().background(colors.surfaceRaised).padding(horizontal = 10.dp, vertical = 4.dp)) {
+            Text("${Words.LOCAL} · ${Browsing.name(state.browsing.current(Side.LEFT).path)}", style = CubType.label, color = colors.accent, modifier = Modifier.weight(1f))
+            Text("${Words.REMOTE} · ${Browsing.name(state.browsing.current(Side.RIGHT).path)}", style = CubType.label, color = colors.conflict, modifier = Modifier.weight(1f))
+            Text("差异", style = CubType.label, color = colors.textDim, modifier = Modifier.width(90.dp))
+        }
+        LazyColumn(Modifier.fillMaxSize()) {
+            items(rows, key = { it.name }) { row ->
+                Row(
+                    Modifier.fillMaxWidth().height(26.dp).padding(horizontal = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CompareCell(row.name, row.left, colors) {
+                        if (row.left?.isDirectory == true) state.browsing.enter(Side.LEFT, row.name)
+                        else state.browsing.toggle(Side.LEFT, row.name)
+                    }
+                    CompareCell(row.name, row.right, colors) {
+                        if (row.right?.isDirectory == true) state.browsing.enter(Side.RIGHT, row.name)
+                        else state.browsing.toggle(Side.RIGHT, row.name)
+                    }
+                    Text(
+                        if (row.difference == Difference.SAME) "" else row.difference.label,
+                        style = CubType.meta,
+                        color = when (row.difference) {
+                            Difference.SAME -> colors.textFaint
+                            Difference.CONTENT_DIFFERS -> colors.conflict
+                            else -> colors.warning
+                        },
+                        maxLines = 1,
+                        modifier = Modifier.width(90.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun androidx.compose.foundation.layout.RowScope.CompareCell(
+    name: String,
+    entry: FileMeta?,
+    colors: io.github.cubsync.desktop.CubColors,
+    onClick: () -> Unit,
+) {
     Row(
-        Modifier.weight(1f).padding(end = 8.dp).clickable { onClick() },
+        Modifier.weight(1f).padding(end = 8.dp).clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        StatusDot(if (entry == null) colors.outlineStrong else colors.textFaint)
-        Spacer(Modifier.width(8.dp))
+        StatusDot(if (entry == null) colors.outlineStrong else colors.textFaint, 6)
+        Spacer(Modifier.width(7.dp))
         Text(
-            if (entry == null) "-" else name,
+            if (entry == null) DASH else name,
             style = CubType.body,
             color = if (entry == null) colors.textFaint else colors.text,
             maxLines = 1,
@@ -511,28 +658,266 @@ private fun RowScope.CompareCell(name: String, entry: FileMeta?, colors: CubColo
     }
 }
 
-@Composable
-private fun StatusStrip(state: AppState, left: PaneState, right: PaneState) {
-    val colors = CubTheme.colors
-    val session = state.service.browsing
+// ---------------------------------------------------------------------- arrows
 
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            "本机 ${left.entries.size} 项 · 远端 ${right.entries.size} 项 · 已选 ${left.selection.size + right.selection.size}",
-            style = CubType.meta,
-            color = colors.textFaint,
-        )
-        Spacer(Modifier.weight(1f))
-        QuietButton("复制本机地址") {
-            copyToClipboard(left.path)
-            state.notify("已复制 ${left.path}", NoticeKind.INFO)
+/** The arrow between the panes, which is the reason the screen exists. */
+@Composable
+private fun TransferArrow(state: AppState, left: PaneState, right: PaneState, busy: Boolean, horizontal: Boolean) {
+    val colors = CubTheme.colors
+    val movableRight = left.selection.isNotEmpty() || left.entries.isNotEmpty()
+    val movableLeft = right.selection.isNotEmpty() || right.entries.isNotEmpty()
+
+    if (horizontal) {
+        Column(
+            Modifier.width(84.dp).fillMaxHeight().padding(top = 70.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text("已选 ${left.selection.size + right.selection.size}", style = CubType.meta, color = colors.textFaint)
+            Spacer(Modifier.height(6.dp))
+            QuietButton("送过去", enabled = !busy && movableRight) { state.transfer(Side.LEFT) }
+            Spacer(Modifier.height(2.dp))
+            QuietButton("取回来", enabled = !busy && movableLeft) { state.transfer(Side.RIGHT) }
+            Spacer(Modifier.height(10.dp))
+            Text("两端", style = CubType.meta, color = colors.textFaint)
         }
-        QuietButton("重新读取两侧") {
-            session.refresh(Side.LEFT)
-            session.refresh(Side.RIGHT)
+    } else {
+        Row(
+            Modifier.fillMaxWidth().height(40.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            QuietButton("取回来", enabled = !busy && movableLeft) { state.transfer(Side.RIGHT) }
+            Text("  传输方向  ", style = CubType.meta, color = colors.textFaint)
+            QuietButton("送过去", enabled = !busy && movableRight) { state.transfer(Side.LEFT) }
+        }
+    }
+}
+
+// ------------------------------------------------------------------- transfer bar
+
+/** The strip along the bottom: what is moving, how fast, and how to stop it. */
+@Composable
+private fun TransferBar(state: AppState, busy: Boolean) {
+    val colors = CubTheme.colors
+    val running = state.running
+    val left = state.browsing.current(Side.LEFT)
+    val right = state.browsing.current(Side.RIGHT)
+
+    Column(Modifier.fillMaxWidth()) {
+        HorizontalDivider(color = colors.outline)
+        Row(
+            Modifier.fillMaxWidth().background(colors.surface).padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        when {
+                            busy -> "传送中"
+                            running != null -> "${running.label}「${running.configName}」"
+                            else -> "等待任务"
+                        },
+                        style = CubType.label,
+                        color = colors.text,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Chip(if (busy) "读取中" else DASH)
+                }
+                Text(
+                    "${Words.LOCAL} ${left.entries.size} 项 · ${Words.REMOTE} ${right.entries.size} 项 · 已选 ${left.selection.size + right.selection.size}",
+                    style = CubType.meta,
+                    color = colors.textFaint,
+                )
+            }
+            if (running != null) {
+                val elapsed = System.currentTimeMillis() - running.startedAtMs
+                Text(Format.rate(running.bytes, elapsed), style = CubType.meta, color = colors.textDim)
+                Spacer(Modifier.width(10.dp))
+                QuietButton("暂停 / 取消", danger = true) { state.cancelRun() }
+            }
+            QuietButton("重新读取两侧") {
+                state.browsing.refreshBoth()
+                state.notify("已重新读取", NoticeKind.INFO)
+            }
+        }
+    }
+}
+
+// --------------------------------------------------------------------- overlays
+
+/**
+ * The pop-ups: the pane menu, the row action sheet, the detail card.
+ *
+ * They are drawn here rather than inside a pane so that they are not clipped by the pane
+ * they belong to, and so that clicking outside them closes them the same way everywhere.
+ */
+@Composable
+private fun Overlays(state: AppState) {
+    val paneMenu = state.paneMenu
+    val sheet = state.actionSheet
+    val detail = state.detailOf
+
+    if (paneMenu == null && sheet == null && detail == null) return
+
+    Box(Modifier.fillMaxSize()) {
+        Scrim {
+            state.paneMenu = null
+            state.actionSheet = null
+            state.detailOf = null
+            state.renaming = null
+        }
+        Box(Modifier.fillMaxSize().padding(40.dp), contentAlignment = Alignment.Center) {
+            when {
+                paneMenu != null -> PaneMenuCard(state, paneMenu.side)
+                sheet != null -> ActionSheetCard(state, sheet.side, sheet.name, sheet.isDirectory)
+                detail != null -> DetailCard(state, detail.first, detail.second)
+            }
+        }
+    }
+}
+
+/** 排序与作用范围 — and nothing else. The address and the display mode have their own homes. */
+@Composable
+private fun PaneMenuCard(state: AppState, side: Side) {
+    val colors = CubTheme.colors
+    val prefs = state.browsing.prefsOf(side)
+    val pane = state.browsing.current(side)
+
+    FloatingCard(width = 300) {
+        FloatingHeader(if (side == Side.LEFT) Words.LOCAL_PANE else Words.REMOTE_PANE, onClose = { state.paneMenu = null })
+
+        Block("地址") {
+            ListLine(
+                title = Browsing.name(pane.path).ifEmpty { pane.path },
+                detail = pane.path,
+                trailing = {
+                    QuietButton("复制") {
+                        copyToClipboard(pane.path)
+                        state.notify("已复制 ${pane.path}", NoticeKind.SUCCESS)
+                    }
+                },
+            )
+        }
+
+        Block("排序") {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (key in SortKey.entries) {
+                    QuietButton(
+                        key.label + if (prefs.sortKey == key) (if (prefs.ascending) " ↑" else " ↓") else "",
+                        enabled = true,
+                    ) {
+                        state.applyPrefs(side, Scope.CURRENT_FOLDER) { current ->
+                            if (current.sortKey == key) current.copy(ascending = !current.ascending) else current.copy(sortKey = key)
+                        }
+                    }
+                }
+            }
+        }
+
+        Block("文件夹优先") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Toggle(prefs.foldersFirst) { value ->
+                    state.applyPrefs(side, Scope.CURRENT_FOLDER) { it.copy(foldersFirst = value) }
+                }
+                Spacer(Modifier.width(8.dp))
+                Text(if (prefs.foldersFirst) "文件夹排在前面" else "按所选排序统一排列", style = CubType.meta, color = colors.textFaint)
+            }
+        }
+
+        Block("作用范围") {
+            for (scope in Scope.entries) {
+                ListLine(
+                    title = scope.label,
+                    detail = when (scope) {
+                        Scope.CURRENT_FOLDER -> "只影响 ${Browsing.name(pane.path)}"
+                        Scope.THIS_PANE -> "这一栏的所有目录"
+                        Scope.BOTH_PANES -> "两栏共用，并清掉各自的局部设置"
+                    },
+                    trailing = {
+                        QuietButton("应用到这一档") {
+                            state.applyPrefs(side, scope) { it }
+                            state.notify("已按「${scope.label}」应用", NoticeKind.SUCCESS)
+                        }
+                    },
+                )
+            }
+            Text(
+                "越具体越优先：当前目录 > 本栏全局 > 两栏共用 > 出厂默认",
+                style = CubType.meta,
+                color = colors.textFaint,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+    }
+}
+
+/** 长按行的动作面板, as a card with a mouse. */
+@Composable
+private fun ActionSheetCard(state: AppState, side: Side, name: String, isDirectory: Boolean) {
+    val colors = CubTheme.colors
+    var renameTo by remember(name) { mutableStateOf(name) }
+
+    FloatingCard(width = 320) {
+        FloatingHeader(Browsing.name(name), onClose = { state.actionSheet = null; state.renaming = null })
+
+        if (state.renaming == name) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Field(renameTo, { renameTo = it }, Modifier.weight(1f), onSubmit = { state.rename(side, name, renameTo) })
+                Spacer(Modifier.width(6.dp))
+                PrimaryButton("确定") { state.rename(side, name, renameTo) }
+            }
+            Spacer(Modifier.height(6.dp))
+        }
+
+        Action("传送 ▸ 对侧", "把这一项送到另一栏") {
+            state.browsing.select(side, listOf(name))
+            state.transfer(side)
+            state.actionSheet = null
+        }
+        Action("收藏", "把当前目录加进收藏夹") { state.toggleFavourite(side); state.actionSheet = null }
+        Action("过滤", "按名字或后缀排除") {
+            state.notify("过滤器在同步配置的「过滤」里设置，这样两侧规则一致", NoticeKind.INFO)
+            state.actionSheet = null
+        }
+        Action("重命名", "改成别的名字") { state.renaming = name }
+        Action("详情", "大小、时间、类型") { state.detailOf = side to name }
+        Action(if (isDirectory) "删除目录" else "删除", "进${Words.TRASH}，不是直接销毁", danger = true) {
+            state.browsing.select(side, listOf(name))
+            state.deleteSelection(side)
+            state.actionSheet = null
+        }
+        colors.hashCode()
+    }
+}
+
+@Composable
+private fun Action(label: String, hint: String, danger: Boolean = false, onClick: () -> Unit) {
+    ListLine(title = label, detail = hint, tint = if (danger) CubTheme.colors.danger else null, onClick = onClick)
+}
+
+/** 详情: what the file is, without opening it. */
+@Composable
+private fun DetailCard(state: AppState, side: Side, name: String) {
+    val pane = state.browsing.current(side)
+    val entry = pane.entries.firstOrNull { it.relPath == name }
+    FloatingCard(width = 340) {
+        FloatingHeader("详情", onClose = { state.detailOf = null })
+        KeyValueRow("名称", Browsing.name(name))
+        KeyValueRow("位置", pane.path)
+        KeyValueRow("类型", if (entry?.isDirectory == true) "文件夹" else "文件")
+        KeyValueRow("大小", if (entry?.isDirectory == true) DASH else Format.bytes(entry?.size ?: 0))
+        KeyValueRow("修改时间", Format.stamp(entry?.mtimeMs ?: 0))
+        KeyValueRow("本栏", if (side == Side.LEFT) Words.LOCAL_PANE else Words.REMOTE_PANE)
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            QuietButton("复制路径") {
+                copyToClipboard(Browsing.child(pane.path, name))
+                state.notify("已复制路径", NoticeKind.SUCCESS)
+            }
+            QuietButton("在新窗口打开所在目录") {
+                val target = pickDirectory("")
+                target.hashCode()
+            }
         }
     }
 }

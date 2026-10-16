@@ -1,25 +1,22 @@
 package io.github.cubsync.desktop
 
-import io.github.cubsync.core.model.CompareMode
-import io.github.cubsync.core.model.DeletePolicy
 import io.github.cubsync.core.model.Endpoint
 import io.github.cubsync.core.model.FolderPair
 import io.github.cubsync.core.model.SyncConfig
-import io.github.cubsync.core.model.SyncDirection
 import io.github.cubsync.service.AppLog
+import io.github.cubsync.service.DisplayMode
 import io.github.cubsync.service.EndpointId
-import io.github.cubsync.service.PathTools
+import io.github.cubsync.service.Section
 import io.github.cubsync.service.ServerController
+import io.github.cubsync.service.ServerState
+import io.github.cubsync.service.Side
 import io.github.cubsync.service.SyncService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -27,256 +24,302 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The window's own behaviour, driven the way a person drives it.
+ * The window's own behaviour: navigation, what a run leaves behind, and the two-pane
+ * workflow as a person drives it.
  *
- * These run against the real service and the real local backend, so a run started
- * from the state object moves real files. That is the point: the interesting bugs
- * here are the ones where the window thinks it started something and did not.
+ * The rules about *what* a sync does are tested in the layers that own them. What is
+ * tested here is that the window wires them together — that a button does the thing a
+ * button is supposed to do, which is exactly what a screenshot cannot check.
+ *
+ * Most of what a screen starts is asynchronous, so the assertions wait for the effect
+ * rather than for the call to return. Waiting on the effect is also the honest test:
+ * "the file is there" is the thing the user sees, and "the function returned" is not.
  */
 class AppStateTest {
 
-    private val temporaries = mutableListOf<Path>()
-    private val scopes = mutableListOf<CoroutineScope>()
-
-    private fun tempDir(prefix: String): Path = Files.createTempDirectory(prefix).also { temporaries.add(it) }
-
-    private fun state(stateDirectory: Path = tempDir("state-")): AppState {
+    private class Fixture {
+        val directory: Path = Files.createTempDirectory("cubsync-desktop-test-")
         val log = AppLog()
-        val scope = CoroutineScope(Dispatchers.Default + SupervisorJob()).also { scopes.add(it) }
-        return AppState(
-            service = SyncService(stateDirectory = stateDirectory, log = log),
-            server = ServerController(log),
-            settings = DesktopSettings.inStateDirectory(stateDirectory),
-            scope = scope,
-        )
-    }
+        val desktop = DesktopSettings.inStateDirectory(directory)
+        val service = SyncService(stateDirectory = directory, log = log, settingsStorage = desktop)
+        val server = ServerController(log)
+        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        val state = AppState(service, server, desktop, scope)
 
-    @AfterTest
-    fun cleanUp() {
-        scopes.forEach { runCatching { it.cancel() } }
-        scopes.clear()
-        for (dir in temporaries) {
-            runCatching { Files.walk(dir).sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) } }
+        fun close() {
+            runCatching { state.close() }
+            scope.cancel()
         }
-        temporaries.clear()
     }
 
-    private fun pair(left: Path, right: Path) = FolderPair(
-        pairId = "pair-1",
-        order = 0,
-        name = "folders",
-        left = Endpoint(EndpointId.LOCAL, PathTools.normalizeRoot(left.toString())),
-        right = Endpoint(EndpointId.LOCAL, PathTools.normalizeRoot(right.toString())),
-    )
-
-    private fun config(pairs: List<FolderPair>) = SyncConfig(
-        configId = "cfg-1",
-        name = "窗口测试",
-        direction = SyncDirection.UPDATE_LEFT_TO_RIGHT,
-        pairs = pairs,
-    )
-
-    @Test
-    fun a_run_started_from_the_window_moves_files_and_shows_the_job() = runBlocking {
-        val left = tempDir("left-")
-        val right = tempDir("right-")
-        Files.writeString(left.resolve("hello.txt"), "hello")
-        Files.createDirectories(left.resolve("nested"))
-        Files.writeString(left.resolve("nested/deep.txt"), "deep")
-
-        val state = state()
+    private fun withFixture(block: (Fixture) -> Unit) {
+        val fixture = Fixture()
         try {
-            val config = config(listOf(pair(left, right)))
-            state.saveConfig(config)
-            state.runConfig(config, dryRun = false)
-
-            awaitUntil("the run to finish") { state.running == null && state.jobs.isNotEmpty() }
-
-            assertEquals("hello", Files.readString(right.resolve("hello.txt")))
-            assertEquals("deep", Files.readString(right.resolve("nested/deep.txt")))
-
-            // The window moves to the result, because that is what somebody wants to
-            // see next.
-            assertEquals(Section.JOBS, state.section)
-            val job = assertNotNull(state.selectedJob)
-            assertEquals(2, job.result.stats.copiedFiles)
-            assertEquals(NoticeKind.SUCCESS, state.notice?.kind)
+            block(fixture)
         } finally {
-            state.close()
+            fixture.close()
         }
     }
 
-    @Test
-    fun a_dry_run_leaves_the_other_side_alone() = runBlocking {
-        val left = tempDir("left-")
-        val right = tempDir("right-")
-        Files.writeString(left.resolve("planned.txt"), "not yet")
-
-        val state = state()
-        try {
-            val config = config(listOf(pair(left, right)))
-            state.runConfig(config, dryRun = true)
-            awaitUntil("the dry run to finish") { state.running == null && state.jobs.isNotEmpty() }
-
-            assertTrue(!Files.exists(right.resolve("planned.txt")))
-            assertTrue(assertNotNull(state.selectedJob).dryRun)
-        } finally {
-            state.close()
-        }
-    }
-
-    @Test
-    fun a_second_run_is_refused_while_one_is_in_flight() {
-        val left = tempDir("left-")
-        val right = tempDir("right-")
-        Files.writeString(left.resolve("a.txt"), "a")
-
-        val state = state()
-        try {
-            val config = config(listOf(pair(left, right)))
-            // Pretend a run is in flight; the guard is what is under test, not the run.
-            state.running = RunningJob("job-x", "窗口测试", dryRun = false, pairCount = 1, startedAtMs = 0)
-            state.runConfig(config, dryRun = false)
-            assertEquals(NoticeKind.WARNING, state.notice?.kind)
-            assertTrue(state.jobs.isEmpty())
-        } finally {
-            state.close()
-        }
-    }
-
-    @Test
-    fun a_configuration_without_folder_pairs_is_refused_with_a_reason() {
-        val state = state()
-        try {
-            state.runConfig(config(emptyList()), dryRun = false)
-            assertEquals(NoticeKind.WARNING, state.notice?.kind)
-            assertTrue(state.notice!!.text.contains("文件夹对"))
-            assertNull(state.running)
-        } finally {
-            state.close()
-        }
-    }
-
-    @Test
-    fun a_bad_peer_address_is_reported_without_opening_a_connection() {
-        val state = state()
-        try {
-            state.connectPeer("not an address")
-            assertEquals("「not an address」看起来不是 HOST:PORT", state.peerError)
-            assertTrue(state.peers.isEmpty())
-        } finally {
-            state.close()
-        }
-    }
-
-    @Test
-    fun the_server_can_be_started_and_stopped_from_the_window() {
-        val shared = tempDir("shared-")
-        val state = state()
-        try {
-            state.addRoot(shared.toString())
-            assertEquals(1, state.rootDraft.size)
-            // Adding the same folder twice is a no-op rather than a duplicate row.
-            state.addRoot(shared.toString())
-            assertEquals(1, state.rootDraft.size)
-
-            state.startServer(port = 0, nodeName = "window-test")
-            assertTrue(state.serverState.running, state.serverState.error)
-            assertTrue(state.serverState.port > 0)
-
-            state.stopServer()
-            assertTrue(!state.serverState.running)
-        } finally {
-            state.close()
-        }
-    }
-
-    @Test
-    fun a_folder_that_does_not_exist_is_refused_by_the_server() {
-        val state = state()
-        try {
-            state.addRoot("/definitely/not/here")
-            state.startServer(port = 0, nodeName = "window-test")
-            assertTrue(!state.serverState.running)
-            assertEquals(NoticeKind.ERROR, state.notice?.kind)
-        } finally {
-            state.close()
-        }
-    }
-
-    @Test
-    fun a_new_configuration_starts_from_the_settings() {
-        val state = state()
-        try {
-            state.settings.defaultDirection = SyncDirection.MIRROR_RIGHT_TO_LEFT
-            state.settings.defaultDelete = DeletePolicy.PROPAGATE
-            state.settings.defaultParallelism = 4
-            val draft = state.newConfigDraft()
-            assertEquals(SyncDirection.MIRROR_RIGHT_TO_LEFT, draft.direction)
-            assertEquals(DeletePolicy.PROPAGATE, draft.delete)
-            assertEquals(4, draft.parallelism)
-            assertEquals(CompareMode.MTIME_AND_SIZE, draft.compare)
-            assertTrue(draft.pairs.isEmpty())
-        } finally {
-            state.close()
-        }
-    }
-
-    @Test
-    fun saving_and_deleting_a_configuration_updates_the_list() {
-        val state = state()
-        try {
-            val draft = state.newConfigDraft()
-            state.saveConfig(draft)
-            assertEquals(listOf(draft.configId), state.configs.map { it.configId })
-            assertEquals(draft.configId, state.selectedConfigId)
-
-            state.deleteConfig(draft.configId)
-            assertTrue(state.configs.isEmpty())
-            assertNull(state.selectedConfig)
-        } finally {
-            state.close()
-        }
-    }
-
-    @Test
-    fun the_log_streams_into_the_window() = runBlocking {
-        val state = state()
-        try {
-            state.service.log.info("job", "something happened")
-            awaitUntil("the log line to arrive") {
-                state.logs.any { it.message == "something happened" }
-            }
-            state.clearLogs()
-            assertTrue(state.logs.isEmpty())
-            assertTrue(state.service.log.entries().isEmpty())
-        } finally {
-            state.close()
-        }
-    }
-
-    @Test
-    fun the_status_line_says_what_is_possible_right_now() {
-        val state = state()
-        try {
-            val idle = state.statusLine()
-            assertTrue(idle.contains("未共享"), idle)
-            assertTrue(idle.contains("未连接"), idle)
-
-            state.running = RunningJob("job-x", "窗口测试", dryRun = true, pairCount = 2, startedAtMs = 0)
-            assertTrue(state.statusLine().contains("试运行"))
-        } finally {
-            state.close()
-        }
-    }
-
-    /** A test that waits on a coroutine has to say so, and fail rather than hang. */
-    private suspend fun awaitUntil(what: String, timeoutMs: Long = 30_000, condition: () -> Boolean) {
+    /** Waits for something the screen started to actually happen. */
+    private fun await(what: String, timeoutMs: Long = 15_000, condition: () -> Boolean) {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             if (condition()) return
-            delay(50)
+            Thread.sleep(20)
         }
-        throw AssertionError("timed out waiting for $what")
+        throw AssertionError("waited ${timeoutMs}ms for: $what")
+    }
+
+    private fun pairing(left: Path, right: Path, id: String) = SyncConfig(
+        configId = "cfg-$id",
+        name = "运行 $id",
+        pairs = listOf(
+            FolderPair(
+                pairId = "pair-$id",
+                order = 0,
+                left = Endpoint(EndpointId.LOCAL, left.toAbsolutePath().toString().replace('\\', '/')),
+                right = Endpoint(EndpointId.LOCAL, right.toAbsolutePath().toString().replace('\\', '/')),
+            ),
+        ),
+    )
+
+    // ------------------------------------------------------------------ navigation
+
+    @Test
+    fun the_window_starts_on_the_connect_screen() = withFixture { fixture ->
+        assertEquals(Section.CONNECT, fixture.state.section)
+        assertTrue(fixture.state.statusLine(ServerState()).startsWith("未共享"))
+    }
+
+    @Test
+    fun going_to_a_screen_changes_which_one_is_open() = withFixture { fixture ->
+        fixture.state.goTo(Section.TRANSFER)
+        assertEquals(Section.TRANSFER, fixture.state.section)
+        fixture.state.goTo(Section.SETTINGS)
+        assertEquals(Section.SETTINGS, fixture.state.section)
+    }
+
+    // ------------------------------------------------------------ configurations
+
+    @Test
+    fun a_new_configuration_gets_a_name_that_is_free() = withFixture { fixture ->
+        fixture.state.saveConfig(fixture.state.newConfigDraft())
+        fixture.state.saveConfig(fixture.state.newConfigDraft())
+
+        assertEquals(2, fixture.state.configs.size)
+        assertEquals(2, fixture.state.configs.map { it.name }.toSet().size)
+    }
+
+    @Test
+    fun saving_selects_the_configuration_and_deleting_clears_the_selection() = withFixture { fixture ->
+        val config = fixture.state.newConfigDraft()
+        fixture.state.saveConfig(config)
+        assertEquals(config.configId, fixture.state.selectedConfigId)
+
+        fixture.state.deleteConfig(config.configId)
+        assertTrue(fixture.state.configs.isEmpty())
+        assertNull(fixture.state.selectedConfigId)
+    }
+
+    @Test
+    fun a_run_has_to_have_something_to_do() = withFixture { fixture ->
+        fixture.state.runConfig(fixture.state.newConfigDraft(), dryRun = false)
+
+        assertNull(fixture.state.running)
+        assertNotNull(fixture.state.notice)
+        assertTrue(fixture.state.notice!!.text.contains("文件夹对"))
+    }
+
+    // ------------------------------------------------------------------------ runs
+
+    @Test
+    fun a_run_that_moves_a_file_records_itself_and_opens_the_jobs_screen() = withFixture { fixture ->
+        val left = Files.createTempDirectory("cubsync-run-left-")
+        val right = Files.createTempDirectory("cubsync-run-right-")
+        Files.write(left.resolve("holiday.txt"), "holiday".toByteArray())
+
+        val config = pairing(left, right, "run")
+        fixture.service.configs.save(config)
+        fixture.state.reloadConfigs()
+
+        fixture.state.runConfig(config, dryRun = false)
+
+        await("the run to finish") { fixture.state.jobs.isNotEmpty() }
+        assertEquals(Section.JOBS, fixture.state.section)
+        assertEquals(1, fixture.state.jobs.first().result.stats.copiedFiles)
+        assertEquals("holiday", right.resolve("holiday.txt").toFile().readText())
+    }
+
+    @Test
+    fun a_preview_compares_without_recording_itself_as_a_run() = withFixture { fixture ->
+        val left = Files.createTempDirectory("cubsync-preview-left-")
+        val right = Files.createTempDirectory("cubsync-preview-right-")
+        Files.write(left.resolve("holiday.txt"), "holiday".toByteArray())
+
+        val config = pairing(left, right, "preview")
+        fixture.service.configs.save(config)
+        fixture.state.reloadConfigs()
+
+        fixture.state.previewConfig(config)
+
+        await("the preview to finish") { fixture.state.preview != null && !fixture.state.previewing }
+        assertTrue(fixture.state.jobs.isEmpty(), "a preview is not a run and must not appear in the history")
+        assertTrue(!right.resolve("holiday.txt").toFile().exists(), "a preview must not write anything")
+    }
+
+    // -------------------------------------------------------------------- browsing
+
+    @Test
+    fun the_two_panes_start_at_the_folders_this_machine_can_reach() = withFixture { fixture ->
+        val roots = fixture.state.localRoots()
+        assertTrue(roots.isNotEmpty(), "a pane must always have somewhere to go")
+        assertTrue(roots.all { it.isNotBlank() })
+    }
+
+    @Test
+    fun opening_a_folder_lists_it_and_entering_a_subfolder_narrows_the_path() = withFixture { fixture ->
+        val dir = Files.createTempDirectory("cubsync-pane-")
+        Files.createDirectories(dir.resolve("holiday"))
+        Files.write(dir.resolve("notes.txt"), "notes".toByteArray())
+
+        fixture.state.openPane(Side.LEFT, dir.toString())
+        await("the listing") { fixture.state.browsing.current(Side.LEFT).entries.size == 2 }
+        assertTrue(fixture.state.browsing.current(Side.LEFT).entries.any { it.relPath == "holiday" && it.isDirectory })
+
+        fixture.state.browsing.enter(Side.LEFT, "holiday")
+        await("the subfolder") { fixture.state.browsing.current(Side.LEFT).path.endsWith("holiday") }
+
+        fixture.state.browsing.up(Side.LEFT)
+        await("the parent") { fixture.state.browsing.current(Side.LEFT).path == dir.toAbsolutePath().toString().replace('\\', '/') }
+    }
+
+    @Test
+    fun transferring_moves_the_selection_and_leaves_the_rest_alone() = withFixture { fixture ->
+        val left = Files.createTempDirectory("cubsync-xfer-left-")
+        val right = Files.createTempDirectory("cubsync-xfer-right-")
+        Files.write(left.resolve("keep.txt"), "keep".toByteArray())
+        Files.write(left.resolve("send.txt"), "send".toByteArray())
+
+        fixture.state.openPane(Side.LEFT, left.toString())
+        fixture.state.openPane(Side.RIGHT, right.toString())
+        await("both listings") { fixture.state.browsing.current(Side.LEFT).entries.size == 2 }
+
+        fixture.state.browsing.select(Side.LEFT, listOf("send.txt"))
+        fixture.state.transfer(Side.LEFT)
+
+        await("the transfer") { right.resolve("send.txt").toFile().exists() }
+        assertTrue(!right.resolve("keep.txt").toFile().exists(), "an unselected file must not travel")
+    }
+
+    @Test
+    fun a_new_folder_is_created_without_colliding() = withFixture { fixture ->
+        val dir = Files.createTempDirectory("cubsync-mkdir-")
+        fixture.state.openPane(Side.LEFT, dir.toString())
+        fixture.state.newFolder(Side.LEFT)
+        fixture.state.newFolder(Side.LEFT)
+
+        try {
+            await("two folders") { Files.list(dir).use { it.count() } == 2L }
+        } catch (failure: AssertionError) {
+            // The notice says why, which is the difference between a failing test that
+            // explains itself and one that has to be reproduced by hand.
+            throw AssertionError("${failure.message}; notice was: ${fixture.state.notice?.text}", failure)
+        }
+    }
+
+    @Test
+    fun deleting_a_row_sends_it_to_the_trash_rather_than_destroying_it() = withFixture { fixture ->
+        val dir = Files.createTempDirectory("cubsync-delete-")
+        Files.write(dir.resolve("draft.txt"), "draft".toByteArray())
+        fixture.state.openPane(Side.LEFT, dir.toString())
+        await("the listing") { fixture.state.browsing.current(Side.LEFT).entries.isNotEmpty() }
+
+        fixture.state.browsing.select(Side.LEFT, listOf("draft.txt"))
+        fixture.state.deleteSelection(Side.LEFT)
+
+        await("the delete") { !dir.resolve("draft.txt").toFile().exists() }
+        // The local backend keeps each root's trash beside it, which is what makes this
+        // recoverable — the reason the default is the trash.
+        assertTrue(Files.isDirectory(dir.resolve(".cub_trash")), "a delete should leave something to recover from")
+    }
+
+    @Test
+    fun renaming_a_row_changes_its_name_and_nothing_else() = withFixture { fixture ->
+        val dir = Files.createTempDirectory("cubsync-rename-")
+        Files.write(dir.resolve("before.txt"), "content".toByteArray())
+        fixture.state.openPane(Side.LEFT, dir.toString())
+        await("the listing") { fixture.state.browsing.current(Side.LEFT).entries.isNotEmpty() }
+
+        fixture.state.rename(Side.LEFT, "before.txt", "after.txt")
+
+        await("the rename") { dir.resolve("after.txt").toFile().exists() }
+        assertTrue(!dir.resolve("before.txt").toFile().exists())
+        assertEquals("content", dir.resolve("after.txt").toFile().readText())
+    }
+
+    // ----------------------------------------------------------------- preferences
+
+    @Test
+    fun the_display_mode_is_kept_per_pane() = withFixture { fixture ->
+        val left = Files.createTempDirectory("cubsync-mode-left-")
+        val right = Files.createTempDirectory("cubsync-mode-right-")
+        fixture.state.openPane(Side.LEFT, left.toString())
+        fixture.state.openPane(Side.RIGHT, right.toString())
+
+        fixture.state.setDisplayMode(Side.LEFT, DisplayMode.THUMBNAIL)
+        assertEquals(DisplayMode.THUMBNAIL, fixture.state.browsing.prefsOf(Side.LEFT).displayMode)
+        assertEquals(
+            DisplayMode.DETAIL,
+            fixture.state.browsing.prefsOf(Side.RIGHT).displayMode,
+            "changing one pane's mode must not change the other's",
+        )
+    }
+
+    @Test
+    fun the_row_density_is_global_so_both_panes_agree() = withFixture { fixture ->
+        fixture.state.changeSettings { it.rowDensity = 140 }
+        assertEquals(140, fixture.service.settings.rowDensity)
+        assertEquals(
+            fixture.state.browsing.prefsOf(Side.LEFT).displayMode,
+            fixture.state.browsing.prefsOf(Side.RIGHT).displayMode,
+        )
+    }
+
+    @Test
+    fun favouriting_the_current_folder_puts_it_in_the_drawer() = withFixture { fixture ->
+        val dir = Files.createTempDirectory("cubsync-fav-")
+        fixture.state.openPane(Side.LEFT, dir.toString())
+        fixture.state.toggleFavourite(Side.LEFT)
+
+        val favourites = fixture.service.settings.favourites
+        assertEquals(1, favourites.size)
+        assertTrue(favourites.first().path.endsWith(dir.fileName.toString()))
+        assertTrue(fixture.state.drawer().favourites.isNotEmpty())
+    }
+
+    @Test
+    fun the_drawer_lists_this_machine_even_before_anything_is_shared() = withFixture { fixture ->
+        val drawer = fixture.state.drawer()
+        assertTrue(drawer.accounts.any { it.role.contains("未共享") })
+        assertTrue(drawer.accounts.none { it.online })
+    }
+
+    // ----------------------------------------------------------------------- peers
+
+    @Test
+    fun a_peer_that_is_not_there_is_refused_rather_than_pretended_at() = withFixture { fixture ->
+        // Port 1 on the loopback address refuses immediately, which is what a peer that
+        // is not running looks like — as opposed to an unroutable address, which hangs.
+        fixture.state.connectPeer("127.0.0.1:1")
+
+        await("the refusal") { fixture.state.peerError != null }
+        assertTrue(fixture.state.peers.isEmpty())
+    }
+
+    @Test
+    fun a_malformed_address_is_rejected_without_a_connection_attempt() = withFixture { fixture ->
+        fixture.state.connectPeer("not an address")
+        assertEquals("「not an address」看起来不是 HOST:PORT", fixture.state.peerError)
     }
 }
