@@ -48,6 +48,10 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.cubsync.service.IconPaths
@@ -885,3 +889,15 @@ fun BrandMark(size: Int = 34, modifier: Modifier = Modifier) {
 }
 
 const val DASH: String = "—"
+
+/** Copies a string to the system clipboard, for the address the other machine types. */
+@Composable
+fun rememberClipboard(): (String) -> Unit {
+    val context = LocalContext.current
+    return remember(context) {
+        { text ->
+            val manager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            manager.setPrimaryClip(ClipData.newPlainText("CubSync", text))
+        }
+    }
+}

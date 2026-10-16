@@ -50,6 +50,40 @@ Keeping the file in the repository rather than in a scratch directory means the 
 page has a copy that outlives GitHub's editor, and the next release can be written by
 editing the previous one instead of by remembering what last time looked like.
 
+### The notes are collapsed by default — the language, not the sections
+
+A release page exists to hand somebody a file. The notes open above the downloads, so a
+long release pushes the thing the page is *for* below the fold and every download becomes
+a scroll.
+
+The **language** block ships closed, because skipping the language you do not read is the
+scroll nobody wants. The **sections** inside it ship open, because a reader who has chosen
+a language has chosen to read it, and a second round of clicking is a second round of work:
+
+```html
+<details>
+<summary><b>中文</b></summary>
+
+<details open>
+<summary><h3>能用了</h3></summary>
+
+正文…
+
+</details>
+
+</details>
+```
+
+Two details that are easy to get wrong. Blank lines are part of the shape and not
+decoration: with none after `</summary>`, GitHub renders the Markdown inside as literal
+text. And the section headings have to be real headings — wrapping them in `<b>`, which the
+first version of this did, makes a `##` and an `h4` look identical and the notes lose their
+outline.
+
+`tools/collapse-release-notes.py` applies the shape to a plain file and is safe to re-run —
+it skips anything that already has a `<details>` in it, so restore from git first if the
+shape itself changes.
+
 ## Why the release notes are not generated
 
 The commit history is Conventional Commits, so notes *could* be generated. They are

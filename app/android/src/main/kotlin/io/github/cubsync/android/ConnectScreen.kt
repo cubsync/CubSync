@@ -50,6 +50,7 @@ fun ConnectScreen(state: AndroidAppState) {
     val server = state.serverState
     val settings = state.liveSettings
     var modeOpen by remember { mutableStateOf(false) }
+    val copy = rememberClipboard()
 
     Box(Modifier.fillMaxSize()) {
         Column(
@@ -112,6 +113,38 @@ fun ConnectScreen(state: AndroidAppState) {
 
             Panel(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
                 if (server.running) {
+                    // The address has to be readable *after* the toast is gone.
+                    //
+                    // Starting a server used to report itself with a four-second notice and
+                    // then leave the screen exactly as it was, so the one fact the other
+                    // machine needs — the port — was on screen for four seconds and then
+                    // nowhere. The desktop's 服务端（主控）card shows its address; this is the
+                    // same card on the phone.
+                    CardRow(
+                        title = "端口 ${server.port}",
+                        detail = "${server.roots.size} 个共享文件夹 · 把这个地址填到另一台设备上",
+                        icon = IconPaths.SHARE,
+                    )
+                    for (endpoint in server.endpoints) {
+                        CardRow(
+                            title = endpoint,
+                            detail = server.nodeName,
+                            icon = IconPaths.LINK,
+                            onClick = {
+                                copy(endpoint)
+                                state.notify("已复制 $endpoint", NoticeKind.SUCCESS)
+                            },
+                            trailing = {
+                                QuietButton("复制") {
+                                    copy(endpoint)
+                                    state.notify("已复制 $endpoint", NoticeKind.SUCCESS)
+                                }
+                            },
+                        )
+                    }
+                    if (server.endpoints.isEmpty()) {
+                        CardDesc("没有读到可用的网卡地址。")
+                    }
                     CardButton("停止共享", CardButtonKind.OUTLINED) { state.stopServer() }
                 } else {
                     CardButton("启动服务端并等待远端连接") {

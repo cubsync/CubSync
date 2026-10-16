@@ -8,6 +8,21 @@ with the pre-1.0 rules described in [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-10-16
+
+### Fixed
+
+- The phone keeps its own address on screen. Starting the server reported itself with a
+  four-second notice and left nothing behind, and that port is what the other machine has
+  to be given. The card now shows 端口 plus one `IP:port` per interface, tappable to copy.
+
+### Changed
+
+- Release notes are collapsible: the language block starts closed, its sections start open,
+  and the headings keep the depth the file had instead of being flattened to bold.
+  `tools/collapse-release-notes.py` applies the shape, and every earlier release was
+  reshaped the same way.
+
 ## [0.3.4] - 2026-10-16
 
 ### Fixed
