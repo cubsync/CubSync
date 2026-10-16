@@ -23,6 +23,7 @@ import io.github.cubsync.service.LogEntry
 import io.github.cubsync.service.LogLevel
 import io.github.cubsync.service.PeerSession
 import io.github.cubsync.service.ServerController
+import io.github.cubsync.service.Side
 import io.github.cubsync.service.SyncService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -265,7 +266,29 @@ object Preview {
         state.peerDraft = "192.168.1.20:43917"
         state.rootDraft = listOf("D:/Photos", "D:/Documents")
         state.settings.darkTheme = darkTheme
+
+        // The browser reads real folders, so the screenshot shows a real listing
+        // rather than an empty pane. One side is populated and the other is not,
+        // which is the state the screen exists for.
+        val (browseLeft, browseRight) = sampleFolders()
+        state.service.browsing.open(Side.LEFT, EndpointId.LOCAL, io.github.cubsync.service.PathTools.normalizeRoot(browseLeft))
+        state.service.browsing.open(Side.RIGHT, EndpointId.LOCAL, io.github.cubsync.service.PathTools.normalizeRoot(browseRight))
         return state
+    }
+
+    /** A pair of real folders, so a screenshot of the browser shows a real listing. */
+    fun sampleFolders(): Pair<String, String> {
+        val left = Files.createTempDirectory("cubsync-preview-left-")
+        val right = Files.createTempDirectory("cubsync-preview-right-")
+        Files.createDirectories(left.resolve("DCIM/Camera"))
+        Files.createDirectories(left.resolve("Movies"))
+        for (name in listOf("IMG_20261016_0731.jpg", "IMG_20261016_0730.jpg", "IMG_20261015_2210.jpg")) {
+            Files.writeString(left.resolve("DCIM/Camera/$name"), "x".repeat(2_400_000 / 1000))
+        }
+        Files.writeString(left.resolve("Movies/holiday.mp4"), "x".repeat(1_800_000 / 1000))
+        Files.writeString(left.resolve("notes.txt"), "notes")
+        Files.writeString(right.resolve("existing.txt"), "already here")
+        return left.toString() to right.toString()
     }
 
     fun dispose(state: AppState) {
