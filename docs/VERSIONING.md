@@ -42,6 +42,8 @@ While the major version is `0`:
 
 ### Interface work is a patch
 
+0.3.1 is the worked example: nine settings fields, a display bar, a per-pane menu, a job detail screen and a drawer arrived in one patch, because every one of them was the interface finally saying what the engine had been doing since 0.3.0. Nothing a user could not previously do became possible.
+
 Building an interface out to match its specification does not add a capability, so it
 does not move the minor number: the product could already do the thing, it just could
 not be told to. `0.3.1`, `0.3.2`, … are for exactly that, and for fixes.

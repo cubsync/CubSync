@@ -1,6 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="CubSync">
   <title>CubSync</title>
-  <circle cx="60.0" cy="60.0" r="34.0" fill="#3A5CCC"/>
-  <circle cx="80.4" cy="76.1" r="23.0" fill="#1FA8A0"/>
-  <circle cx="80.4" cy="76.1" r="8.0" fill="#FFFFFF"/>
+  <mask id="h"><rect width="120" height="120" fill="#fff"/><circle cx="80.4" cy="76.1" r="8.0" fill="#000"/></mask>
+  <g mask="url(#h)">
+    <circle cx="60.0" cy="60.0" r="34.0" fill="#3A5CCC"/>
+    <circle cx="80.4" cy="76.1" r="23.0" fill="#1FA8A0"/>
+  </g>
 </svg>

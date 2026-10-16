@@ -1,4 +1,4 @@
-<img src="docs/logo-lockup.svg" alt="CubSync" width="320">
+<img src="docs/logo-lockup.svg" alt="CubSync" width="440">
 
 **Cross-platform file sync — one engine, many backends.**
 
@@ -6,10 +6,11 @@ CubSync keeps folders in sync between your devices over your own network. Androi
 desktop, and headless (daemon) in one codebase, driven by a single synchronization
 engine that is agnostic to the transport underneath it.
 
-> Status: **usable, early**. Version 0.5.0 has the engine, the protocol, two
-> backends, a CLI, a Windows desktop application and an Android application. One tag
-> produces every platform's package under one version number. The wire format can
-> still change between minor versions — see [docs/VERSIONING.md](docs/VERSIONING.md).
+> Status: **usable, early**. Version 0.3.1 has the engine, the protocol, two backends,
+> a CLI, a Windows desktop application and an Android application, with the interface at
+> the design document's level of detail on both ends. One tag produces every platform's
+> package under one version number. The wire format can still change between minor
+> versions — see [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ![The connect screen](docs/screenshots/connect.png)
 
@@ -113,69 +114,75 @@ debug one, which sideloads normally.
 
 ## Using the desktop application
 
-The window has five screens, and the first one is the only one that has to be
-understood before the rest works.
+The rail has six entries, in the design's order. The first one is the only one that has to
+be understood before the rest works.
 
-![The sync screen](docs/screenshots/sync.png)
+![The connect screen](docs/screenshots/connect.png)
 
-**Connect** — pick the folders this machine shares, press 开始共享, and read out the
-address it shows. On the other machine, type that address into 远端设备 and connect.
-Both halves are optional: a one-way copy to a peer works without sharing anything
-locally, and a folder can be shared without ever connecting out.
+**连接** — pick the run mode, see which channels are available, then choose the folders
+this machine shares and press 开始共享; the addresses to type on the other machine appear
+under it. Connecting out is the other half and is independent: a one-way copy to a peer
+works without sharing anything locally, and a folder can be shared without ever connecting
+out. Accounts and their state, and the last few transfers, are on the same screen.
 
-**Transfer** — two folders side by side and an arrow between them. One pane is this
-machine, the other is a connected device; select rows, or press the arrow with
-nothing selected to move everything visible. 显示方式 chooses among five ways of
-showing a folder, 行密度 and 列数 set how much fits, 分栏方向 decides whether the
-panes sit side by side or stacked, and each pane's ⋯ holds the ordering. This is the
-screen the design starts on, and the one the product is named after.
+**传输** — two folders and the arrow between them, which is what the product is named
+after. 显示方式 ▾ opens a bar holding all five modes, 行密度 as a typeable percentage,
+列数 for the grid modes, 分栏方向 and 条目缩放; it acts on whichever pane you touched
+last. Each pane's ⋯ holds its sort order, 文件夹优先 and the three 作用范围 scopes — and
+the header of each pane *is* its address: every layer is clickable, the middle folds into a
+`⋯`, and clicking the blank part turns it into a box you can type a path into.
 
 ![The transfer screen](docs/screenshots/transfer.png)
 
-**Sync** — a configuration is a policy plus a list of folder pairs. Add a pair by
-choosing a device and a folder on each side; the folders the peer exposes are
-offered as buttons, so nothing has to be typed from memory. 试运行 compares without
-writing anything, 立即同步 does the work.
+**同步** — a configuration is a policy plus a list of folder pairs. The list is on the
+left, the configuration on the right: 同步方向, 比较方式, 冲突, 删除 and 并行度, then the
+pairs, then 过滤. 预览 compares and shows the summary without writing anything; 试运行 does
+the same and records it; 立即同步 does the work.
 
-**Jobs** — what each run did, per folder pair: how much moved, what was skipped and
-why, and what failed. 再次运行 retries from the same place.
-
-**Logs** — the live record, filterable by level and by area. This is the screen to
-look at when something behaves oddly.
-
-**Settings** — where the state directory is, the defaults a new configuration starts
-from, and the theme. The dark and light palettes are the ones in the design
-prototype; dark is the default.
+**作业** — every run, newest first. Open one and it becomes a screen of its own: the
+result, thirteen rows of detail, the file-level lists of what was transferred and what was
+skipped and why, that run's own log, and the actions its outcome allows — 再次运行, 重试失败对
+or 报告.
 
 ![The jobs screen](docs/screenshots/jobs.png)
+![The job detail screen](docs/screenshots/job-detail.png)
+
+**日志** — the live record, filterable by level and by area. On the desktop it keeps an
+entry of its own, because the window has room for one.
+
+**设置** — the nine browsing and transfer fields the design lists — 默认显示方式, 条目缩放,
+显示元数据, 栏头地址行数, 分栏方向, 缓冲块数, 默认接收目录, 断点续传, 同步删除走回收站 — plus
+the theme and the accent. The synchronisation policy is deliberately not here: it belongs
+to the configuration it governs.
+
+![The settings screen](docs/screenshots/settings.png)
 
 ## On a phone
 
-The Android application has four tabs and the same words as the desktop, on the
-landing points a phone can use.
+The Android application has five tabs — the desktop's six minus 日志, which belongs to the
+job it came from — and the same words, the same step counts and the same states. Those
+come from one place (`UiSpec` in the `service` module), so the two ends cannot describe the
+same setting differently.
 
-**连接** — the same two halves: choose the folders this phone shares, start, and read
-out the address; or type the other machine's address and connect. The paths a phone
-is likely to want are offered as suggestions you can tap, and there is a field for
-anything else.
+**连接** — the run mode card first, because on a phone it is the question underneath
+everything else, and collapsed, because somebody who is not fighting permissions should not
+have to read about them. Then the channels, then sharing, then the peers, then the last few
+transfers.
 
-**传输** — the same two panes, one at a time: a switch chooses which side you are
-looking at, and the button at the bottom sends the selection to the other. The
-ordering, the modes and the copy itself are the desktop's, because they are the same
-shared session; only the shape of the screen differs.
+**传输** — the same two panes, with the design's own sub-row: ☰ for the drawer, a
+three-way switch between both panes and either one alone, 显示方式▾, and ⋮. The display bar
+hangs under it with the five modes, 行密度 as a percentage you can type, 列数 for the grid
+modes, 分栏方向 and 条目缩放. A long press on a row opens its action panel; the header of a
+pane is its address, exactly as on the desktop.
 
-**同步** — the list of configurations, and one configuration opened as its own
-screen. Policies first, then the folder pairs; each side is a device and a folder, and
-the folders the peer exposes are offered as buttons. 试运行 compares without writing;
-立即同步 does the work.
+**同步** — the list of configurations, and each of them opened with `←`: the policy, the
+pairs, the filter, then 预览 as a layer of its own.
 
-**作业** — what each run did, and one run in detail: the result, the files, what was
-skipped and why, and the log entries written between the run's start and its end. The
-log belongs to the job here rather than to a tab of its own, because on a phone the
-question after a run is what that run did.
+**作业** — every run, and one run opened in full: the result, the thirteen detail rows, the
+file-level lists, that run's log inline, and the actions it ended with. 日志 is the second
+segment of this tab rather than a tab of its own.
 
-**设置** — the state directory, the theme, and the defaults a new configuration
-starts from.
+**设置** — the same nine fields as the desktop, in the same order, with the same defaults.
 
 ## Using the command line
 
