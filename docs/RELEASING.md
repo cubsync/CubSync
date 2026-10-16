@@ -36,6 +36,27 @@
 10. **Confirm.** `gh release view v0.2.0` and `git rev-parse v0.2.0^{commit}` — the
     tag must point at the release commit and be an ancestor of `main`.
 
+## A tag publishes a draft, not a release
+
+Pushing `v*` runs the release workflow, which builds the MSI, the portable zip and the APK
+and attaches all three to a **draft** release for that tag. The tag exists, the artefacts
+are downloadable by whoever is reviewing the build, and the page stays off the public
+releases list until somebody publishes it.
+
+The reason is that "the build succeeded" and "this is ready to hand to a user" are two
+different judgements, and only the second one is a decision. Making a tag publish
+immediately collapses them: every commit worth building becomes an announcement, and the
+releases page stops saying which versions anybody has actually accepted.
+
+So the loop is: tag → CI builds a draft → the draft is reviewed → `gh release edit <tag>
+--draft=false` publishes it. Nothing else about the workflow changes; the artefacts are
+attached either way, and `gh release view <tag>` still finds a draft if you ask for it by
+name.
+
+A tag on its own — without a release — gives only GitHub's generated `Source code` archives,
+which are the repository, not the product. That is why the workflow creates the draft rather
+than stopping at the tag.
+
 ## Release notes are bilingual
 
 The notes live in `docs/releases/<tag>.md`: Chinese first, then a horizontal rule and
@@ -49,6 +70,40 @@ repository stays readable to anyone who lands on it from a search result.
 Keeping the file in the repository rather than in a scratch directory means the release
 page has a copy that outlives GitHub's editor, and the next release can be written by
 editing the previous one instead of by remembering what last time looked like.
+
+### The notes are collapsed by default — the language, not the sections
+
+A release page exists to hand somebody a file. The notes open above the downloads, so a
+long release pushes the thing the page is *for* below the fold and every download becomes
+a scroll.
+
+The **language** block ships closed, because skipping the language you do not read is the
+scroll nobody wants. The **sections** inside it ship open, because a reader who has chosen
+a language has chosen to read it, and a second round of clicking is a second round of work:
+
+```html
+<details>
+<summary><b>中文</b></summary>
+
+<details open>
+<summary><h3>能用了</h3></summary>
+
+正文…
+
+</details>
+
+</details>
+```
+
+Two details that are easy to get wrong. Blank lines are part of the shape and not
+decoration: with none after `</summary>`, GitHub renders the Markdown inside as literal
+text. And the section headings have to be real headings — wrapping them in `<b>`, which the
+first version of this did, makes a `##` and an `h4` look identical and the notes lose their
+outline.
+
+`tools/collapse-release-notes.py` applies the shape to a plain file and is safe to re-run —
+it skips anything that already has a `<details>` in it, so restore from git first if the
+shape itself changes.
 
 ## Why the release notes are not generated
 
