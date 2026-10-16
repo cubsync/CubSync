@@ -8,6 +8,42 @@ with the pre-1.0 rules described in [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-16
+
+The release where CubSync runs on a phone.
+
+### Added
+
+- **An Android application** (`app/android`). Four tabs — 连接, 同步, 作业, 设置 —
+  with material from the prototype and the same words as the desktop, on the landing
+  points a phone can actually use: a configuration and a job open as their own screen
+  with a back arrow, and the log belongs to the job rather than to a tab of its own,
+  because on a phone the question after a run is "what did this run do".
+  Directories are offered as suggestions rather than through a picker: the platform's
+  picker hands back a content URI, and the engine works in paths, so a wrong guess
+  somebody can correct in a text field beats a picker that produces something the
+  engine cannot open.
+- `Preferences`, so the phone's settings can be tested without a device.
+
+### Fixed
+
+- **`Files.readString` and `Files.writeString` do not exist on Android.** They are
+  Java 11 additions and are absent from `android.jar` even at API 37, so the code
+  compiled here and would have thrown `NoSuchMethodError` on a phone the first time
+  anybody saved a configuration or finished a run. Writing a configuration, reading
+  one, and writing a snapshot now go through streams, which have been available since
+  Java 7.
+- **A rename into place now survives a filesystem without `ATOMIC_MOVE`.** Android
+  throws `UnsupportedOperationException` where a desktop JDK throws
+  `AtomicMoveNotSupportedException`, and neither means the write failed: a plain
+  rename is still a rename.
+- The shared formatter and the policy sentence moved into `service`, so the two front
+  ends cannot describe the same policy in two different ways.
+
+### Changed
+
+- `Android` is in the platform table as working, and the Windows entry now says what
+  it ships.
 ## [0.3.0] - 2026-10-16
 
 The release where CubSync stops being a command line and becomes an application.
@@ -129,7 +165,8 @@ versions.
 - Credentials and encryption: the protocol is plaintext and intends to run over
   a trusted network until authentication is designed.
 
-[Unreleased]: https://github.com/cubsync/CubSync/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/cubsync/CubSync/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/cubsync/CubSync/releases/tag/v0.4.0
 [0.3.0]: https://github.com/cubsync/CubSync/releases/tag/v0.3.0
 [0.2.0]: https://github.com/cubsync/CubSync/releases/tag/v0.2.0
 [0.1.0]: https://github.com/cubsync/CubSync/releases/tag/v0.1.0
