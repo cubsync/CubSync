@@ -147,4 +147,95 @@ class FolderBrowser(private val pool: BackendPool, private val log: AppLog = App
         log.debug("browse", "cannot reach $backendId: ${failure.message}")
         false
     }
+
+    // ---------------------------------------------------------------- editing
+
+    /**
+     * Creates a folder and returns its path.
+     *
+     * Two things about this are deliberate. A name that is taken gets a suffix rather
+     * than an error — the button says "new folder", and refusing because a folder called
+     * 新建文件夹 exists is a conversation nobody wants to have with a file manager. And
+     * the creation is attempted for real, with the collision surfacing as an exception
+     * rather than being pre-empted by a `createDirectories` that quietly succeeds when
+     * the folder is already there: pressing the button twice quickly used to produce one
+     * folder and a second press that did nothing at all.
+     */
+    suspend fun makeDirectory(backendId: String, directory: String, wanted: String): String {
+        require(directory.isNotBlank()) { "先打开一个文件夹" }
+        val backend = pool.resolve(backendId)
+        val root = SimpleRoot(backendId, directory)
+
+        var attempt = 0
+        while (true) {
+            val existing = runCatching {
+                backend.list(root, "", recursive = false).map { PathTools.leafName(it.relPath) }.toSet()
+            }.getOrDefault(emptySet())
+            val name = Browsing.uniqueName(existing, wanted)
+            try {
+                backend.mkdir(root, name, createParents = false)
+                log.info("browse", "created folder $name", directory)
+                return Browsing.child(directory, name)
+            } catch (failure: BackendException) {
+                // Someone created that name between the listing and the call. Looking
+                // again is the whole answer; a handful of tries is more than enough,
+                // because each one competes with a human pressing a button.
+                if (failure.code != ErrorCode.ALREADY_EXISTS || ++attempt >= 8) throw failure
+            }
+        }
+    }
+
+    /** Renames one entry inside [directory]. */
+    suspend fun rename(backendId: String, directory: String, from: String, to: String) {
+        val clean = to.trim().trim('/')
+        require(clean.isNotEmpty()) { "名字不能为空" }
+        val backend = pool.resolve(backendId)
+        backend.rename(SimpleRoot(backendId, directory), from, clean)
+        log.info("browse", "renamed $from to $clean", directory)
+    }
+
+    /**
+     * Deletes entries, to the backend's trash by default.
+     *
+     * `toTrash` defaults to true and the caller has to say otherwise on purpose. The
+     * two-pane browser is where somebody is moving things around in a hurry, and the
+     * difference between recoverable and not is the whole value of this parameter.
+     */
+    suspend fun delete(
+        backendId: String,
+        directory: String,
+        names: List<String>,
+        toTrash: Boolean = true,
+    ): List<String> {
+        val backend = pool.resolve(backendId)
+        val root = SimpleRoot(backendId, directory)
+        val failures = ArrayList<String>()
+        for (name in names) {
+            runCatching { backend.delete(root, name, toTrash = toTrash) }
+                .onFailure { failures.add("$name: ${it.message ?: "删除失败"}") }
+        }
+        log.info(
+            "browse",
+            if (failures.isEmpty()) "deleted ${names.size} item(s)" else "deleted ${names.size - failures.size} item(s), ${failures.size} failed",
+            if (toTrash) "to trash" else "permanently",
+        )
+        return failures
+    }
+
+    /** Metadata for one entry, for the detail sheet. */
+    suspend fun stat(backendId: String, directory: String, name: String): FileMeta? = runCatching {
+        pool.resolve(backendId).stat(SimpleRoot(backendId, directory), name)
+    }.getOrNull()
+
+    /** Whether this exact path is a folder right now, used by the address box. */
+    suspend fun isFolder(backendId: String, path: String): Boolean = runCatching {
+        if (path.isBlank()) return@runCatching true
+        pool.resolve(backendId).stat(SimpleRoot(backendId, Browsing.parent(path)), PathTools.leafName(path))
+            ?.isDirectory ?: false
+    }.getOrDefault(false)
+
+    /** How much room is left, so a transfer can say no before it starts. */
+    suspend fun freeSpace(backendId: String, directory: String): Long = runCatching {
+        pool.resolve(backendId).freeSpace(SimpleRoot(backendId, directory))
+    }.getOrDefault(-1L)
 }

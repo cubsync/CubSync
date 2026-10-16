@@ -1,5 +1,6 @@
 package io.github.cubsync.service
 
+import io.github.cubsync.core.engine.ActionKind
 import io.github.cubsync.core.engine.JobListener
 import io.github.cubsync.core.engine.JobResult
 import io.github.cubsync.core.engine.JobRunner
@@ -73,7 +74,18 @@ class SyncService(
     val stateDirectory: Path = ConfigStore.defaultBase(),
     val log: AppLog = AppLog(),
     val history: JobHistory = JobHistory(),
+    /**
+     * Where the user's preferences are kept.
+     *
+     * Passed in rather than created here, because the store is the one thing that
+     * genuinely differs between a desktop and a phone — a properties file against
+     * SharedPreferences — while everything that reads it does not.
+     */
+    settingsStorage: SettingsStorage = SettingsStorage.memory(),
 ) {
+
+    /** The settings screen's contents, and the browsing preferences derived from them. */
+    val settings: AppSettings = AppSettings(settingsStorage)
 
     val configs: ConfigStore = ConfigStore(stateDirectory)
 
@@ -97,13 +109,21 @@ class SyncService(
      * rather than a view of a screen: leaving the browser and coming back should find
      * the same folder open, not a fresh one.
      */
-    val browsing: BrowserSession = BrowserSession(browser, browseScope, log = log)
+    val browsing: BrowserSession = BrowserSession(browser, browseScope, settings = settings, log = log)
 
     suspend fun run(
         config: SyncConfig,
         jobId: String = newJobId(),
         observer: SyncObserver = SyncObserver.NONE,
         pool: BackendPool? = browsePool,
+        /**
+         * Whether this run belongs in the history.
+         *
+         * A preview is a run with `dryRun` set, and a preview is not something that
+         * happened — putting it in the job list would mean the list fills with runs that
+         * moved no files.
+         */
+        record: Boolean = true,
     ): JobResult {
         val owned = pool == null
         val actual = pool ?: BackendPool(
@@ -137,21 +157,88 @@ class SyncService(
                 "${config.name}: ${result.status.name.lowercase()}",
                 "${result.stats.copiedFiles} copied, ${result.stats.failures} failed, ${result.durationMs} ms",
             )
-            history.add(
-                JobRecord(
-                    jobId = result.jobId,
-                    configId = config.configId,
-                    configName = config.name,
-                    direction = config.direction,
-                    dryRun = config.dryRun,
-                    result = result,
-                ),
-            )
+            if (record) {
+                history.add(
+                    JobRecord(
+                        jobId = result.jobId,
+                        configId = config.configId,
+                        configName = config.name,
+                        direction = config.direction,
+                        dryRun = config.dryRun,
+                        result = result,
+                    ),
+                )
+            }
             return result
         } finally {
             if (owned) actual.close()
         }
     }
+
+    /**
+     * What a configuration would do, without doing it.
+     *
+     * A preview is a promise, so it is counted from the plan the engine would execute
+     * rather than from a second comparison written for the screen. If the two ever
+     * disagree, this is the one that is wrong, and it is wrong in the only direction
+     * that matters — telling somebody nothing will happen before it moves 40 GB.
+     */
+    suspend fun preview(config: SyncConfig): SyncPreview =
+        SyncPreview(run(config.copy(dryRun = true), record = false).pairs.map { it.toPreview() })
+
+    /**
+     * The drawer's three sections.
+     *
+     * Built from live state: a peer is online when the pool still has an open session
+     * for it, and a root is listed when the backend actually exposes it. A drawer that
+     * lists remembered things rather than current ones is a drawer people stop trusting.
+     */
+    fun drawer(server: ServerState): DrawerModel {
+        val favourites = settings.favourites
+            .groupBy { it.device }
+            .map { (device, items) -> FavoriteGroup(device, items.sortedBy { it.path }) }
+
+        val accounts = buildList {
+            add(
+                AccountEntry(
+                    label = server.nodeName.ifEmpty { Words.LOCAL },
+                    role = if (server.running) "${Words.SERVER} · 共享中 :${server.port}" else "${Words.SERVER} · 未共享",
+                    online = server.running,
+                ),
+            )
+            for (peer in settings.knownPeers) {
+                val backendId = EndpointId.peer(peer.host, peer.port).backendId
+                add(
+                    AccountEntry(
+                        label = peer.name.ifEmpty { peer.address },
+                        role = "${Words.CLIENT} · ${peer.address}",
+                        online = browsePool.isConnected(backendId),
+                    ),
+                )
+            }
+        }
+
+        val roots = buildList {
+            for (path in browsePool.registeredRoots()) add(Favorite(Words.LOCAL, EndpointId.LOCAL, path))
+            for (peer in settings.knownPeers) {
+                val backendId = EndpointId.peer(peer.host, peer.port).backendId
+                for (path in browsing.exposedRoots(backendId)) {
+                    add(Favorite(peer.name.ifEmpty { peer.address }, backendId, path))
+                }
+            }
+        }
+
+        return DrawerModel(favourites = favourites, accounts = accounts, roots = roots)
+    }
+
+    /** Asks a peer what it exposes and remembers the connection. */
+    suspend fun connect(host: String, port: Int): PeerSession {
+        val session = browsePool.probe(host, port)
+        settings.rememberPeer(KnownPeer(session.nodeName, host, port))
+        return session
+    }
+
+    fun disconnect(backendId: String) = browsePool.disconnect(backendId)
 
     fun close() {
         runCatching { browsePool.close() }
@@ -164,6 +251,31 @@ class SyncService(
         fun newJobId(now: Instant = Instant.now(), zone: ZoneId = ZoneId.systemDefault()): String =
             "job-" + STAMP.format(now.atZone(zone))
     }
+}
+
+/**
+ * What one folder pair is about to do, counted from its plan.
+ *
+ * The counts come from the actions rather than from the diff, because "更新" is a
+ * decision the planner made, not a fact about the two files.
+ */
+private fun PairOutcome.toPreview(): PairPreview {
+    val actions = plan?.actions.orEmpty()
+    fun copies() = actions.filter {
+        it.kind == ActionKind.COPY_LEFT_TO_RIGHT || it.kind == ActionKind.COPY_RIGHT_TO_LEFT
+    }
+
+    return PairPreview(
+        pairId = pairId,
+        pairName = pairName.ifEmpty { pairId },
+        create = actions.count { it.kind == ActionKind.MKDIR },
+        update = copies().count { !it.resolvesConflict },
+        delete = actions.count { it.kind == ActionKind.DELETE_LEFT || it.kind == ActionKind.DELETE_RIGHT },
+        conflict = actions.count { it.resolvesConflict },
+        skip = actions.count { it.kind == ActionKind.NONE },
+        blockReason = plan?.blockReason.orEmpty(),
+        bytes = copies().sumOf { it.diff.right?.size ?: it.diff.left?.size ?: 0L },
+    )
 }
 
 /**

@@ -139,6 +139,27 @@ object Format {
 
     /** "3 项" reads better than "3 items" beside Chinese labels. */
     fun count(value: Int, unit: String = "项"): String = "$value $unit"
+
+    /**
+     * Turns the engine's reason for skipping a file into the words the interface uses.
+     *
+     * The engine writes short English phrases because it is a library talking to
+     * whoever embedded it. The four reasons the design names are the ones a person
+     * needs; anything else is passed through rather than forced into a category that
+     * would say something untrue about why nothing happened.
+     */
+    fun skipReason(raw: String): String {
+        if (raw.isBlank()) return ""
+        return when {
+            raw == "dry run" -> SkipReason.DRY_RUN.label
+            raw.startsWith("both sides changed") -> SkipReason.NEEDS_DECISION.label
+            raw.startsWith("kept both") -> raw.removePrefix("kept both: ").let { "保留两份，新的叫 $it" }
+            raw.contains("filter", ignoreCase = true) -> SkipReason.FILTERED.label
+            raw.contains("ignored", ignoreCase = true) || raw.contains("忽略") -> SkipReason.IGNORED.label
+            raw.contains("does not exist", ignoreCase = true) || raw.contains("源不存在") -> SkipReason.SOURCE_MISSING.label
+            else -> raw
+        }
+    }
 }
 
 /**
