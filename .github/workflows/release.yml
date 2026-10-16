@@ -73,12 +73,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
+          # The notes are written before the tag is pushed, in docs/releases/<tag>.md,
+          # and they are for the person who came to download something: what to take,
+          # what it does, what was fixed, what to be careful about. Publishing a
+          # placeholder while the real file sits in the repository is how a release page
+          # ends up saying nothing.
+          NOTES="docs/releases/$GITHUB_REF_NAME.md"
           if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            # A tag pushed before the release was written still gets one, so the
-            # artefacts are never orphaned.
-            gh release create "$GITHUB_REF_NAME" \
-              --title "CubSync ${GITHUB_REF_NAME#v}" \
-              --notes "Release notes are being written; see CHANGELOG.md in this tag."
+            if [ -f "$NOTES" ]; then
+              gh release create "$GITHUB_REF_NAME" \
+                --title "CubSync ${GITHUB_REF_NAME#v}" \
+                --notes-file "$NOTES"
+            else
+              # A tag with no notes still gets a release, so the artefacts are never
+              # orphaned.
+              gh release create "$GITHUB_REF_NAME" \
+                --title "CubSync ${GITHUB_REF_NAME#v}" \
+                --generate-notes
+            fi
           fi
           gh release upload "$GITHUB_REF_NAME" \
             app/desktop/build/compose/binaries/main/msi/*.msi \
@@ -127,10 +139,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
+          # The notes are written before the tag is pushed, in docs/releases/<tag>.md,
+          # and they are for the person who came to download something: what to take,
+          # what it does, what was fixed, what to be careful about. Publishing a
+          # placeholder while the real file sits in the repository is how a release page
+          # ends up saying nothing.
+          NOTES="docs/releases/$GITHUB_REF_NAME.md"
           if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release create "$GITHUB_REF_NAME" \
-              --title "CubSync ${GITHUB_REF_NAME#v}" \
-              --notes "Release notes are being written; see CHANGELOG.md in this tag."
+            if [ -f "$NOTES" ]; then
+              gh release create "$GITHUB_REF_NAME" \
+                --title "CubSync ${GITHUB_REF_NAME#v}" \
+                --notes-file "$NOTES"
+            else
+              # A tag with no notes still gets a release, so the artefacts are never
+              # orphaned.
+              gh release create "$GITHUB_REF_NAME" \
+                --title "CubSync ${GITHUB_REF_NAME#v}" \
+                --generate-notes
+            fi
           fi
           # The debug APK rather than a release build: a signed release needs a
           # keystore, and a keystore is a decision about distribution rather than a
