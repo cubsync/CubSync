@@ -8,6 +8,38 @@ with the pre-1.0 rules described in [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-10-16
+
+### Changed
+
+- Both interfaces are redrawn from the prototype value by value: the desktop uses
+  `--win-accent:#1e88e5` and the phone `--m3-primary:#4c6ef5`, each with its own surfaces,
+  and the radii and type scale follow the prototype too. The previous release had
+  substituted the brand indigo for the accent and called it deliberate.
+- 连接 is 连接设备 on the desktop, laid out as `连接方式 | 协议协商` over 传输通道, with the
+  negotiated protocol version and capability bits read from the handshake.
+- 运行模式 is gone from the desktop: 普通 / Root / Shizuku-ADB are Android capabilities.
+- 缓冲块数 defaults to the prototype's 256 (1MB × 256); the old ceiling of 16 made that
+  value unenterable.
+- Every icon is an `ImageVector` built from the prototype's own path data.
+
+### Added
+
+- A drawn title bar (mark, product name, device chip, window controls) on the desktop, so
+  the window has no native title bar and no white strip in the dark theme.
+- The rail's 工作区 / 任务 / 其他 groups, the bookmark list, the fold button, and a 28px
+  status bar along the bottom of the window.
+- 动态取色 (Material You) and the five accent hue chips on the phone's 设置.
+- The phone keeps clear of the system bars instead of drawing under them.
+- The phone's drawer opens with a left swipe as well as from the menu mark.
+
+### Fixed
+
+- The active pane and the selected row no longer paint a saturated block: both used the
+  accent at a higher alpha than the surface they replaced.
+- The phone's file rows and its bottom bar no longer lose their marks to a font that has
+  no glyph for them.
+
 ## [0.3.2] - 2026-10-16
 
 The release where the phone is laid out the way the design lays it out, and where an icon

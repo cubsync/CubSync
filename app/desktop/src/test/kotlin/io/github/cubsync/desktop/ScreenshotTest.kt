@@ -35,7 +35,7 @@ class ScreenshotTest {
             val state = Preview.state(shot.section, shot.dark, shot.jobDetail)
             try {
                 val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
-                    CubTheme(dark = shot.dark) { CubApp(state) }
+                    CubTheme(dark = shot.dark) { CubApp(state, Preview.chrome) }
                 }
                 val image = try {
                     scene.render()

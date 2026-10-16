@@ -1,5 +1,6 @@
 package io.github.cubsync.desktop.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -37,8 +38,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -523,7 +528,7 @@ fun ListLine(
             .fillMaxWidth()
             .heightIn(min = 34.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(if (selected) colors.accentSoft else Color.Transparent)
+            .background(if (selected) colors.selected else Color.Transparent)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -573,3 +578,36 @@ fun levelColor(level: LogLevel): Color {
 
 /** What an unset value looks like, so it is never confused with an empty string. */
 const val DASH: String = "—"
+
+/**
+ * The mark: two circles and a hole punched through the smaller one.
+ *
+ * The same three numbers `素材/logo/tools/brand.py` builds the shipped icon from, so what
+ * appears in the window is the product's own logo rather than a drawing of it. The hole is
+ * cleared rather than filled, because a fill shows as a disc against whatever it sits on.
+ */
+@Composable
+fun BrandMark(size: Int = 22, modifier: Modifier = Modifier) {
+    val colors = CubTheme.colors
+    Box(
+        modifier
+            .size(size.dp)
+            .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen),
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val side = this.size.minDimension
+            val scale = side / 77.4f
+            fun x(v: Float) = (v - 64.7f) * scale + side / 2f
+            fun y(v: Float) = (v - 62.55f) * scale + side / 2f
+
+            drawCircle(colors.accent, radius = 34f * scale, center = Offset(x(60f), y(60f)))
+            drawCircle(colors.info, radius = 23f * scale, center = Offset(x(80.4f), y(76.1f)))
+            drawCircle(
+                Color.Black,
+                radius = 8f * scale,
+                center = Offset(x(80.4f), y(76.1f)),
+                blendMode = BlendMode.Clear,
+            )
+        }
+    }
+}

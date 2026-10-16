@@ -21,3 +21,20 @@ fun LogsScreen(state: AppState) {
         LogsBody(state, Modifier.fillMaxSize())
     }
 }
+
+/**
+ * 日志's `.chead .acts`: 导出.
+ *
+ * The prototype draws a filter box beside it; the log view has no filter yet, so only the
+ * half that does something is drawn rather than a box that would ignore what is typed.
+ */
+@Composable
+fun LogsHeadActions(state: AppState) {
+    QuietButton("导出") {
+        val text = state.service.log.entries().joinToString("\n") { entry ->
+            "${java.time.Instant.ofEpochMilli(entry.atMs)} ${entry.level} ${entry.area} ${entry.message}"
+        }
+        io.github.cubsync.desktop.copyToClipboard(text)
+        state.notify("日志已复制到剪贴板", io.github.cubsync.desktop.NoticeKind.SUCCESS)
+    }
+}

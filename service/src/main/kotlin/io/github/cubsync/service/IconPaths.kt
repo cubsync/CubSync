@@ -82,4 +82,18 @@ object IconPaths {
 
     /** A filled dot, for a row that is not a folder. */
     const val DOT = "M12 10.9a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2z"
+
+    /**
+     * The window controls, from the prototype's `.win-title .wctl`.
+     *
+     * Drawn rather than borrowed from the system, because the prototype draws them: a
+     * native title bar is the one piece of the window the design replaces, and it is also
+     * the piece that ignores the theme.
+     */
+    const val WIN_MINIMISE = "M5 12h14"
+    const val WIN_MAXIMISE = "M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"
+    const val WIN_RESTORE = "M8.5 8.5h10a1.5 1.5 0 0 1 1.5 1.5v8.5a1.5 1.5 0 0 1-1.5 1.5h-8.5A1.5 1.5 0 0 1 8.5 18.5zM4 15V5.5A1.5 1.5 0 0 1 5.5 4H15"
+
+    /** `.rail-fold` — the button that collapses the rail to icons. */
+    const val FOLD = "M13 5.5 6.5 12l6.5 6.5M19.5 5.5 13 12l6.5 6.5"
 }

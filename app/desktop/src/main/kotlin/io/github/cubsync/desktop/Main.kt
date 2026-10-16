@@ -1,13 +1,21 @@
 package io.github.cubsync.desktop
 
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import io.github.cubsync.desktop.ui.CubApp
+import io.github.cubsync.desktop.ui.WindowChrome
 import io.github.cubsync.service.AppLog
 import io.github.cubsync.service.ServerController
 import io.github.cubsync.service.SyncService
@@ -16,11 +24,20 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import java.awt.Dimension
+import java.awt.Point
 import java.nio.file.Files
 import java.nio.file.Paths
+import javax.swing.JFrame
 
 /**
  * The window.
+ *
+ * Undecorated on purpose: the prototype draws its own title bar (`.win-title`) with the
+ * mark, the device chip and the three controls, and a native title bar cannot be themed —
+ * which is why the previous release showed a white strip above a dark window and no amount
+ * of colour work on the content could fix it. `UndecoratedWindowDecoration` keeps the
+ * resize borders, so what is given up is the frame, not the window.
  *
  * Everything that outlives a recomposition is created once here: the service, the server,
  * the settings and the scope they run in. Screens receive them through [AppState] and have
@@ -44,6 +61,8 @@ fun main(arguments: Array<String>) {
             width = desktop.windowWidth.dp,
             height = desktop.windowHeight.dp,
         )
+        var maximised by remember { mutableStateOf(false) }
+
         Window(
             onCloseRequest = {
                 desktop.saveWindowSize(windowState.size.width.value.toInt(), windowState.size.height.value.toInt())
@@ -53,18 +72,57 @@ fun main(arguments: Array<String>) {
             },
             title = "CubSync",
             state = windowState,
+            icon = painterResource("cubsync-512.png"),
+            undecorated = true,
         ) {
             LaunchedEffect(Unit) {
                 // Below this the two-column screens stop being usable, and the alternative
                 // — a layout that reflows into one column — is not one this window has.
-                window.minimumSize = java.awt.Dimension(1040, 700)
+                window.minimumSize = Dimension(1040, 700)
             }
+
+            fun toggleMaximise() {
+                maximised = !maximised
+                window.extendedState = if (maximised) JFrame.MAXIMIZED_BOTH else JFrame.NORMAL
+            }
+
             // The revision is read so that switching the theme redraws immediately rather
             // than at the next recomposition that happens to come along.
             val revision = state.settingsRevision
             val mode = if (revision >= 0) state.liveSettings.theme else ThemeMode.DARK
+
+            val drag = Modifier
+                .pointerInput(Unit) {
+                    detectDragGestures { change, amount ->
+                        change.consume()
+                        window.location = Point(
+                            window.x + amount.x.toInt(),
+                            window.y + amount.y.toInt(),
+                        )
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectTapGestures(onDoubleTap = { toggleMaximise() })
+                }
+
+            val chrome = WindowChrome(
+                minimise = { window.extendedState = JFrame.ICONIFIED },
+                toggleMaximise = { toggleMaximise() },
+                close = {
+                    desktop.saveWindowSize(
+                        windowState.size.width.value.toInt(),
+                        windowState.size.height.value.toInt(),
+                    )
+                    state.close()
+                    scope.cancel()
+                    exitApplication()
+                },
+                maximised = maximised,
+                dragModifier = drag,
+            )
+
             CubTheme(dark = mode != ThemeMode.LIGHT, accentHex = state.liveSettings.accent) {
-                CubApp(state)
+                CubApp(state, chrome)
             }
         }
     }

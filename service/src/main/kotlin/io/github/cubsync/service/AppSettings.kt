@@ -192,19 +192,48 @@ class AppSettings(private val storage: SettingsStorage = SettingsStorage.memory(
 
     /** 主题. */
     var theme: ThemeMode
-        get() = enum(KEY_THEME, ThemeMode.DARK)
+        get() = enum(KEY_THEME, ThemeMode.SYSTEM)
         set(value) {
             values[KEY_THEME] = value.name
             persist()
         }
 
-    /** 取色 — the accent an interface draws selection and focus with. */
+    /**
+     * 取色 — the accent an interface draws selection and focus with.
+     *
+     * Empty means "not chosen": each end then uses its own token from the prototype,
+     * `--win-accent` on the desktop and `--m3-primary` on the phone. The prototype keeps
+     * those two apart on purpose, and a single hard default here would be the one line
+     * that made both ends the same colour.
+     */
     var accent: String
-        get() = values[KEY_ACCENT] ?: ACCENT_DEFAULT
+        get() = values[KEY_ACCENT].orEmpty()
         set(value) {
             values[KEY_ACCENT] = value
             persist()
         }
+
+    /** 动态取色（Material You）— take the accent from the wallpaper instead. */
+    var dynamicColour: Boolean
+        get() = flag(KEY_DYNAMIC_COLOUR, true)
+        set(value) {
+            values[KEY_DYNAMIC_COLOUR] = value.toString()
+            persist()
+        }
+
+    /** The hue chip that is chosen; see [Accent.SWATCHES]. */
+    var accentHue: Int
+        get() = int(KEY_ACCENT_HUE, Accent.DEFAULT.hue)
+        set(value) {
+            values[KEY_ACCENT_HUE] = value.toString()
+            persist()
+        }
+
+    /** The accent this phone should draw with, once 动态取色 and the hue chip are applied. */
+    fun phoneAccent(): String {
+        if (accent.isNotEmpty()) return accent
+        return Accent.SWATCHES.firstOrNull { it.hue == accentHue }?.hex ?: Accent.DEFAULT.hex
+    }
 
     // ------------------------------------------------------------ session state
 
@@ -376,7 +405,13 @@ class AppSettings(private val storage: SettingsStorage = SettingsStorage.memory(
     fun snapshot(): Map<String, String> = values.toMap()
 
     companion object {
-        const val ACCENT_DEFAULT: String = "#3A5CCC"
+        /**
+         * The desktop's accent, which is the prototype's `--win-accent` verbatim.
+         *
+         * The phone does not use this: its accent comes from [phoneAccent], because the
+         * prototype gives the phone its own token (`--m3-primary`) and a hue ramp on top.
+         */
+        const val ACCENT_DEFAULT: String = "#1E88E5"
 
         /** How many peers are remembered. Beyond this the list stops being a shortcut. */
         const val KNOWN_PEER_LIMIT: Int = 12
@@ -398,6 +433,8 @@ class AppSettings(private val storage: SettingsStorage = SettingsStorage.memory(
         const val KEY_DELETE_TO_TRASH = "transfer.deleteToTrash"
         const val KEY_THEME = "appearance.theme"
         const val KEY_ACCENT = "appearance.accent"
+        const val KEY_DYNAMIC_COLOUR = "appearance.dynamicColour"
+        const val KEY_ACCENT_HUE = "appearance.accentHue"
         const val KEY_RUN_MODE = "device.runMode"
         const val KEY_LAST_PEER = "peer.last"
         const val KEY_KNOWN_PEERS = "peer.known"

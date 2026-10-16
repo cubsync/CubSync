@@ -60,6 +60,9 @@ data class RunningJob(
     val bytes: Long = 0,
 ) {
     val label: String get() = if (dryRun) "试运行" else "同步中"
+
+    /** Whole pairs finished, which is the only progress the engine reports. */
+    val percent: Int get() = if (pairCount <= 0) 0 else finishedPairs * 100 / pairCount
 }
 
 /** Which pane's ⋮ menu is open, if any. */
@@ -608,6 +611,22 @@ class AppState(
         if (rootDraft.any { it == absolute }) return
         rootDraft = rootDraft + absolute
         rememberServer()
+    }
+
+    /**
+     * Turns one interface on or off for the server.
+     *
+     * The last one may not be turned off: a machine with no interface cannot be reached, so
+     * the switch that would do it reports why instead of leaving a server nobody can dial.
+     */
+    fun toggleChannelNic(name: String) {
+        val current = service.settings.channelNics.ifEmpty { io.github.cubsync.service.Peers.localNics().map { it.name } }
+        val next = if (name in current) current - name else current + name
+        if (next.isEmpty()) {
+            notify("至少要留一张网卡", NoticeKind.WARNING)
+            return
+        }
+        changeSettings { it.channelNics = next }
     }
 
     fun removeRoot(path: String) {

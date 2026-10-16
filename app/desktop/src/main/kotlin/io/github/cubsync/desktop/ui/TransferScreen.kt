@@ -110,6 +110,23 @@ fun TransferScreen(state: AppState) {
     }
 }
 
+/**
+ * 传输's `.chead .acts`: 显示方式, 新建文件夹, 同步…
+ *
+ * The same three the prototype puts on the heading, and the same three the phone keeps at
+ * the two ends of its sub-row — one set of words, two places to reach them.
+ */
+@Composable
+fun TransferHeadActions(state: AppState) {
+    val settings = state.liveSettings
+    QuietButton("显示方式：${settings.defaultDisplayMode.label} ▾") {
+        settings.displayBarOpen = !settings.displayBarOpen
+        state.touchBrowsing()
+    }
+    QuietButton(Words.NEW_FOLDER) { state.newFolder(state.liveSettings.activeSide) }
+    QuietButton("同步…") { state.goTo(Section.SYNC) }
+}
+
 // --------------------------------------------------------------------- sub row
 
 /**
@@ -291,7 +308,7 @@ private fun Pane(state: AppState, side: Side, pane: PaneState, modifier: Modifie
     Column(
         modifier
             .fillMaxHeight()
-            .background(if (active) colors.accentSoft.copy(alpha = 0.35f) else Color.Transparent),
+            .background(if (active) colors.accent.copy(alpha = 0.04f) else Color.Transparent),
     ) {
         PaneHeader(state, side, pane, active)
 
@@ -506,7 +523,7 @@ private fun RowLine(
         Modifier
             .fillMaxWidth()
             .height(rowHeight)
-            .background(if (selected) colors.accentSoft else Color.Transparent)
+            .background(if (selected) colors.selected else Color.Transparent)
             .clickable {
                 if (entry.isDirectory) state.browsing.enter(side, Browsing.name(entry.relPath))
                 else state.browsing.toggle(side, entry.relPath)

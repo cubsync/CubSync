@@ -43,6 +43,7 @@ import io.github.cubsync.service.Density
 import io.github.cubsync.service.Difference
 import io.github.cubsync.service.DisplayMode
 import io.github.cubsync.service.Format
+import io.github.cubsync.service.IconPaths
 import io.github.cubsync.service.Header
 import io.github.cubsync.service.ItemScale
 import io.github.cubsync.service.PaneDirection
@@ -302,7 +303,7 @@ private fun Pane(state: AndroidAppState, side: Side, pane: PaneState, modifier: 
     val scale = settings.itemScale / 100f
 
     Column(
-        modifier.fillMaxHeight().background(if (active) colors.accentContainer.copy(alpha = 0.5f) else Color.Transparent),
+        modifier.fillMaxHeight().background(if (active) colors.accent.copy(alpha = 0.05f) else Color.Transparent),
     ) {
         PaneHeader(state, side, pane, active)
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -504,7 +505,11 @@ private fun GridTile(state: AndroidAppState, side: Side, pane: PaneState, entry:
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(if (entry.isDirectory) "▸" else "•", style = CubType.sectionTitle, color = colors.textFaint)
+        CubIcon(
+            if (entry.isDirectory) IconPaths.CHEVRON_RIGHT else IconPaths.DOT,
+            size = 16,
+            tint = colors.textFaint,
+        )
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(Browsing.name(entry.relPath), style = CubType.body, color = colors.text, maxLines = 2, overflow = TextOverflow.Ellipsis)

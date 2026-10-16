@@ -74,6 +74,18 @@ fun SyncScreen(state: AppState) {
     colors.hashCode()
 }
 
+/**
+ * 同步's `.chead .acts`: the one chip that says which configuration is open.
+ *
+ * Not a button: the prototype prints `配置：照片库 · 4 对 · 已保存` there, and it is the only
+ * thing on that row.
+ */
+@Composable
+fun SyncHeadActions(state: AppState) {
+    val config = state.selectedConfig ?: return
+    Chip("配置：${config.name} · ${config.pairs.size} 对", tone = CubTheme.colors.accent)
+}
+
 // ------------------------------------------------------------------- list
 
 @Composable
@@ -381,7 +393,7 @@ private fun PreviewPanel(state: AppState) {
     val colors = CubTheme.colors
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("预览", style = CubType.sectionTitle, color = colors.text)
+            Text("预览", style = CubType.cardTitle, color = colors.text)
             Spacer(Modifier.weight(1f))
             QuietButton("返回详情") { state.syncLayer = SyncLayer.DETAIL }
         }

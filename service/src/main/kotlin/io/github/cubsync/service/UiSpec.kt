@@ -1,5 +1,7 @@
 package io.github.cubsync.service
 
+import io.github.cubsync.core.protocol.Capabilities
+
 /**
  * Everything the two interfaces must say the same way.
  *
@@ -22,27 +24,22 @@ package io.github.cubsync.service
  * has room for six and keeps it separate. That is the only difference: it is one list
  * with one extra entry, not two concepts.
  */
-enum class Section(val label: String) {
-    CONNECT("连接"),
-    TRANSFER("传输"),
-    SYNC("同步"),
-    JOBS("作业"),
-    LOGS("日志"),
-    SETTINGS("设置"),
+enum class Section(val label: String, val heading: String, val hint: String) {
+    CONNECT("连接", "连接设备", "USB 与多张网卡并行组通道，握手时协商 v4 能力位"),
+    TRANSFER("传输", "传输", "双排浏览 · 地址栏直达 · 5 档显示（与手机端同一套）· 断点续传 · 右键理管"),
+    SYNC("同步", "同步", "一个配置管 N 个文件夹对：方向 / 比较 / 过滤全局生效，过滤可每对覆盖"),
+    JOBS("作业", "作业", "按文件夹对分组 · 可暂停、续传、失败对单独重试"),
+    LOGS("日志", "日志", "结构化记录 · 每条对应一个协议帧或一个文件动作（含 pairId）"),
+    SETTINGS("设置", "设置", "主题、缓冲块数、adb 路径、回收站策略"),
     ;
 
     /** What the phone's bottom bar shows. */
     val onPhoneBar: Boolean get() = this != LOGS
 }
 
-fun sectionHint(section: Section): String = when (section) {
-    Section.CONNECT -> "共享本机文件夹，或连上另一台设备"
-    Section.TRANSFER -> "两栏对照，把选中的东西送过去"
-    Section.SYNC -> "配置文件夹对与策略，先预览再运行"
-    Section.JOBS -> "每次运行的结果、明细与日志"
-    Section.LOGS -> "连接、比较、写入的实时记录"
-    Section.SETTINGS -> "浏览与传输的默认值，以及外观"
-}
+/** The heading and the one-line hint above a screen, both taken from the prototype. */
+fun sectionHeading(section: Section): String = section.heading
+fun sectionHint(section: Section): String = section.hint
 
 // --------------------------------------------------------------------- names
 
@@ -122,17 +119,147 @@ enum class SortKey(val label: String) {
     MODIFIED("修改时间"),
 }
 
-/** 运行模式. */
-enum class RunMode(val label: String, val detail: String) {
-    NORMAL("普通", "经 MediaStore / SAF 读写"),
-    ROOT("Root（su）", "后台进程直读全部目录"),
+/**
+ * 运行模式, three steps, Android only.
+ *
+ * 普通 goes through MediaStore / SAF, Root（su）runs the server in a `:root` process via
+ * libsu, and Shizuku / ADB talks to the same shell a rooted phone would — the prototype
+ * draws all three as a chip row and this is the one place the labels may not be shortened.
+ * The desktop has no such choice: there is no root on Windows, and offering one would be
+ * asking about a permission that does not exist.
+ */
+enum class RunMode(val label: String) {
+    NORMAL("普通"),
+    ROOT("Root（su）"),
+    SHIZUKU("Shizuku / ADB"),
+    ;
+
+    /**
+     * Which of the three the platform can actually honour.
+     *
+     * Root and Shizuku are Android's; the desktop answers 普通 for every value, so the
+     * setting can be shared without the desktop pretending to have a root process.
+     */
+    companion object {
+        /** The note under the chip row, verbatim from the prototype. */
+        const val NOTE: String = "Root 模式可读写全部目录，需在 Magisk / KernelSU 中授权。"
+
+        /** The fold's heading suffix while collapsed, e.g. `Root（su）· 默认收起`. */
+        const val COLLAPSED_SUFFIX: String = " · 默认收起"
+
+        val onDesktop: List<RunMode> = listOf(NORMAL)
+    }
 }
 
-/** 传输通道. */
-enum class Channel(val label: String, val detail: String) {
-    LAN("局域网", "有线 / Wi-Fi 直连"),
-    USB_ADB("USB-ADB", "数据线，推荐"),
-    MULTI_LINK("多链路", "网卡聚合"),
+/** 连接方式, the two-step switch at the top of 连接设备. */
+enum class LinkMode(val label: String) {
+    ADB("USB-ADB（推荐）"),
+    WIFI("WiFi 直连"),
+}
+
+/**
+ * 传输通道 uses the machine's real interfaces, not a fixed list.
+ *
+ * The prototype's three rows are `USB_ADB / wlan1 / wlan0`: two of them are the machine's
+ * own cards and the first is the loopback adb forward opens. So a channel row is a card
+ * plus one address, and the only card this product does not create is the adb one.
+ */
+object Channels {
+    /** The row the prototype leads with, which exists once `adb forward` has run. */
+    const val USB_ADB_NAME = "USB_ADB"
+    const val USB_ADB_ADDRESS = "127.0.0.1:5740"
+
+    /** What tapping the adb row says while the link is still a promise. */
+    const val ADB_RESERVED = "USB-ADB 已留位：协议支持，链路尚未打通，传输目前仍走局域网"
+
+    /** The same, for 多链路. */
+    const val MULTI_LINK_RESERVED = "多链路已留位：协议支持多链路，传输目前仍走其中一条"
+}
+
+/**
+ * 协议协商 shows what the handshake actually agreed on.
+ *
+ * The names are the prototype's, and each one is tied to the bit it stands for. Three of
+ * them — `BIDIR_CONTROL`, `CONFIG_PAIR`, `JOB_EVENTS` — have no bit yet: the prototype
+ * draws a twelve-bit v4 capability set and this build negotiates the sixteen bits in
+ * `Capabilities`. Those three are therefore shown as 已留位 rather than as agreed, which is
+ * the same treatment the prototype's unimplemented channels get.
+ */
+data class CapabilityRow(val name: String, val bit: Long?)
+
+object CapabilityNames {
+    val ROWS: List<CapabilityRow> = listOf(
+        CapabilityRow("RECURSIVE_LIST", Capabilities.LIST),
+        CapabilityRow("BATCH_STAT", Capabilities.STAT),
+        CapabilityRow("HASH_XXH64", Capabilities.HASH),
+        CapabilityRow("RESUME", Capabilities.RESUME),
+        CapabilityRow("ATOMIC_RENAME", Capabilities.RENAME),
+        CapabilityRow("SET_MTIME", Capabilities.SET_MTIME),
+        CapabilityRow("BIDIR_CONTROL", null),
+        CapabilityRow("CONFIG_PAIR", null),
+        CapabilityRow("JOB_EVENTS", null),
+        CapabilityRow("POSIX_MODE", Capabilities.PERMISSIONS),
+        CapabilityRow("HARDLINK", Capabilities.SYMLINK),
+    )
+
+    /** The bits this build can honour; what the handshake intersects against. */
+    val ALL_BITS: Long = Capabilities.ALL
+
+    /**
+     * Whether the agreed set covers this row.
+     *
+     * A row with no bit is never "agreed", and one with a bit is agreed when the negotiated
+     * set contains it — which is what `10 / 12` counts. Rows without a bit count towards
+     * neither number, so the fraction is about the bits rather than about the drawing.
+     */
+    fun agreed(row: CapabilityRow, negotiated: Long): Boolean =
+        row.bit != null && Capabilities.has(negotiated, row.bit)
+
+    fun reserved(row: CapabilityRow): Boolean = row.bit == null
+
+    /** `agreed / offered`, the pair the prototype prints as `10 / 12`. */
+    fun agreedCount(negotiated: Long): Int = ROWS.count { agreed(it, negotiated) }
+}
+
+/**
+ * 取色: the five hue chips on the phone's 设置 screen.
+ *
+ * The prototype fixes one of them — 靛蓝 is drawn in `--m3-primary`, `#4C6EF5` — and gives
+ * the other four only as a hue number (`data-h`). They are resolved as HSL at the
+ * saturation and lightness `#4C6EF5` implies (89% / 63%), so the set is one ramp the
+ * prototype already chose rather than four colours picked here.
+ */
+object Accent {
+    data class Swatch(val label: String, val hue: Int, val hex: String)
+
+    private fun hsl(hue: Int, saturation: Double = 0.89, lightness: Double = 0.63): String {
+        val c = (1 - kotlin.math.abs(2 * lightness - 1)) * saturation
+        val x = c * (1 - kotlin.math.abs((hue / 60.0) % 2 - 1))
+        val m = lightness - c / 2
+        val (r, g, b) = when (hue / 60) {
+            0 -> Triple(c, x, 0.0)
+            1 -> Triple(x, c, 0.0)
+            2 -> Triple(0.0, c, x)
+            3 -> Triple(0.0, x, c)
+            4 -> Triple(x, 0.0, c)
+            else -> Triple(c, 0.0, x)
+        }
+        return "#%02X%02X%02X".format(
+            ((r + m) * 255).toInt().coerceIn(0, 255),
+            ((g + m) * 255).toInt().coerceIn(0, 255),
+            ((b + m) * 255).toInt().coerceIn(0, 255),
+        )
+    }
+
+    val SWATCHES: List<Swatch> = listOf(
+        Swatch("靛蓝", 245, "#4C6EF5"),
+        Swatch("紫", 275, hsl(275)),
+        Swatch("青", 200, hsl(200)),
+        Swatch("绿", 150, hsl(150)),
+        Swatch("橙", 25, hsl(25)),
+    )
+
+    val DEFAULT: Swatch = SWATCHES.first()
 }
 
 /** Why a file was skipped. Shown one per line, so they have to be short. */
@@ -216,11 +343,17 @@ object Header {
     fun heightDp(lines: Int): Int = 16 + clampLines(lines) * 13
 }
 
-/** 缓冲块数: the number of chunks held in flight. */
+/**
+ * 缓冲块数: the number of 1MB chunks held in flight.
+ *
+ * The prototype prints `1MB × 256`, so that is the factory value and the range has to
+ * contain it; an earlier version capped the field at 16, which made the prototype's own
+ * default unenterable.
+ */
 object Buffering {
-    const val DEFAULT = 4
+    const val DEFAULT = 256
     const val MIN = 1
-    const val MAX = 16
+    const val MAX = 1024
 
     fun clamp(value: Int): Int = value.coerceIn(MIN, MAX)
 }

@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.cubsync.service.Format
+import io.github.cubsync.service.Channels
 import io.github.cubsync.service.IconPaths
 import io.github.cubsync.service.PathTools
 import io.github.cubsync.service.Peers
@@ -79,25 +80,34 @@ fun ConnectScreen(state: AndroidAppState) {
                 if (nics.isEmpty()) {
                     CardDesc("没有读到可用的网卡地址，检查一下网络连接。")
                 }
+                val running = state.running
+                val rate = if (running != null) {
+                    val elapsed = System.currentTimeMillis() - running.startedAtMs
+                    if (elapsed > 0) Format.rate(running.bytes, elapsed) else "0.0 MB/s"
+                } else {
+                    "0.0 MB/s"
+                }
+
+                // The design leads with the adb loopback: a channel the protocol promises
+                // and this build has not opened. It is drawn and it is tappable, and tapping
+                // it says which of those two things is true.
+                CardRow(
+                    title = Channels.USB_ADB_NAME,
+                    detail = "${Channels.USB_ADB_ADDRESS} · $rate",
+                    icon = IconPaths.DEVICE,
+                    onClick = { state.notify(Channels.ADB_RESERVED, NoticeKind.INFO) },
+                    trailing = { Toggle(false) { state.notify(Channels.ADB_RESERVED, NoticeKind.INFO) } },
+                )
                 for (nic in nics) {
                     CardRow(
-                        title = nic.kind,
-                        detail = if (nic.kind == nic.name) nic.address else "${nic.address} · ${nic.name}",
+                        title = nic.name,
+                        detail = "${nic.address} · $rate",
                         icon = IconPaths.WIFI,
                         trailing = {
                             Toggle(state.nicSelected(nic.address)) { state.toggleNic(nic.address) }
                         },
                     )
                 }
-                val running = state.running
-                if (running != null) {
-                    Text(
-                        "本次传输 ${Format.rate(running.bytes, System.currentTimeMillis() - running.startedAtMs)}",
-                        style = CubType.rowTitle,
-                        color = colors.accent,
-                    )
-                }
-                CardDesc("USB-ADB 与多链路是如实的占位档位：协议支持多链路，界面先把它标出来，传输本身仍走局域网。")
             }
 
             Panel(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
@@ -141,7 +151,7 @@ fun ConnectScreen(state: AndroidAppState) {
                     )
                 }
                 if (state.peers.isEmpty()) {
-                    CardDesc("还没有连上别的设备。点右上角 ⋮，填一个地址，或者等对面连过来。")
+                    CardDesc("还没有连上任何设备")
                 }
                 val remembered = settings.knownPeers.filterNot { known ->
                     state.peers.any {
