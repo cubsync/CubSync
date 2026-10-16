@@ -6,9 +6,15 @@ CubSync keeps folders in sync between your devices over your own network. Androi
 desktop, and headless (daemon) in one codebase, driven by a single synchronization
 engine that is agnostic to the transport underneath it.
 
-> Status: **early development**. Version 0.1.0 has the engine, the protocol, two
-> backends and a CLI, all tested. There is no GUI yet, and the wire format can still
-> change between minor versions — see [docs/VERSIONING.md](docs/VERSIONING.md).
+> Status: **usable, early**. Version 0.3.0 has the engine, the protocol, two
+> backends, a CLI and a Windows desktop application that can be installed and used
+> without a terminal. Android is next. The wire format can still change between
+> minor versions — see [docs/VERSIONING.md](docs/VERSIONING.md).
+
+![The connect screen](docs/screenshots/connect.png)
+
+*Tell this machine what to share, then connect to another machine that is sharing.
+Those two things have to be true before anything else can work.*
 
 ---
 
@@ -43,8 +49,9 @@ More detail, including the decisions that are easy to get wrong, in
 | Target | Status |
 |---|---|
 | Headless CLI + daemon | works (JVM 17+) |
-| Android (Compose + Material 3) | planned |
-| Desktop — Windows / macOS / Linux (Compose Multiplatform) | planned |
+| Desktop — Windows (Compose Multiplatform) | works; MSI and application image |
+| Desktop — macOS / Linux | builds from source; no packaged artefact yet |
+| Android (Compose + Material 3) | next |
 
 Single-language codebase: **Kotlin** (Kotlin Multiplatform + Compose Multiplatform)
 for every target. `core` is already a multiplatform source set, so the Android and
@@ -56,8 +63,10 @@ desktop targets are additions rather than a restructure.
 core/           protocol · model · filter · spi · transfer · engine · util
 backends/local/ the filesystem as a backend
 backends/lan/   a peer's tree over the first-party protocol
-testing/        test-only fixtures (in-memory backend, fault injector)
+service/        the application layer: configs, peers, runs, the folder server, the log
+app/desktop/    the desktop application (Compose Multiplatform)
 cli/            the command line entry point
+testing/        test-only fixtures (in-memory backend, fault injector)
 docs/           architecture, versioning, testing, releasing
 ```
 
@@ -67,16 +76,58 @@ Requires JDK 17 or newer. The Gradle wrapper is committed; do not use a system
 Gradle.
 
 ```
-./gradlew build          # compile + test
-./gradlew check          # what CI runs
+./gradlew check          # compile + test, what CI runs
 ./gradlew :cli:installDist
 ./cli/build/install/cubsync/bin/cubsync --version
 ```
 
-Android and desktop targets are not wired up yet, so no SDK is needed to build what
-is here today.
+Run the desktop application straight from the source tree:
 
-## Running
+```
+./gradlew :app:desktop:run
+```
+
+Or build something to hand to somebody:
+
+```
+./gradlew :app:desktop:packageMsi            # an installer
+./gradlew :app:desktop:createDistributable   # a self-contained folder with CubSync.exe
+```
+
+Packaging an MSI makes the build download WiX, so that step needs network access
+the first time. The Android target is not wired up yet, so no SDK is needed to
+build what is here today.
+
+## Using the desktop application
+
+The window has five screens, and the first one is the only one that has to be
+understood before the rest works.
+
+![The sync screen](docs/screenshots/sync.png)
+
+**Connect** — pick the folders this machine shares, press 开始共享, and read out the
+address it shows. On the other machine, type that address into 远端设备 and connect.
+Both halves are optional: a one-way copy to a peer works without sharing anything
+locally, and a folder can be shared without ever connecting out.
+
+**Sync** — a configuration is a policy plus a list of folder pairs. Add a pair by
+choosing a device and a folder on each side; the folders the peer exposes are
+offered as buttons, so nothing has to be typed from memory. 试运行 compares without
+writing anything, 立即同步 does the work.
+
+**Jobs** — what each run did, per folder pair: how much moved, what was skipped and
+why, and what failed. 再次运行 retries from the same place.
+
+**Logs** — the live record, filterable by level and by area. This is the screen to
+look at when something behaves oddly.
+
+**Settings** — where the state directory is, the defaults a new configuration starts
+from, and the theme. The dark and light palettes are the ones in the design
+prototype; dark is the default.
+
+![The jobs screen](docs/screenshots/jobs.png)
+
+## Using the command line
 
 Serve a folder to the network:
 
@@ -125,11 +176,15 @@ be imported on another machine.
 ./gradlew check
 ```
 
-193 tests: the protocol codec and its malformed inputs, the filter dialect, the
-comparison and planning matrices, chunk reordering, configuration codecs, both
-backends against real sockets and real files, and the engine driving an in-memory
-backend that shares no code with the local one. What each layer is for, and the
-end-to-end acceptance procedure, are in [docs/TESTING.md](docs/TESTING.md).
+Every suite in the repository: the protocol codec and its malformed inputs, the
+filter dialect, the comparison and planning matrices, chunk reordering,
+configuration codecs, both backends against real sockets and real files, the engine
+driving an in-memory backend that shares no code with the local one, the application
+layer over real directories, and the desktop window — which is composed off screen
+in the test suite, so a screen that fails to lay out fails the build.
+
+What each layer is for, and the end-to-end acceptance procedure, are in
+[docs/TESTING.md](docs/TESTING.md).
 
 ## Versioning and releases
 
@@ -185,7 +240,7 @@ Trademarks belong to their respective owners; see [NOTICE](NOTICE).
 | Purpose | file transfer | file **synchronization** |
 | Direction | one-way, server-driven | bidirectional, peer-to-peer |
 | Protocol | first-party only | pluggable backends (SPI) |
-| Desktop | command line | full GUI (Compose Multiplatform), planned |
+| Desktop | command line | GUI (Compose Multiplatform) |
 | Resume | limited | staging file + explicit resume offset + snapshots |
 | Deletions | — | propagated with a recoverable trash |
 | License | GPL-3.0 | Apache-2.0 |

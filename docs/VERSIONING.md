@@ -11,9 +11,11 @@ module takes it from there, the Gradle distribution name and the CLI's `--versio
 both read it, and the release procedure does not touch any other file. A version
 that has to be edited in five places is a version that will disagree with itself.
 
-The CLI falls back to `BuildInfo.DEFAULT_VERSION` when it is not running from a
-jar that carries manifest metadata. That constant is the one exception, and the
-release checklist reminds you to check it.
+Nothing else mirrors it. The build writes the value into `cubsync-build.properties`
+and `BuildInfo` reads that resource, so `cubsync --version`, the window's about box,
+the MSI's file name and the version a peer is told during a handshake all come from
+the same line. The previous arrangement had a `DEFAULT_VERSION` constant in the CLI
+that a person had to remember; it drifted, which is why it is gone.
 
 ## Pre-1.0 rules
 

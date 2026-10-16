@@ -46,6 +46,18 @@ that climbs out of one, a peer speaking a newer protocol, an unknown command
 answered by name with the link still usable afterwards, and the engine driving a
 peer across the wire including parallel transfers.
 
+**Application tests** (`service/src/test`) run the layer both front ends sit on,
+over real directories and a real socket: a configuration round trip, the folder
+server exposing exactly what it was given and nothing else, a run that copies real
+files, a peer that cannot be reached failing one pair instead of throwing, and a
+port that is already in use reported in words somebody can act on.
+
+**Window tests** (`app/desktop/src/test`) drive the state object the way a person
+drives the window — start a run, watch it finish, read the result — and render
+every screen off screen. The rendering is not decoration: a screen that cannot be
+composed fails the build here instead of being discovered by whoever opens the
+window next. The images land in `app/desktop/build/screenshots`.
+
 **CLI tests** (`cli/src/test`) cover argument parsing, the quirks of flags that take
 no value, and the summary format.
 
