@@ -73,40 +73,41 @@ Keeping the file in the repository rather than in a scratch directory means the 
 page has a copy that outlives GitHub's editor, and the next release can be written by
 editing the previous one instead of by remembering what last time looked like.
 
-### The notes are collapsed by default — the language, not the sections
+### One level collapses: the language
 
 A release page exists to hand somebody a file. The notes open above the downloads, so a
 long release pushes the thing the page is *for* below the fold and every download becomes
 a scroll.
 
 The **language** block ships closed, because skipping the language you do not read is the
-scroll nobody wants. The **sections** inside it ship open, because a reader who has chosen
-a language has chosen to read it, and a second round of clicking is a second round of work:
+scroll nobody wants. Everything inside it stays open, because a reader who has chosen a
+language has chosen to read it:
 
 ```html
 <details>
 <summary><h3>中文说明</h3></summary>
 
-<details open>
-<summary><h4>能用了</h4></summary>
+#### 能用了
 
 正文…
 
 </details>
-
-</details>
 ```
+
+The sections used to be `<details open>` blocks of their own, one per heading. They were
+dropped because **a nested `<details>` gets no indentation on GitHub**: its arrow sits at
+the same x as its parent's, so the two levels read as one level, and the only way to fake
+the indent is to wrap the inner block in a blockquote and live with the vertical rule that
+draws. They also opened by default, so the second level of disclosure never had anything to
+disclose — the same content, one click more fragile.
 
 Two details that are easy to get wrong. Blank lines are part of the shape and not
 decoration: with none after `</summary>`, GitHub renders the Markdown inside as literal
 text. And the headings have to be real headings — wrapping them in `<b>`, which the first
 version of this did, makes a `##` and an `h4` look identical and the notes lose their
-outline.
-
-The **language** label is a heading too, one level above the sections (`h3` over `h4`). It
-used to be plain `<b>` while the sections were `h3`, which made the child render larger
-than its parent on the release page — the label is the one that has to look like the
-parent.
+outline. The **language** label is a heading too, one level above the sections (`h3` over
+`h4`); it used to be plain `<b>` while the sections were `h3`, which made the child render
+larger than its parent on the release page.
 
 `tools/collapse-release-notes.py` applies the shape to a plain file and is safe to re-run —
 it skips anything that already has a `<details>` in it, so restore from git first if the
