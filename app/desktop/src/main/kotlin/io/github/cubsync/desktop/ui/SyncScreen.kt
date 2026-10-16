@@ -38,11 +38,12 @@ import io.github.cubsync.core.model.SyncDirection
 import io.github.cubsync.desktop.AppState
 import io.github.cubsync.desktop.CubTheme
 import io.github.cubsync.desktop.CubType
-import io.github.cubsync.desktop.Format
 import io.github.cubsync.desktop.NoticeKind
 import io.github.cubsync.desktop.Section
 import io.github.cubsync.desktop.pickDirectory
 import io.github.cubsync.service.EndpointId
+import io.github.cubsync.service.Format
+import io.github.cubsync.service.policySentence
 import io.github.cubsync.service.JobRecord
 import io.github.cubsync.service.PathTools
 import io.github.cubsync.service.PeerSession
@@ -505,25 +506,6 @@ private fun sameFolderOnBothSides(pair: FolderPair): Boolean =
     pair.left.backendId == pair.right.backendId &&
         pair.left.rootPath.isNotBlank() &&
         pair.left.rootPath == pair.right.rootPath
-
-/** The sentence that says what this configuration will actually do, in one line. */
-internal fun policySentence(config: SyncConfig): String {
-    val direction = config.direction
-    val deletes = when {
-        !direction.deletesAllowed -> "不会删除任何文件"
-        config.delete == DeletePolicy.KEEP -> "删除不会被同步，多余的文件会留着"
-        config.delete == DeletePolicy.RECYCLE -> "删除会同步，被删掉的文件进回收站"
-        else -> "删除会同步，被删掉的文件直接删除"
-    }
-    val conflicts = when (config.conflict) {
-        ConflictPolicy.ASK -> "冲突时停下来等人决定"
-        ConflictPolicy.PREFER_LEFT -> "冲突时用左侧覆盖右侧"
-        ConflictPolicy.PREFER_RIGHT -> "冲突时用右侧覆盖左侧"
-        ConflictPolicy.KEEP_BOTH -> "冲突时两份都保留"
-        ConflictPolicy.SKIP -> "冲突时跳过"
-    }
-    return "${Format.direction(direction)}；$deletes；$conflicts。"
-}
 
 /** Files shared with the connect screen, which needs the same wording for a peer. */
 internal fun peerLabel(peer: PeerSession?): String = peer?.nodeName ?: "远端"
