@@ -33,6 +33,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
@@ -298,6 +304,34 @@ private fun DisplayBar(state: AppState) {
 
 // ------------------------------------------------------------------------ pane
 
+/**
+ * 条目缩放的手势，原型用它们代替双指。
+ *
+ * 规格 §3.5 要求「双击列表＝缩放复位 100%」「Ctrl+滚轮＝连续缩放 0.7×–2.0×」。两句话
+ * 之前都写在界面上，而两个手势都不存在 —— 界面在承诺它做不到的事。
+ *
+ * 放在这一层（列表外面的 Box），不放在行上：行的点击由行自己消费，所以只有点在空白处
+ * 的双击才会到这儿，不会把「双击打开一个目录」吃掉。
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+private fun Modifier.itemScaleGestures(state: AppState): Modifier = this
+    .onPointerEvent(PointerEventType.Scroll) { event ->
+        if (!event.keyboardModifiers.isCtrlPressed) return@onPointerEvent
+        val notches = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
+        if (notches == 0f) return@onPointerEvent
+        // 滚轮报的是格数不是比例，所以一格走一步面板的步长。
+        state.changeSettings { settings ->
+            settings.itemScale = ItemScale.clamp(
+                settings.itemScale - (notches.coerceIn(-3f, 3f) * ItemScale.STEP).toInt(),
+            )
+        }
+    }
+    .pointerInput(Unit) {
+        detectTapGestures(onDoubleTap = {
+            state.changeSettings { it.itemScale = ItemScale.DEFAULT }
+        })
+    }
+
 /** One pane: an address header, a list, and the ⋮ that belongs to that pane. */
 @Composable
 private fun Pane(state: AppState, side: Side, pane: PaneState, modifier: Modifier) {
@@ -314,7 +348,7 @@ private fun Pane(state: AppState, side: Side, pane: PaneState, modifier: Modifie
     ) {
         PaneHeader(state, side, pane, active)
 
-        Box(Modifier.weight(1f).fillMaxWidth()) {
+        Box(Modifier.weight(1f).fillMaxWidth().itemScaleGestures(state)) {
             when {
                 pane.loading && pane.entries.isEmpty() ->
                     EmptyState("正在读取…")

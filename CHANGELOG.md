@@ -8,6 +8,17 @@ with the pre-1.0 rules described in [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-10-17
+
+### Fixed
+
+- The two item-scale gestures exist now. 双击列表 reset and Ctrl+滚轮 zoom on the desktop,
+  and 双指捏合 with 双击复位 on the phone, were written in the interface and in the
+  specification while nothing in either end was listening. Scaling takes the event only
+  with two fingers on the phone, so a drag still scrolls and a tap still opens.
+- `ItemScale.zoomBy()` is a pure function, so the arithmetic behind a pinch is tested even
+  though the gesture itself is not.
+
 ## [0.3.5] - 2026-10-16
 
 ### Fixed
