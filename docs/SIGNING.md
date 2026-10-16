@@ -66,11 +66,13 @@ password rather than taking it as an argument, so it does not end up in a shell 
 
 Run it from this directory with no arguments — the application name comes from the
 directory name and the repository from `git remote origin`, so there is nothing to fill
-in. `--dry-run` prints the values it would use and writes nothing.
+in. It refuses to run anywhere except the repository root, because a `keystore.properties`
+written one directory away is a file the build never reads. `--dry-run` prints the values
+it would use and writes nothing.
 
 ```
-py ../脚本/new-signing-identity.py --dry-run   # look
-py ../脚本/new-signing-identity.py             # then make it
+python tools/new-signing-identity.py --dry-run   # look
+python tools/new-signing-identity.py             # then make it
 ```
 
 ## Where the keystore lives
@@ -100,6 +102,28 @@ secret is text and a keystore is binary:
 
 With `ANDROID_KEYSTORE_BASE64` unset, the workflow warns and uploads the debug APK, so a
 fork can still produce something installable without holding the key.
+
+## Verifying the identity itself
+
+Before anything is built, one command checks the whole setup — file present, all four
+values readable, the password actually opens the store, the alias exists, the certificate
+subject and validity are sane, and nothing is tracked by git. It reads the password from
+`keystore.properties`, so it never asks you for one:
+
+```
+python tools/new-signing-identity.py --verify            # structure + keystore, seconds
+python tools/new-signing-identity.py --verify --build    # plus Gradle and apksigner, minutes
+python tools/new-signing-identity.py --verify --check-password   # also type a password to check
+```
+
+`--check-password` prompts for a password and says whether it opens the store — the way to
+confirm that the string saved in the password manager is the right one. It never echoes
+anything, and it distinguishes "wrong password" from "the password in
+`keystore.properties` is the wrong one, yours is right".
+
+`--build` is the end-to-end answer: it runs `signingReport`, then `assembleRelease`, then
+`apksigner`, and fails if the fingerprint Gradle resolved or the fingerprint on the APK
+differs from the one in the keystore.
 
 ## Verifying what was built
 

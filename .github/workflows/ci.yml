@@ -64,7 +64,11 @@ jobs:
           # paths here does two things at once: it tells a reader nothing, because the path
           # does not exist in this checkout, and it publishes a layout that is not published.
           # Say "the prototype" or "the brand build script" instead.
+          #
+          # This file holds the patterns, so it is dropped from the list: otherwise the check
+          # matches itself and can never pass.
           bad=$(git ls-files -z \
+            | grep -zv '^\.github/workflows/ci\.yml$' \
             | xargs -0 grep -lIE '素材/|报告/|\.\./脚本/|cubsync-design' 2>/dev/null \
             || true)
           if [ -n "$bad" ]; then
