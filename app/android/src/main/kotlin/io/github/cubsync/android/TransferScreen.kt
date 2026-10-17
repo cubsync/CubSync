@@ -791,6 +791,58 @@ private fun ActionBar(state: AndroidAppState) {
     val left = state.browsing.current(Side.LEFT)
     val right = state.browsing.current(Side.RIGHT)
     val selected = left.selection.size + right.selection.size
+    val progress by state.browsing.transferProgress.collectAsState()
+
+    // A copy in flight takes the strip: a thumb that started two gigabytes needs to see
+    // that it started, and the selection it came from is no longer the question.
+    val running = progress
+    if (running != null) {
+        Column {
+            HorizontalDivider(color = colors.outline)
+            Column(Modifier.fillMaxWidth().background(colors.surfaceRaised).padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (running.paused) "已暂停" else "传送中",
+                        style = CubType.label,
+                        color = colors.text,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "${Format.bytes(running.doneBytes)} / ${Format.bytes(running.totalBytes)}",
+                        style = CubType.meta,
+                        color = colors.textFaint,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text("${running.percent}%", style = CubType.meta, color = colors.textDim)
+                }
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(5.dp)
+                            .clip(RoundedCornerShape(99.dp))
+                            .background(colors.surfaceSunken),
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(running.fraction)
+                                .clip(RoundedCornerShape(99.dp))
+                                .background(colors.accent),
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    QuietButton(if (running.paused) "继续" else "暂停") {
+                        if (running.paused) state.browsing.resumeTransfer() else state.browsing.pauseTransfer()
+                    }
+                    QuietButton("取消", danger = true) { state.browsing.cancelTransfer() }
+                }
+            }
+        }
+        return
+    }
+
     if (selected == 0) return
     val from = if (left.selection.isNotEmpty()) Side.LEFT else Side.RIGHT
     val target = if (from == Side.LEFT) Words.REMOTE else Words.LOCAL
