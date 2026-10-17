@@ -204,9 +204,14 @@ class SyncService(
      * lists remembered things rather than current ones is a drawer people stop trusting.
      */
     fun drawer(server: ServerState): DrawerModel {
+        // Grouped by end and protocol — 本端, then one heading per peer — rather than by
+        // device name alone: the same machine can be reached two ways, and a list that
+        // mixes a folder on this disk with a folder on a phone is a list nobody can scan.
         val favourites = settings.favourites
-            .groupBy { it.device }
-            .map { (device, items) -> FavoriteGroup(device, items.sortedBy { it.path }) }
+            .groupBy { it.group }
+            .toList()
+            .sortedWith(compareBy({ if (it.first == Words.LOCAL) 0 else 1 }, { it.first }))
+            .map { (heading, items) -> FavoriteGroup(heading, items.sortedBy { it.path }) }
 
         val accounts = buildList {
             add(

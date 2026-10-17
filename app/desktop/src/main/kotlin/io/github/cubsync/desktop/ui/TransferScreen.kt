@@ -1,6 +1,9 @@
 package io.github.cubsync.desktop.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -102,6 +105,7 @@ fun TransferScreen(state: AppState) {
     val direction = resolveDirection(settings.paneDirection, 1000f, if (revision >= 0) 600f else 600f)
     val sideBySide = direction == PaneDirection.SIDE_BY_SIDE
 
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
         // The prototype's transfer screen has no sub-row and no standing display bar: the
         // three verbs are on `.chead .acts`, and 显示方式 opens a drop-down from there. Both
@@ -124,6 +128,10 @@ fun TransferScreen(state: AppState) {
         }
 
         TransferBar(state)
+    }
+        // Over the screen, not in it: as the last child of the column the overlay claimed
+        // the rest of the height, so opening 显示方式 or a right-click panel squeezed both
+        // panes to nothing and the files appeared to vanish.
         Overlays(state)
     }
 }
@@ -188,11 +196,16 @@ private fun Pane(state: AppState, side: Side, pane: PaneState, compare: Boolean,
     Column(
         modifier
             .fillMaxHeight()
-            .background(if (active) colors.accent.copy(alpha = 0.04f) else Color.Transparent)
+            .background(if (active) colors.accent.copy(alpha = 0.07f) else Color.Transparent)
             // Pressing anywhere in a pane makes it the active one, which is what the
-            // heading's 显示方式 button says it acts on — and the observer is on Press
-            // rather than on a click, so it does not consume the row that was clicked.
-            .onPointerEvent(PointerEventType.Press) {
+            // heading's 显示方式 button says it acts on. A clickable on the container rather
+            // than a raw pointer observer: the observer ran after the rows had consumed
+            // their presses, so clicking a row never moved the focus and the two panes
+            // could not be switched at all.
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) {
                 if (!active) {
                     settings.activeSide = side
                     state.touchBrowsing()
@@ -275,12 +288,16 @@ private fun PaneHeader(state: AppState, side: Side, pane: PaneState, active: Boo
 private fun Breadcrumbs(state: AppState, side: Side, pane: PaneState) {
     val colors = CubTheme.colors
     if (pane.path.isEmpty()) return
-    val crumbs = Browsing.crumbs(pane.path, maxSegments = 5)
-    var expanded by remember(pane.path) { mutableStateOf(false) }
-    val shown = if (expanded) Browsing.crumbs(pane.path, maxSegments = 64) else crumbs
+    // Every layer, always. A folded `⋯` that still hides three of them reads as "the
+    // address has one parent", which is what it looked like when the default limit was
+    // five segments; a row that runs out of width scrolls instead.
+    val shown = Browsing.crumbs(pane.path)
 
     Row(
-        Modifier.fillMaxWidth().padding(start = 10.dp, end = 8.dp, bottom = 5.dp),
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(start = 10.dp, end = 8.dp, bottom = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         for ((index, crumb) in shown.withIndex()) {
@@ -288,18 +305,12 @@ private fun Breadcrumbs(state: AppState, side: Side, pane: PaneState) {
             Text(
                 crumb.label,
                 style = CubType.meta.copy(fontSize = 11.sp),
-                color = when {
-                    crumb.collapsed -> colors.accent
-                    index == shown.lastIndex -> colors.text
-                    else -> colors.textDim
-                },
+                color = if (index == shown.lastIndex) colors.text else colors.textDim,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                softWrap = false,
                 modifier = Modifier
                     .clip(RoundedCornerShape(4.dp))
-                    .clickable {
-                        if (crumb.collapsed) expanded = true else state.openPane(side, crumb.path, pane.backendId)
-                    }
+                    .clickable { state.openPane(side, crumb.path, pane.backendId) }
                     .padding(horizontal = 2.dp),
             )
         }
@@ -812,9 +823,10 @@ private fun Overlays(state: AppState) {
             state.displayMenu = false
         }
         if (displayMenu) {
-            // Anchored where the prototype anchors it: under the button that opened it, at
-            // the right end of the heading — which is where that button is.
-            Box(Modifier.fillMaxSize().padding(top = 112.dp, end = 22.dp), contentAlignment = Alignment.TopEnd) {
+            // Under the button that opened it: the heading's 显示方式 sits at the top-right
+            // of the screen, so the card hangs from the same corner. It used to be pushed
+            // 112dp down for no reason a reader could see.
+            Box(Modifier.fillMaxSize().padding(top = 6.dp, end = 14.dp), contentAlignment = Alignment.TopEnd) {
                 DisplayModeMenuCard(state)
             }
         }
@@ -864,7 +876,7 @@ private fun DisplayModeMenuCard(state: AppState) {
                     CubIcon(
                         viewIcon(mode),
                         size = 16,
-                        tint = if (active) colors.accent else colors.textDim,
+                        tint = if (active) colors.accent else colors.text,
                     )
                     Spacer(Modifier.width(10.dp))
                     Text(

@@ -121,14 +121,16 @@ class AppSettingsTest {
         val s = settings()
         val favourite = Favorite(device = Words.LOCAL, backendId = EndpointId.LOCAL, path = "D:/photos")
         s.toggleFavourite(favourite)
-        assertTrue(s.isFavourite(Words.LOCAL, "D:/photos"))
+        // Keyed on the backend and the path: the display name of an end can change, and
+        // "本端" is a label rather than an address.
+        assertTrue(s.isFavourite(EndpointId.LOCAL, "D:/photos"))
         assertEquals(1, s.favourites.size)
 
         s.toggleFavourite(favourite)
-        assertFalse(s.isFavourite(Words.LOCAL, "D:/photos"))
+        assertFalse(s.isFavourite(EndpointId.LOCAL, "D:/photos"))
 
         s.favourites = listOf(
-            favorite("本机", "D:/photos"),
+            favorite("本端", "D:/photos"),
             favorite("Redmi", "/sdcard/DCIM", backendId = "lan:192.168.1.20:43917"),
         )
         val reloaded = AppSettings(SettingsStorage.memory(s.snapshot()))

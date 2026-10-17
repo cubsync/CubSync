@@ -37,6 +37,7 @@ import io.github.cubsync.service.Words
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class NoticeKind { INFO, SUCCESS, WARNING, ERROR }
 
@@ -112,8 +113,16 @@ class AppState(
 
     var peers by mutableStateOf<List<PeerSession>>(emptyList())
     var peerError by mutableStateOf<String?>(null)
+
+    /** The address box's two halves, kept apart so a port is optional and a colon is not. */
+    var peerHost by mutableStateOf("")
+    var peerPortText by mutableStateOf("")
     var peerDraft by mutableStateOf("")
     var connecting by mutableStateOf(false)
+
+    /** USB: what adb can see, and the last thing it said. */
+    var adbDevices by mutableStateOf<List<io.github.cubsync.service.Adb.Device>>(emptyList())
+    var adbNote by mutableStateOf<String?>(null)
 
     var running by mutableStateOf<RunningJob?>(null)
     var notice by mutableStateOf<Notice?>(null)
@@ -163,6 +172,8 @@ class AppState(
             logs = if (next.size > LOG_LIMIT) next.takeLast(LOG_LIMIT) else next
         }
         peerDraft = service.settings.lastPeer
+        service.settings.lastPeer.substringBeforeLast(':').takeIf { it.isNotEmpty() }?.let { peerHost = it }
+        service.settings.lastPeer.substringAfterLast(':', "").toIntOrNull()?.let { peerPortText = it.toString() }
         // A server with nothing shared cannot be started, so the first run seeds the list
         // with the one folder every machine has. 添加文件夹 changes it afterwards; the
         // point is that 启动服务端 works before anybody has been taught where to click.
@@ -387,9 +398,50 @@ class AppState(
         service.settings.toggleFavourite(favourite)
         settingsRevision++
         notify(
-            if (service.settings.isFavourite(device, pane.path)) "已收藏 ${pane.path}" else "已取消收藏",
+            if (service.settings.isFavourite(pane.backendId, pane.path)) "已收藏 ${pane.path}" else "已取消收藏",
             NoticeKind.INFO,
         )
+    }
+
+    /** 收藏夹's `+`: a folder added by address, not only the one a pane happens to show. */
+    var favouriteDraft by mutableStateOf<String?>(null)
+
+    fun addFavourite(path: String) {
+        val clean = io.github.cubsync.service.PathTools.normalizeRoot(path.trim())
+        if (clean.isEmpty()) return
+        val side = liveSettings.activeSide
+        val pane = service.browsing.current(side)
+        val backendId = if (pane.backendId == EndpointId.LOCAL) EndpointId.LOCAL else pane.backendId
+        val device = if (backendId == EndpointId.LOCAL) Words.LOCAL else peerFor(backendId)?.nodeName ?: Words.REMOTE
+        service.settings.toggleFavourite(Favorite(device, backendId, clean))
+        // toggle means "add"; if it was already there it has just been removed, so put it
+        // back — pressing + on a folder that is already starred should not unstar it.
+        if (!service.settings.isFavourite(backendId, clean)) {
+            service.settings.toggleFavourite(Favorite(device, backendId, clean))
+        }
+        settingsRevision++
+        favouriteDraft = null
+        notify("已收藏 $clean", NoticeKind.SUCCESS)
+    }
+
+    fun removeFavourite(favourite: Favorite) {
+        service.settings.removeFavourite(favourite)
+        settingsRevision++
+        notify("已取消收藏 ${favourite.path}", NoticeKind.INFO)
+    }
+
+    /**
+     * Opens a favourite in whichever pane is focused.
+     *
+     * It used to always open on the left, so a favourite of a folder on the phone landed in
+     * 本端栏 and failed. The focused pane is the one the next click would have acted on,
+     * which is where a person expects it to appear.
+     */
+    fun openFavourite(favourite: Favorite) {
+        goTo(Section.TRANSFER)
+        val side = liveSettings.activeSide
+        service.browsing.open(side, favourite.backendId, favourite.path)
+        touchBrowsing()
     }
 
     fun applyPrefs(side: Side, scope: Scope, change: (io.github.cubsync.service.BrowsePrefs) -> io.github.cubsync.service.BrowsePrefs) {
@@ -595,6 +647,64 @@ class AppState(
     }
 
     // ---------------------------------------------------------------------- peers
+
+    /** Looks for devices on the other end of a cable. */
+    fun refreshAdb() {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val found = io.github.cubsync.service.Adb.devices()
+            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                adbDevices = found
+                adbNote = when {
+                    !io.github.cubsync.service.Adb.available() -> "没有找到 adb：装好 platform-tools 并加进 PATH"
+                    found.isEmpty() -> "没有已连接的 USB 设备"
+                    else -> null
+                }
+            }
+        }
+    }
+
+    /**
+     * Connects over the cable: `adb forward` first, then the ordinary TCP handshake.
+     *
+     * The phone is already serving on its share port; the cable only changes the route, so
+     * after the forward this is the same code path as Wi-Fi and the rest of the screen does
+     * not need to know which one is in use.
+     */
+    fun connectUsb(serial: String?, port: Int) {
+        val target = if (port <= 0) io.github.cubsync.core.protocol.Protocol.DEFAULT_PORT else port
+        connecting = true
+        peerError = null
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val failure = io.github.cubsync.service.Adb.forward(target, target, serial)
+            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                connecting = false
+                if (failure != null) {
+                    adbNote = failure
+                    peerError = failure
+                } else {
+                    adbNote = "已转发 tcp:$target → 设备 tcp:$target"
+                    connectPeer("127.0.0.1:$target")
+                }
+            }
+        }
+    }
+
+    /** The address box: a host, and a port that defaults to the protocol's. */
+    fun connectPeerAddress() {
+        val host = peerHost.trim()
+        if (host.isEmpty()) {
+            peerError = "先填地址"
+            return
+        }
+        val port = peerPortText.trim().let {
+            if (it.isEmpty()) io.github.cubsync.core.protocol.Protocol.DEFAULT_PORT else it.toIntOrNull()
+        }
+        if (port == null || port !in 1..65535) {
+            peerError = "端口要填 1–65535，留空就用默认 ${io.github.cubsync.core.protocol.Protocol.DEFAULT_PORT}"
+            return
+        }
+        connectPeer("$host:$port")
+    }
 
     fun connectPeer(spec: String) {
         val text = spec.trim()

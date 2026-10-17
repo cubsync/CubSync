@@ -1,5 +1,6 @@
 package io.github.cubsync.android
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -55,6 +56,11 @@ import kotlinx.coroutines.delay
 fun CubAndroidApp(state: AndroidAppState) {
     val colors = CubTheme.colors
     val route = state.route
+    state.revision
+
+    // Back undoes the last thing, and only leaves when there is nothing left to undo.
+    // Without this every screen exited the application, including a folder.
+    BackHandler(enabled = state.canGoBack) { state.handleBack() }
 
     Box(Modifier.fillMaxSize().background(colors.background)) {
         // The system bars sit over the app (MainActivity calls enableEdgeToEdge), so the
@@ -341,11 +347,12 @@ private fun Drawer(state: AndroidAppState) {
                             detail = item.path,
                             leadingIcon = IconPaths.FOLDER,
                             modifier = Modifier.padding(horizontal = 8.dp),
-                            onClick = {
-                                state.drawerOpen = false
-                                state.go(Section.TRANSFER)
-                                state.openPane(io.github.cubsync.service.Side.LEFT, item.path, item.backendId)
+                            trailing = {
+                                IconButton(IconPaths.CLOSE, size = 30, mark = 13) {
+                                    state.removeFavourite(item)
+                                }
                             },
+                            onClick = { state.openFavourite(item) },
                         )
                     }
                 }

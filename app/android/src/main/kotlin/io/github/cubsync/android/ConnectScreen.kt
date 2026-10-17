@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,7 +48,9 @@ import io.github.cubsync.service.Words
 @Composable
 fun ConnectScreen(state: AndroidAppState) {
     val colors = CubTheme.colors
-    val server = state.serverState
+    // Collected, not read off the controller: `serverState` is a plain getter, so the card
+    // stayed 停止共享 after the server had already stopped.
+    val server by state.server.state.collectAsState()
     val settings = state.liveSettings
     var modeOpen by remember { mutableStateOf(false) }
     val copy = rememberClipboard()
@@ -158,6 +161,35 @@ fun ConnectScreen(state: AndroidAppState) {
                     state.go(Section.TRANSFER)
                     state.localRoots().firstOrNull()?.let { state.openPane(Side.LEFT, it) }
                 }
+            }
+
+            SectionLabel("连接另一台设备")
+            Panel(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Field(
+                        value = state.peerHost,
+                        onValueChange = { state.peerHost = it },
+                        modifier = Modifier.weight(2f),
+                        placeholder = "地址，如 192.168.1.20",
+                        onSubmit = { state.connectPeerAddress() },
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Field(
+                        value = state.peerPortText,
+                        onValueChange = { state.peerPortText = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = "${settings.sharePort}",
+                        onSubmit = { state.connectPeerAddress() },
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                PrimaryButton(if (state.connecting) "连接中…" else "连接", enabled = !state.connecting) {
+                    state.connectPeerAddress()
+                }
+                state.peerError?.let {
+                    Text(it, style = CubType.rowDetail, color = colors.danger)
+                }
+                CardDesc("端口留空就用对面共享时显示的那个；连上后远端栏会打开它共享的第一个目录。")
             }
 
             // The prototype's 连接 screen stops after the two buttons and 最近. An

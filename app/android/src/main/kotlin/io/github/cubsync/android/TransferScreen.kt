@@ -4,8 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -54,6 +58,8 @@ import io.github.cubsync.service.Columns
 import io.github.cubsync.service.CompareMark
 import io.github.cubsync.service.Density
 import io.github.cubsync.service.DisplayMode
+import io.github.cubsync.service.EndpointId
+import io.github.cubsync.service.Section
 import io.github.cubsync.service.Format
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -101,6 +107,12 @@ fun TransferScreen(state: AndroidAppState) {
         else -> null
     }
 
+    // The real size of the screen, not a guess: 分栏方向 said 自动 while the code compared
+    // 380 against 560 — two numbers that never change, so a phone held sideways still
+    // stacked the panes.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val widthDp = maxWidth.value
+    val heightDp = maxHeight.value
     Column(
         Modifier
             .fillMaxSize()
@@ -117,11 +129,7 @@ fun TransferScreen(state: AndroidAppState) {
         if (settings.displayBarOpen) DisplayBar(state)
         HorizontalDivider(color = colors.outline)
 
-        val paneDirection = resolveDirection(
-            settings.paneDirection,
-            380f,
-            if (solo != null) 700f else 560f,
-        )
+        val paneDirection = resolveDirection(settings.paneDirection, widthDp, heightDp)
 
         when {
             solo != null -> Pane(state, solo, if (solo == Side.LEFT) left else right, compare, Modifier.weight(1f))
@@ -142,6 +150,7 @@ fun TransferScreen(state: AndroidAppState) {
         // button that is 20px wide, so a transfer starts from the row's action panel or
         // from the selection bar. The desktop keeps its two arrows; this end does not.
         ActionBar(state)
+    }
     }
 }
 
@@ -199,7 +208,8 @@ private fun SubRow(state: AndroidAppState, left: PaneState, right: PaneState, bu
         ) {
             CubIcon(viewIcon(prefs.displayMode), size = 16, tint = colors.text)
             Spacer(Modifier.width(7.dp))
-            Text(prefs.displayMode.label, style = CubType.label, color = colors.text, maxLines = 1)
+            // The prototype's pill reads 显示方式：详细 — the words, not only the mode.
+            Text("显示方式 · ${prefs.displayMode.label}", style = CubType.label, color = colors.text, maxLines = 1)
             Spacer(Modifier.width(5.dp))
             CubIcon(
                 if (settings.displayBarOpen) IconPaths.CHEVRON_DOWN else IconPaths.CHEVRON_RIGHT,
@@ -371,19 +381,31 @@ private fun Pane(state: AndroidAppState, side: Side, pane: PaneState, compare: B
             .background(if (active) colors.accent.copy(alpha = 0.05f) else Color.Transparent)
             // Tap anywhere in a pane to focus it: the sub-row's 显示方式 acts on the focused
             // pane, and a focus you cannot change by touching the pane is a focus that lies.
-            .pointerInput(side, active) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
-                    if (!active) {
-                        settings.activeSide = side
-                        state.touch()
-                    }
+            // A clickable on the container rather than a pointer observer — the observer ran
+            // after the rows had consumed their presses, so rows never moved the focus.
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) {
+                if (settings.activeSide != side) {
+                    settings.activeSide = side
+                    state.touch()
                 }
             },
     ) {
         PaneHeader(state, side, pane, active)
         Box(Modifier.weight(1f).fillMaxWidth().itemScaleGestures(state)) {
             when {
+                // 远端 with no peer is not an empty folder: it is a pane waiting for a
+                // connection, and it used to show this phone's own disk instead — which is
+                // how a path from the other machine ended up being asked of the wrong side.
+                side == Side.RIGHT && pane.backendId == EndpointId.LOCAL &&
+                    pane.path.isBlank() && state.peers.isEmpty() ->
+                    EmptyState(
+                        "还没有连接远端",
+                        "在「连接」里填对面显示的地址，或者让对面先连上这台机器",
+                        action = { QuietButton("去连接") { state.go(Section.CONNECT) } },
+                    )
                 pane.error.isNotEmpty() -> EmptyState("读不了这个文件夹", pane.error)
                 // 对比 draws the other side's rows as ghosts, so a pane that has nothing of
                 // its own is not an empty folder — it is a folder where everything will be
@@ -456,7 +478,11 @@ private fun PaneHeader(state: AndroidAppState, side: Side, pane: PaneState, acti
                     )
                 }
             } else {
-                val crumbs = Browsing.crumbs(pane.path, maxSegments = if (expanded) 64 else if (lines > 1) 3 else 4)
+                // Every layer. The old limit folded three of them into one `⋯` even when
+                // the header had room, so what looked like "only the parent" was really
+                // "the parent and an ellipsis" — and a layer in the ellipsis cannot be
+                // tapped, which is half the navigation the design promises.
+                val crumbs = Browsing.crumbs(pane.path)
                 Box(
                     Modifier
                         .weight(1f)
@@ -469,58 +495,36 @@ private fun PaneHeader(state: AndroidAppState, side: Side, pane: PaneState, acti
                                 },
                             )
                         }
-                        // A sideways drag scrolls the address instead of jumping: a swipe
-                        // that lands on a layer was the way this used to navigate by accident.
-                        .pointerInput(pane.path) {
-                            detectHorizontalDragGestures { change, _ -> change.consume() }
-                        }
                         .padding(horizontal = 2.dp, vertical = 4.dp),
                 ) {
                     Column {
-                        if (lines > 1 && crumbs.size > 1) {
-                            // N-1 lines of ancestors, each one a way back up, then the
-                            // folder itself in the reading colour.
-                            for (crumb in crumbs.dropLast(1).takeLast(lines - 1)) {
-                                Text(
-                                    tailPath(crumb.path),
-                                    style = CubType.meta,
-                                    color = colors.textDim,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickableCustom { state.openPane(side, crumb.path, pane.backendId) },
-                                )
+                        run {
+                            // Scrolls rather than folds: a narrow two-pane header keeps
+                            // every layer reachable, and a wide one shows them all.
+                            val crumbScroll = rememberScrollState()
+                            // Parked at the right end: the folder being shown is the last
+                            // crumb, and a row that starts at the anchor cuts it off.
+                            androidx.compose.runtime.LaunchedEffect(pane.path, crumbScroll.maxValue) {
+                                crumbScroll.scrollTo(crumbScroll.maxValue)
                             }
-                            Text(
-                                crumbs.last().label,
-                                style = CubType.meta.copy(fontSize = 11.5.sp),
-                                color = colors.text,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.clickableCustom {
-                                    state.openPane(side, crumbs.last().path, pane.backendId)
-                                },
-                            )
-                        } else {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(crumbScroll),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
                                 for ((index, crumb) in crumbs.withIndex()) {
                                     if (index > 0) Text(" › ", style = CubType.meta, color = colors.textFaint)
                                     Text(
                                         crumb.label,
                                         style = CubType.meta.copy(fontSize = 11.5.sp),
-                                        color = when {
-                                            crumb.collapsed -> colors.accent
-                                            index == crumbs.lastIndex -> colors.text
-                                            else -> colors.textDim
-                                        },
+                                        color = if (index == crumbs.lastIndex) colors.text else colors.textDim,
                                         maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
+                                        softWrap = false,
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(4.dp))
                                             .clickableCustom {
-                                                if (crumb.collapsed) expanded = true
-                                                else state.openPane(side, crumb.path, pane.backendId)
+                                                state.openPane(side, crumb.path, pane.backendId)
                                             }
                                             .padding(horizontal = 1.dp),
                                     )
@@ -622,21 +626,38 @@ private fun PaneList(state: AndroidAppState, side: Side, pane: PaneState, scale:
                     )
                 }
                 Spacer(Modifier.width((10 * scale).dp))
-                Column(Modifier.weight(1f)) {
+                if (mode == DisplayMode.COMPACT) {
+                    // 紧凑 is one line: the size sits beside the name instead of under it.
+                    // Otherwise it was the same screen as 详细 with a 8dp difference, which
+                    // is what "every mode looks the same" means.
                     Text(
                         Browsing.name(entry.relPath),
                         style = CubType.body.copy(fontSize = fontSize),
                         color = if (entry.isDirectory) colors.text else colors.textDim,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
                     )
-                    if (settings.showMetadata) {
+                    if (settings.showMetadata && !entry.isDirectory) {
+                        Text(Format.bytes(entry.size), style = CubType.meta, color = colors.textFaint, maxLines = 1)
+                    }
+                } else {
+                    Column(Modifier.weight(1f)) {
                         Text(
-                            if (entry.isDirectory) DASH else "${Format.bytes(entry.size)} · ${Format.stamp(entry.mtimeMs)}",
-                            style = CubType.meta,
-                            color = colors.textFaint,
+                            Browsing.name(entry.relPath),
+                            style = CubType.body.copy(fontSize = fontSize),
+                            color = if (entry.isDirectory) colors.text else colors.textDim,
                             maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
+                        if (settings.showMetadata) {
+                            Text(
+                                if (entry.isDirectory) DASH else "${Format.bytes(entry.size)} · ${Format.stamp(entry.mtimeMs)}",
+                                style = CubType.meta,
+                                color = colors.textFaint,
+                                maxLines = 1,
+                            )
+                        }
                     }
                 }
             }

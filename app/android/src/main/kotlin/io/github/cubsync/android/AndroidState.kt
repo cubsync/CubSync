@@ -116,6 +116,8 @@ class AndroidAppState(
     var peers by mutableStateOf<List<PeerSession>>(emptyList())
     var peerError by mutableStateOf<String?>(null)
     var peerDraft by mutableStateOf("")
+    var peerHost by mutableStateOf("")
+    var peerPortText by mutableStateOf("")
     var connecting by mutableStateOf(false)
 
     var running by mutableStateOf<RunningJob?>(null)
@@ -180,7 +182,11 @@ class AndroidAppState(
             usableRoot()?.let { service.settings.sharedRoots = listOf(it) }
         }
         rootDraft = service.settings.sharedRoots
-        rootDraft = service.settings.sharedRoots
+
+        // Tell the backend what this phone can actually open. Without this the local
+        // backend exposes no roots, so 上一层 had no boundary to stop at and walked from
+        // /storage/emulated/0 up to / — three levels the process cannot read.
+        localRoots().forEach { service.browsePool.registerLocalRoot(it) }
     }
 
     fun close() {
@@ -218,9 +224,20 @@ class AndroidAppState(
      * cannot race one the caller asked for.
      */
     private fun openSomethingToLookAt() {
-        if (service.browsing.current(Side.LEFT).path.isNotBlank()) return
-        (rootDraft.firstOrNull() ?: usableRoot())?.let {
-            service.browsing.open(Side.LEFT, EndpointId.LOCAL, it)
+        val left = service.browsing.current(Side.LEFT)
+        if (left.path.isBlank() || left.backendId != EndpointId.LOCAL) {
+            (rootDraft.firstOrNull() ?: usableRoot())?.let {
+                service.browsing.open(Side.LEFT, EndpointId.LOCAL, it)
+            }
+        }
+        // The right pane is 远端. When a peer is connected it opens on that peer rather
+        // than on this phone's own disk, which is what made 远端栏 show "/" and then refuse
+        // a path from the other machine: it was still the local backend.
+        val right = service.browsing.current(Side.RIGHT)
+        if (right.backendId == EndpointId.LOCAL) {
+            peers.firstOrNull()?.let { peer ->
+                service.browsing.open(Side.RIGHT, peer.backendId, peer.roots.firstOrNull().orEmpty())
+            }
         }
     }
 
@@ -231,6 +248,52 @@ class AndroidAppState(
     fun back() {
         route = Route.Tabs
     }
+
+    /**
+     * The system back button, in the order a person would undo things.
+     *
+     * Android's back used to leave the application from every screen, so a folder entered
+     * in 传输 closed CubSync instead of going back to the folder. Panels close, then the
+     * screen, then the section, then one folder up — and only when there is nothing left to
+     * undo does the system get the event and finish the activity.
+     */
+    fun handleBack() {
+        when {
+            drawerOpen -> drawerOpen = false
+            moreSheet -> moreSheet = false
+            connectSheet -> connectSheet = false
+            sharedSheet -> sharedSheet = false
+            screenMenu -> screenMenu = false
+            paneMenu != null -> paneMenu = null
+            actionSheet != null -> actionSheet = null
+            route !is Route.Tabs -> route = Route.Tabs
+            tab != Section.TRANSFER -> go(Section.TRANSFER)
+            else -> {
+                val side = liveSettings.activeSide
+                service.browsing.up(side)
+                touch()
+            }
+        }
+    }
+
+    /** Whether back has something to undo; when it does not, the application closes. */
+    val canGoBack: Boolean
+        get() {
+            if (drawerOpen || moreSheet || connectSheet || sharedSheet || screenMenu ||
+                paneMenu != null || actionSheet != null || route !is Route.Tabs ||
+                tab != Section.TRANSFER
+            ) {
+                return true
+            }
+            val side = liveSettings.activeSide
+            val pane = service.browsing.current(side)
+            if (pane.path.isBlank()) return false
+            val roots = service.browsing.exposedRoots(pane.backendId)
+            val root = roots.filter { pane.path == it || pane.path.startsWith("$it/") }
+                .maxByOrNull { it.length }
+            // At the exposed root there is no parent to show, so back means "leave".
+            return root == null || pane.path != root
+        }
 
     val selectedConfig: SyncConfig?
         get() = selectedConfigId?.let { id -> configs.firstOrNull { it.configId == id } }
@@ -434,6 +497,20 @@ class AndroidAppState(
 
     fun drawer(): DrawerModel = service.drawer(serverState)
 
+    /** Opens a favourite in the focused pane, which is where the next tap would go. */
+    fun openFavourite(favourite: Favorite) {
+        drawerOpen = false
+        go(Section.TRANSFER)
+        service.browsing.open(liveSettings.activeSide, favourite.backendId, favourite.path)
+        touch()
+    }
+
+    fun removeFavourite(favourite: Favorite) {
+        service.settings.removeFavourite(favourite)
+        revision++
+        notify("已取消收藏 ${favourite.path}", NoticeKind.INFO)
+    }
+
     /** 收藏 a configuration — the star in the top bar of its screen. */
     fun toggleConfigStar() {
         val config = selectedConfig ?: return
@@ -612,6 +689,23 @@ class AndroidAppState(
 
     // ---------------------------------------------------------------------- peers
 
+    /** A host and a port typed apart; an empty port means the protocol default. */
+    fun connectPeerAddress() {
+        val host = peerHost.trim()
+        if (host.isEmpty()) {
+            peerError = "先填地址"
+            return
+        }
+        val port = peerPortText.trim().let {
+            if (it.isEmpty()) io.github.cubsync.core.protocol.Protocol.DEFAULT_PORT else it.toIntOrNull()
+        }
+        if (port == null || port !in 1..65535) {
+            peerError = "端口要填 1–65535，留空就用默认 ${io.github.cubsync.core.protocol.Protocol.DEFAULT_PORT}"
+            return
+        }
+        connectPeer("$host:$port")
+    }
+
     fun connectPeer(spec: String) {
         val text = spec.trim()
         if (text.isEmpty()) {
@@ -631,7 +725,17 @@ class AndroidAppState(
                 peers = peers.filterNot { it.backendId == session.backendId } + session
                 service.settings.lastPeer = text
                 revision++
-                notify("已连接 ${session.nodeName}", NoticeKind.SUCCESS)
+                // A handshake that leaves both panes as they were is a handshake the person
+                // cannot see. The right pane becomes the peer and opens on the first folder
+                // it offers — the same thing the desktop does when it connects out.
+                val first = session.roots.firstOrNull()
+                service.browsing.open(Side.RIGHT, session.backendId, first.orEmpty())
+                liveSettings.activeSide = Side.RIGHT
+                notify(
+                    if (first == null) "已连接 ${session.nodeName}，但对面没有共享文件夹"
+                    else "已连接 ${session.nodeName} · ${first}",
+                    if (first == null) NoticeKind.WARNING else NoticeKind.SUCCESS,
+                )
             } catch (failure: Throwable) {
                 peerError = failure.message ?: "连接失败"
                 notify("连接失败：$peerError", NoticeKind.ERROR)
@@ -700,15 +804,35 @@ class AndroidAppState(
 
     fun stopServer() {
         server.stop()
+        // The screen reads `serverState` off the controller, which is not Compose state;
+        // without this the button stayed 停止共享 and the address stayed on screen after
+        // the server had already stopped.
+        revision++
         notify("已停止共享", NoticeKind.INFO)
     }
 
     fun setRunMode(mode: RunMode) {
         changeSettings { it.runMode = mode }
-        if (mode == RunMode.ROOT) {
-            notify("已切到 Root 模式：设备需要已获取 Root 权限，普通模式下这一档不会生效", NoticeKind.WARNING)
+        // Say what is true rather than what the label promises. The two privileged modes
+        // need a backend that speaks through `su` or Shizuku, and this build does not have
+        // one — so the setting is recorded, and the sentence beside it says so.
+        when (mode) {
+            RunMode.NORMAL -> notify("已切到普通模式", NoticeKind.INFO)
+            RunMode.ROOT -> notify(
+                if (suAvailable()) "已记录 Root 模式；本版引擎仍按应用权限读文件，su 只用于探测"
+                else "没有拿到 Root 权限：su 不可用或被拒绝",
+                NoticeKind.WARNING,
+            )
+            RunMode.SHIZUKU -> notify("Shizuku 需要 Shizuku 应用与它的 API；本版还没有接入", NoticeKind.WARNING)
         }
     }
+
+    /** Whether `su` answers with uid 0. A probe, not a promise. */
+    private fun suAvailable(): Boolean = runCatching {
+        val process = ProcessBuilder("su", "-c", "id").redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().readText()
+        process.waitFor(3, java.util.concurrent.TimeUnit.SECONDS) && output.contains("uid=0")
+    }.getOrDefault(false)
 
     // ------------------------------------------------------------ 传输通道
 
