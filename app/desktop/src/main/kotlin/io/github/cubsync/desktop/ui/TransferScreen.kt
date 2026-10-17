@@ -3,6 +3,8 @@ package io.github.cubsync.desktop.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -197,110 +199,6 @@ private fun SubRow(state: AppState, left: PaneState, right: PaneState, busy: Boo
  * nothing.
  */
 @Composable
-private fun DisplayBar(state: AppState) {
-    val colors = CubTheme.colors
-    val settings = state.liveSettings
-    val side = settings.activeSide
-    val prefs = state.browsing.prefsOf(side)
-
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .background(colors.surfaceRaised)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            GroupLabel("显示方式", Modifier.width(64.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                for (mode in DisplayMode.entries) {
-                    Column(
-                        Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (prefs.displayMode == mode) colors.accent else colors.surfaceSunken)
-                            .clickable { state.setDisplayMode(side, mode) }
-                            .padding(horizontal = 9.dp, vertical = 4.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            mode.label,
-                            style = CubType.label,
-                            color = if (prefs.displayMode == mode) Color.White else colors.textDim,
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.weight(1f))
-            Text("作用于${if (side == Side.LEFT) Words.LOCAL_PANE else Words.REMOTE_PANE}", style = CubType.meta, color = colors.textFaint)
-        }
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            GroupLabel("行密度", Modifier.width(64.dp))
-            StepperField(
-                value = settings.rowDensity,
-                onChange = { value -> state.changeSettings { s -> s.rowDensity = Density.clamp(value) } },
-                canDecrease = Density.canDecrease(settings.rowDensity),
-                canIncrease = Density.canIncrease(settings.rowDensity),
-                step = Density.STEP,
-                suffix = "%",
-            )
-            Spacer(Modifier.width(10.dp))
-            Text("100% ＝出厂行高，50–250", style = CubType.meta, color = colors.textFaint)
-        }
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            GroupLabel("列数", Modifier.width(64.dp))
-            if (!prefs.displayMode.hasColumns) {
-                Text("${prefs.displayMode.label}没有列数参数", style = CubType.meta, color = colors.textFaint)
-            } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    for (count in Columns.SHORTCUTS) {
-                        QuietButton(
-                            count.toString(),
-                            enabled = true,
-                        ) { state.changeSettings { s -> s.columns = count }; state.touchBrowsing() }
-                    }
-                }
-                Spacer(Modifier.width(8.dp))
-                StepperField(
-                    value = settings.columns,
-                    onChange = { value -> state.changeSettings { s -> s.columns = Columns.clamp(value) }; state.touchBrowsing() },
-                    canDecrease = settings.columns > Columns.MIN,
-                    canIncrease = settings.columns < Columns.MAX,
-                    fieldWidth = 30,
-                )
-                Spacer(Modifier.width(8.dp))
-                Text("1–12", style = CubType.meta, color = colors.textFaint)
-            }
-        }
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            GroupLabel("分栏方向", Modifier.width(64.dp))
-            Segmented(
-                options = PaneDirection.entries.toList(),
-                selected = settings.paneDirection,
-                label = { it.label },
-                onSelect = { state.changeSettings { s -> s.paneDirection = it } },
-            )
-            Spacer(Modifier.width(10.dp))
-            Text("自动＝容器宽 ≥ 高 × 1.15 时左右", style = CubType.meta, color = colors.textFaint)
-        }
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            GroupLabel("条目缩放", Modifier.width(64.dp))
-            StepperField(
-                value = settings.itemScale,
-                onChange = { value -> state.changeSettings { s -> s.itemScale = ItemScale.clamp(value) } },
-                canDecrease = settings.itemScale > ItemScale.MIN,
-                canIncrease = settings.itemScale < ItemScale.MAX,
-                step = ItemScale.STEP,
-                suffix = "%",
-            )
-            Spacer(Modifier.width(10.dp))
-            Text("双击列表或 Ctrl+滚轮可复位 / 连续调整", style = CubType.meta, color = colors.textFaint)
-        }
-    }
-}
 
 // ------------------------------------------------------------------------ pane
 
@@ -560,11 +458,22 @@ private fun RowLine(
             .fillMaxWidth()
             .height(rowHeight)
             .background(if (selected) colors.selected else Color.Transparent)
-            .clickable {
-                if (entry.isDirectory) state.browsing.enter(side, Browsing.name(entry.relPath))
-                else state.browsing.toggle(side, entry.relPath)
-                state.touchBrowsing()
-            }
+            // 规格 §3.5：单击＝进目录/勾选，**长按＝动作面板**。手机端照此办理，桌面端此前
+            // 只有行尾那颗 ⋮，而规格要求的入口在人按的那一行本身。
+            .combinedClickable(
+                onClick = {
+                    if (entry.isDirectory) state.browsing.enter(side, Browsing.name(entry.relPath))
+                    else state.browsing.toggle(side, entry.relPath)
+                    state.touchBrowsing()
+                },
+                onLongClick = {
+                    state.actionSheet = io.github.cubsync.desktop.ActionSheet(
+                        side,
+                        entry.relPath,
+                        entry.isDirectory,
+                    )
+                },
+            )
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
