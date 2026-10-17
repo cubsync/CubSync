@@ -8,6 +8,25 @@ with the pre-1.0 rules described in [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-10-17
+
+### Fixed
+
+- Android: ask for storage. The manifest declared no storage permission and no code
+  requested one, so from targetSdk 33 a folder listed its subfolders and none of its
+  files — quietly, on a real device only.
+- Desktop: long-pressing a row opens the action panel, which the specification names as
+  the row's own entry point and which only the phone had.
+
+### Changed
+
+- The Android build is release-signed now that the four signing secrets exist in CI.
+  Earlier releases fell back to the debug APK by design and cannot be upgraded over.
+
+### Removed
+
+- 104 lines of desktop code unreachable since 0.3.4 removed the standing display bar.
+
 ## [0.3.6] - 2026-10-17
 
 ### Fixed
