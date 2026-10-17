@@ -2,11 +2,14 @@ package io.github.cubsync.desktop.ui
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.cubsync.desktop.AppState
+import io.github.cubsync.desktop.CubType
 
 /**
  * 日志, on its own.
@@ -22,14 +25,17 @@ fun LogsScreen(state: AppState) {
     }
 }
 
-/**
- * 日志's `.chead .acts`: 导出.
- *
- * The prototype draws a filter box beside it; the log view has no filter yet, so only the
- * half that does something is drawn rather than a box that would ignore what is typed.
- */
+/** 日志's `.chead .acts`: the filter box and 导出, as the prototype draws them. */
 @Composable
 fun LogsHeadActions(state: AppState) {
+    Field(
+        value = state.logQuery,
+        onValueChange = { state.logQuery = it },
+        modifier = Modifier.width(180.dp),
+        placeholder = "过滤…",
+        style = CubType.meta,
+    )
+    Spacer(Modifier.width(8.dp))
     QuietButton("导出") {
         val text = state.service.log.entries().joinToString("\n") { entry ->
             "${java.time.Instant.ofEpochMilli(entry.atMs)} ${entry.level} ${entry.area} ${entry.message}"

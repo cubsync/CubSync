@@ -84,6 +84,10 @@ fun SyncScreen(state: AppState) {
 fun SyncHeadActions(state: AppState) {
     val config = state.selectedConfig ?: return
     Chip("配置：${config.name} · ${config.pairs.size} 对", tone = CubTheme.colors.accent)
+    Spacer(Modifier.width(8.dp))
+    // The prototype's `.chead .acts` carries 导出 .cubcfg beside the chip, and the export
+    // already exists behind the list — this is the same verb, where the design puts it.
+    QuietButton("导出 .cubcfg") { state.exportConfig(config) }
 }
 
 // ------------------------------------------------------------------- list

@@ -8,6 +8,14 @@ with the pre-1.0 rules described in [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ## [Unreleased]
 
+## [0.3.11] - 2026-10-17
+
+### Added
+
+- The log page's filter box, which the prototype draws and the view now honours (message
+  or area, together with the level and area filters).
+- 导出 .cubcfg on the sync heading, where the prototype puts it.
+
 ## [0.3.10] - 2026-10-17
 
 ### Changed
