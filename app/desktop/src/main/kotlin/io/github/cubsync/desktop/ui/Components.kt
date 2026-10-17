@@ -286,6 +286,10 @@ fun KeyValueRow(key: String, value: String, dim: Boolean = false) {
             value.ifEmpty { "—" },
             style = CubType.body,
             color = if (dim) colors.textDim else colors.text,
+            // A path in a 300dp panel is longer than the panel. One line and an ellipsis
+            // keeps the row a row; the full value is a copy button away.
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
     }
