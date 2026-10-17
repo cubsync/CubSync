@@ -8,6 +8,14 @@ with the pre-1.0 rules described in [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-10-17
+
+### Fixed
+
+- Android: all files access (`MANAGE_EXTERNAL_STORAGE`). `READ_MEDIA_*` only lets an app see
+  the media library's kinds; a sync tool has to write anywhere, read its own `.cubtmp`, and
+  enter `Android/data`. Without it the app could look and not touch.
+
 ## [0.3.7] - 2026-10-17
 
 ### Fixed
