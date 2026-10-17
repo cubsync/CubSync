@@ -202,14 +202,16 @@ class AppStateTest {
         fixture.state.browsing.enter(Side.LEFT, "holiday")
         await("the subfolder") { PathTools.leafName(fixture.state.browsing.current(Side.LEFT).path) == "holiday" }
 
+        // 这一条测的是**导航**：栏位回到上一层。`up()` 是同步生效的（临时探针实测：
+        // path 一步从 <root>/holiday 变回 <root>），所以直接断言，而不是等十五秒 ——
+        // 等待会把「导航错了」和「列表慢」混成一个超时，而超时什么也不说。
+        val inside = fixture.state.browsing.current(Side.LEFT).path
         fixture.state.browsing.up(Side.LEFT)
-        // 这里原本还要求「列表里出现 holiday 且不在 loading」才算回到了父目录。那条条件
-        // 依赖列表什么时候回来，而这一条测的是**导航**：栏位回到父目录就成立。实测
-        // （临时探针）`up()` 是同步生效的：path 从 <root>/holiday 一步变回 <root>。
-        // 列表属另一件事，由 BrowserSession 自己的测试覆盖，不在这里兼职。
-        await("the parent") {
-            PathTools.leafName(fixture.state.browsing.current(Side.LEFT).path) == PathTools.leafName(root)
-        }
+        assertEquals(
+            io.github.cubsync.service.Browsing.parent(inside),
+            fixture.state.browsing.current(Side.LEFT).path,
+            "up() has to move the pane from $inside to its parent",
+        )
     }
 
     @Test
