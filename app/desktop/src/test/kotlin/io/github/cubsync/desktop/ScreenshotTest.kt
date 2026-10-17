@@ -32,7 +32,7 @@ class ScreenshotTest {
         val written = ArrayList<String>()
 
         for (shot in Preview.shots) {
-            val state = Preview.state(shot.section, shot.dark, shot.jobDetail)
+            val state = Preview.state(shot.section, shot.dark, shot.jobDetail, shot.view)
             try {
                 val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
                     CubTheme(dark = shot.dark) { CubApp(state, Preview.chrome) }

@@ -37,11 +37,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -52,9 +55,10 @@ import io.github.cubsync.desktop.CubTheme
 import io.github.cubsync.desktop.CubType
 import io.github.cubsync.desktop.NoticeKind
 import io.github.cubsync.desktop.copyToClipboard
-import io.github.cubsync.desktop.pickDirectory
+import io.github.cubsync.desktop.openDirectory
 import io.github.cubsync.service.Browsing
 import io.github.cubsync.service.Columns
+import io.github.cubsync.service.CompareMark
 import io.github.cubsync.service.Density
 import io.github.cubsync.service.Difference
 import io.github.cubsync.service.DisplayMode
@@ -89,6 +93,10 @@ fun TransferScreen(state: AppState) {
     val busy by session.busy.collectAsState()
 
     // The revision counters are read so that a preference written anywhere redraws here.
+    // 对比 is a mode of the screen, not of one pane: one listing cannot compare with
+    // itself, so either pane selecting it puts both of them in it.
+    val compare = state.browsing.prefsOf(Side.LEFT).displayMode == DisplayMode.COMPARE ||
+        state.browsing.prefsOf(Side.RIGHT).displayMode == DisplayMode.COMPARE
     val revision = state.settingsRevision + state.browserRevision
     val settings = state.liveSettings
     val direction = resolveDirection(settings.paneDirection, 1000f, if (revision >= 0) 600f else 600f)
@@ -103,19 +111,19 @@ fun TransferScreen(state: AppState) {
 
         if (sideBySide) {
             Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(0.dp)) {
-                Pane(state, Side.LEFT, left, Modifier.weight(1f))
+                Pane(state, Side.LEFT, left, compare, Modifier.weight(1f))
                 TransferArrow(state, left, right, busy, horizontal = true)
-                Pane(state, Side.RIGHT, right, Modifier.weight(1f))
+                Pane(state, Side.RIGHT, right, compare, Modifier.weight(1f))
             }
         } else {
             Column(Modifier.weight(1f).fillMaxWidth()) {
-                Pane(state, Side.LEFT, left, Modifier.weight(1f))
+                Pane(state, Side.LEFT, left, compare, Modifier.weight(1f))
                 TransferArrow(state, left, right, busy, horizontal = false)
-                Pane(state, Side.RIGHT, right, Modifier.weight(1f))
+                Pane(state, Side.RIGHT, right, compare, Modifier.weight(1f))
             }
         }
 
-        TransferBar(state, busy)
+        TransferBar(state)
         Overlays(state)
     }
 }
@@ -137,70 +145,7 @@ fun TransferHeadActions(state: AppState) {
     QuietButton("同步…") { state.goTo(Section.SYNC) }
 }
 
-// --------------------------------------------------------------------- sub row
-
-/**
- * The sub-row: the display menu, the two creation verbs, the selection count, and the
- * two arrows.
- *
- * Never scrolls horizontally and never wraps — the phone's version of this row is four
- * items wide on a 280px screen, and it is the same four here with a mouse attached.
- */
-@Composable
-private fun SubRow(state: AppState, left: PaneState, right: PaneState, busy: Boolean) {
-    val colors = CubTheme.colors
-    val settings = state.liveSettings
-    val active = state.browsing.prefsOf(settings.activeSide)
-
-    Row(
-        Modifier.fillMaxWidth().heightIn(min = 38.dp).padding(horizontal = 12.dp, vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Row(
-            Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .background(colors.surfaceRaised)
-                .border(1.dp, colors.outline, RoundedCornerShape(8.dp))
-                .clickable { settings.displayBarOpen = !settings.displayBarOpen; state.touchBrowsing() }
-                .padding(horizontal = 10.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("显示方式：${active.displayMode.label}", style = CubType.label, color = colors.text)
-            Spacer(Modifier.width(5.dp))
-            CubIcon(
-                if (settings.displayBarOpen) IconPaths.CHEVRON_DOWN else IconPaths.CHEVRON_RIGHT,
-                size = 13,
-                tint = colors.textDim,
-            )
-        }
-        Spacer(Modifier.width(8.dp))
-        QuietButton(Words.NEW_FOLDER) { state.newFolder(settings.activeSide) }
-        QuietButton("同步…") { state.goTo(Section.SYNC) }
-        QuietButton("收藏当前目录") { state.toggleFavourite(settings.activeSide) }
-
-        Spacer(Modifier.weight(1f))
-
-        val selected = left.selection.size + right.selection.size
-        if (selected > 0) {
-            Chip("已选 $selected", tone = colors.accent)
-            Spacer(Modifier.width(8.dp))
-        }
-        QuietButton("送至对侧", enabled = !busy) { state.transfer(Side.LEFT) }
-        QuietButton("取回本栏", enabled = !busy) { state.transfer(Side.RIGHT) }
-    }
-}
-
-/**
- * The display bar: five modes, a row density that is a percentage, a column count, and a
- * pane direction.
- *
- * 行密度 and 列数 are mutually exclusive in practice — a list has a row height, a grid has
- * columns — and the bar says which one applies rather than showing a control that does
- * nothing.
- */
-@Composable
-
-// ------------------------------------------------------------------------ pane
+// --------------------------------------------------------------------- gestures
 
 /**
  * 条目缩放的手势，原型用它们代替双指。
@@ -231,8 +176,9 @@ private fun Modifier.itemScaleGestures(state: AppState): Modifier = this
     }
 
 /** One pane: an address header, a list, and the ⋮ that belongs to that pane. */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun Pane(state: AppState, side: Side, pane: PaneState, modifier: Modifier) {
+private fun Pane(state: AppState, side: Side, pane: PaneState, compare: Boolean, modifier: Modifier) {
     val colors = CubTheme.colors
     val settings = state.liveSettings
     val active = settings.activeSide == side
@@ -242,7 +188,16 @@ private fun Pane(state: AppState, side: Side, pane: PaneState, modifier: Modifie
     Column(
         modifier
             .fillMaxHeight()
-            .background(if (active) colors.accent.copy(alpha = 0.04f) else Color.Transparent),
+            .background(if (active) colors.accent.copy(alpha = 0.04f) else Color.Transparent)
+            // Pressing anywhere in a pane makes it the active one, which is what the
+            // heading's 显示方式 button says it acts on — and the observer is on Press
+            // rather than on a click, so it does not consume the row that was clicked.
+            .onPointerEvent(PointerEventType.Press) {
+                if (!active) {
+                    settings.activeSide = side
+                    state.touchBrowsing()
+                }
+            },
     ) {
         PaneHeader(state, side, pane, active)
 
@@ -252,10 +207,13 @@ private fun Pane(state: AppState, side: Side, pane: PaneState, modifier: Modifie
                     EmptyState("正在读取…")
                 pane.error.isNotEmpty() ->
                     EmptyState("读不了这个文件夹", pane.error)
+                // 对比 before the empty check: a pane with nothing of its own is not an
+                // empty folder there, it is a folder where the other side's files will be
+                // created — and those ghost rows are the whole answer.
+                compare ->
+                    ComparePane(state, side, pane, settings.rowDensity, scale)
                 pane.entries.isEmpty() ->
                     EmptyState(Words.EMPTY_FOLDER, action = { QuietButton(Words.NEW_FOLDER) { state.newFolder(side) } })
-                selected.displayMode == DisplayMode.COMPARE ->
-                    CompareList(state)
                 selected.displayMode.isGrid ->
                     GridList(state, side, pane, settings.columns, scale)
                 else ->
@@ -345,15 +303,6 @@ private fun Breadcrumbs(state: AppState, side: Side, pane: PaneState) {
                     .padding(horizontal = 2.dp),
             )
         }
-        Spacer(Modifier.weight(1f))
-        if (!expanded && crumbs.size > 1) {
-            Text(
-                "路径已折叠",
-                style = CubType.meta,
-                color = colors.textFaint,
-                modifier = Modifier.clickable { expanded = true },
-            )
-        }
     }
 }
 
@@ -441,6 +390,8 @@ private fun SortHeading(
     )
 }
 
+/** One row of a listing: mark, icon, name, and the two metadata columns. */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun RowLine(
     state: AppState,
@@ -462,8 +413,7 @@ private fun RowLine(
             // 只有行尾那颗 ⋮，而规格要求的入口在人按的那一行本身。
             .combinedClickable(
                 onClick = {
-                    if (entry.isDirectory) state.browsing.enter(side, Browsing.name(entry.relPath))
-                    else state.browsing.toggle(side, entry.relPath)
+                    state.browsing.tap(side, entry)
                     state.touchBrowsing()
                 },
                 onLongClick = {
@@ -474,6 +424,12 @@ private fun RowLine(
                     )
                 },
             )
+            // The screen's own hint says 右键理管, and until now nothing listened for it.
+            .onPointerEvent(PointerEventType.Press) { event ->
+                if (event.buttons.isSecondaryPressed) {
+                    state.actionSheet = io.github.cubsync.desktop.ActionSheet(side, entry.relPath, entry.isDirectory)
+                }
+            }
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -510,12 +466,10 @@ private fun RowLine(
                 modifier = Modifier.width(72.dp),
             )
         }
-        IconButton(IconPaths.MORE, size = 28, mark = 16, stroke = 3.4f) {
-            state.actionSheet = io.github.cubsync.desktop.ActionSheet(side, entry.relPath, entry.isDirectory)
-        }
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun GridList(state: AppState, side: Side, pane: PaneState, columns: Int, scale: Float) {
     val colors = CubTheme.colors
@@ -534,15 +488,19 @@ private fun GridList(state: AppState, side: Side, pane: PaneState, columns: Int,
                     .background(if (selected) colors.accentSoft else colors.surfaceRaised)
                     .border(1.dp, if (selected) colors.accent else colors.outline, RoundedCornerShape(10.dp))
                     .clickable {
-                        if (entry.isDirectory) state.browsing.enter(side, Browsing.name(entry.relPath))
-                        else state.browsing.toggle(side, entry.relPath)
+                        state.browsing.tap(side, entry)
                         state.touchBrowsing()
+                    }
+                    .onPointerEvent(PointerEventType.Press) { event ->
+                        if (event.buttons.isSecondaryPressed) {
+                            state.actionSheet = io.github.cubsync.desktop.ActionSheet(side, entry.relPath, entry.isDirectory)
+                        }
                     }
                     .padding(8.dp),
                 verticalArrangement = Arrangement.SpaceBetween,
             ) {
                 CubIcon(
-                    if (entry.isDirectory) IconPaths.FOLDER else IconPaths.DOT,
+                    fileIcon(Browsing.name(entry.relPath), entry.isDirectory),
                     size = 15,
                     tint = colors.textFaint,
                 )
@@ -564,76 +522,108 @@ private fun GridList(state: AppState, side: Side, pane: PaneState, columns: Int,
 }
 
 /**
- * 对比: the two listings aligned by name.
+ * 对比: both panes keep their own columns and align by name.
  *
- * Rows that exist on one side only are kept, because a file that is missing is the thing
- * this view exists to show — and the difference is named rather than left to the reader
- * to spot.
+ * The prototype draws this as two panes whose rows line up, with the difference as a
+ * coloured edge, and a dimmed ghost row where the other side has something this one does
+ * not. An earlier version replaced the two panes with one shared table and a 差异
+ * column — which reads like a report rather than like the browser, and put the two sides
+ * side by side inside one column, so neither pane could still be scrolled or entered.
  */
 @Composable
-private fun CompareList(state: AppState) {
+private fun ComparePane(state: AppState, side: Side, pane: PaneState, density: Int, scale: Float) {
     val colors = CubTheme.colors
-    val rows = state.browsing.compare()
+    val lines = state.browsing.compareLines(side)
+    val rowHeight = (ROW_BASE_DP * density / 100f * scale).dp
+    val fontSize = (12.5f * scale).sp
+
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().background(colors.surfaceRaised).padding(horizontal = 10.dp, vertical = 4.dp)) {
-            Text("${Words.LOCAL} · ${Browsing.name(state.browsing.current(Side.LEFT).path)}", style = CubType.label, color = colors.accent, modifier = Modifier.weight(1f))
-            Text("${Words.REMOTE} · ${Browsing.name(state.browsing.current(Side.RIGHT).path)}", style = CubType.label, color = colors.conflict, modifier = Modifier.weight(1f))
-            Text("差异", style = CubType.label, color = colors.textDim, modifier = Modifier.width(90.dp))
+        Row(
+            Modifier.fillMaxWidth().background(colors.surfaceRaised).padding(horizontal = 10.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("名称", style = CubType.meta, color = colors.textFaint, modifier = Modifier.weight(1f))
+            Text("修改时间", style = CubType.meta, color = colors.textFaint, modifier = Modifier.width(120.dp))
+            Text("大小", style = CubType.meta, color = colors.textFaint, modifier = Modifier.width(72.dp))
         }
         LazyColumn(Modifier.fillMaxSize()) {
-            items(rows, key = { it.name }) { row ->
+            items(lines, key = { it.name }) { line ->
+                val markColor = when (line.mark) {
+                    CompareMark.SAME -> Color.Transparent
+                    CompareMark.ONLY_HERE -> colors.success
+                    CompareMark.DIFFERS -> colors.conflict
+                    CompareMark.MISSING -> Color.Transparent
+                }
+                val entry = line.entry
                 Row(
-                    Modifier.fillMaxWidth().height(26.dp).padding(horizontal = 10.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .height(rowHeight)
+                        .drawBehind {
+                            if (markColor.alpha > 0f) {
+                                drawRect(markColor, size = Size(3.dp.toPx(), size.height))
+                            }
+                        }
+                        .then(
+                            if (entry == null) {
+                                Modifier
+                            } else {
+                                Modifier.combinedClickable(
+                                    onClick = {
+                                        state.browsing.tap(side, entry)
+                                        state.touchBrowsing()
+                                    },
+                                    onLongClick = {
+                                        state.actionSheet = io.github.cubsync.desktop.ActionSheet(
+                                            side,
+                                            line.name,
+                                            entry.isDirectory,
+                                        )
+                                    },
+                                )
+                            },
+                        )
+                        .padding(start = 10.dp, end = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    CompareCell(row.name, row.left, colors) {
-                        if (row.left?.isDirectory == true) state.browsing.enter(Side.LEFT, row.name)
-                        else state.browsing.toggle(Side.LEFT, row.name)
-                    }
-                    CompareCell(row.name, row.right, colors) {
-                        if (row.right?.isDirectory == true) state.browsing.enter(Side.RIGHT, row.name)
-                        else state.browsing.toggle(Side.RIGHT, row.name)
-                    }
+                    CubIcon(
+                        fileIcon(line.name, line.shown?.isDirectory == true),
+                        size = 15,
+                        tint = if (line.ghost) colors.outlineStrong else colors.textFaint,
+                        modifier = Modifier.width(20.dp),
+                    )
                     Text(
-                        if (row.difference == Difference.SAME) "" else row.difference.label,
-                        style = CubType.meta,
-                        color = when (row.difference) {
-                            Difference.SAME -> colors.textFaint
-                            Difference.CONTENT_DIFFERS -> colors.conflict
-                            else -> colors.warning
+                        line.name,
+                        style = CubType.body.copy(fontSize = fontSize),
+                        color = when {
+                            line.ghost -> colors.textFaint
+                            line.entry?.isDirectory == true -> colors.text
+                            else -> colors.textDim
                         },
                         maxLines = 1,
-                        modifier = Modifier.width(90.dp),
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        when {
+                            line.ghost -> "对侧缺失 · 将创建"
+                            line.entry?.isDirectory == true -> DASH
+                            else -> Format.stamp(line.entry?.mtimeMs ?: 0)
+                        },
+                        style = CubType.meta,
+                        color = if (line.ghost) colors.warning else colors.textFaint,
+                        maxLines = 1,
+                        modifier = Modifier.width(120.dp),
+                    )
+                    Text(
+                        if (line.ghost || line.entry?.isDirectory == true) DASH else Format.bytes(line.entry?.size ?: 0),
+                        style = CubType.meta,
+                        color = colors.textFaint,
+                        maxLines = 1,
+                        modifier = Modifier.width(72.dp),
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun androidx.compose.foundation.layout.RowScope.CompareCell(
-    name: String,
-    entry: FileMeta?,
-    colors: io.github.cubsync.desktop.CubColors,
-    onClick: () -> Unit,
-) {
-    Row(
-        Modifier.weight(1f).padding(end = 8.dp).clickable(onClick = onClick),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        StatusDot(if (entry == null) colors.outlineStrong else colors.textFaint, 6)
-        Spacer(Modifier.width(7.dp))
-        Text(
-            if (entry == null) DASH else name,
-            style = CubType.body,
-            color = if (entry == null) colors.textFaint else colors.text,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        if (entry != null && !entry.isDirectory) {
-            Text(Format.bytes(entry.size), style = CubType.meta, color = colors.textDim)
         }
     }
 }
@@ -703,23 +693,22 @@ private fun TransferArrow(state: AppState, left: PaneState, right: PaneState, bu
 
 /** The strip along the bottom: what is moving, how fast, and how to stop it. */
 @Composable
-private fun TransferBar(state: AppState, busy: Boolean) {
+private fun TransferBar(state: AppState) {
     val colors = CubTheme.colors
     val running = state.running
-    val left = state.browsing.current(Side.LEFT)
-    val right = state.browsing.current(Side.RIGHT)
+    val progress by state.browsing.transferProgress.collectAsState()
 
     Column(Modifier.fillMaxWidth()) {
         HorizontalDivider(color = colors.outline)
         Row(
-            Modifier.fillMaxWidth().background(colors.surface).padding(horizontal = 14.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth().background(colors.surface).padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.width(230.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         when {
-                            busy -> "传送中"
+                            progress != null -> "传送中"
                             running != null -> "${running.label}「${running.configName}」"
                             else -> "等待任务"
                         },
@@ -727,27 +716,75 @@ private fun TransferBar(state: AppState, busy: Boolean) {
                         color = colors.text,
                     )
                     Spacer(Modifier.width(8.dp))
-                    Chip(if (busy) "读取中" else DASH)
+                    Chip(
+                        when {
+                            progress != null -> if (progress?.paused == true) "已暂停" else "进行中"
+                            running != null -> "${running.finishedPairs}/${running.pairCount} 对"
+                            else -> DASH
+                        },
+                        tone = when {
+                            progress != null -> colors.accent
+                            running != null -> colors.accent
+                            else -> null
+                        },
+                    )
                 }
                 Text(
-                    "${Words.LOCAL} ${left.entries.size} 项 · ${Words.REMOTE} ${right.entries.size} 项 · 已选 ${left.selection.size + right.selection.size}",
+                    when {
+                        progress != null -> progressLine(progress!!)
+                        running != null -> Format.duration(System.currentTimeMillis() - running.startedAtMs)
+                        else -> "选中文件后点中间的 → / ← 发起传输"
+                    },
                     style = CubType.meta,
                     color = colors.textFaint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (running != null) {
-                val elapsed = System.currentTimeMillis() - running.startedAtMs
-                Text(Format.rate(running.bytes, elapsed), style = CubType.meta, color = colors.textDim)
-                Spacer(Modifier.width(10.dp))
-                QuietButton("暂停 / 取消", danger = true) { state.cancelRun() }
+            Spacer(Modifier.width(16.dp))
+            Box(
+                Modifier
+                    .weight(1f)
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(99.dp))
+                    .background(colors.surfaceSunken),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(progress?.fraction ?: 0f)
+                        .clip(RoundedCornerShape(99.dp))
+                        .background(colors.accent),
+                )
             }
-            QuietButton("重新读取两侧") {
-                state.browsing.refreshBoth()
-                state.notify("已重新读取", NoticeKind.INFO)
+            Spacer(Modifier.width(12.dp))
+            Text(
+                if (progress == null) DASH else "${progress!!.percent}%",
+                style = CubType.meta,
+                color = colors.textDim,
+                modifier = Modifier.width(48.dp),
+            )
+            if (progress != null) {
+                QuietButton(if (progress!!.paused) "继续" else "暂停") {
+                    if (progress!!.paused) state.browsing.resumeTransfer() else state.browsing.pauseTransfer()
+                }
+                QuietButton("取消", danger = true) { state.browsing.cancelTransfer() }
+            } else if (running != null) {
+                QuietButton("暂停 / 取消", danger = true) { state.cancelRun() }
+            } else {
+                // The prototype draws both buttons whether or not anything is moving; with
+                // nothing in flight they are off rather than absent, so the strip does not
+                // change width every time a copy starts.
+                QuietButton("暂停", enabled = false) {}
+                QuietButton("取消", danger = true, enabled = false) {}
             }
         }
     }
 }
+
+/** `已传 / 总量 · 速率`, the line the prototype puts under the name. */
+private fun progressLine(progress: io.github.cubsync.service.TransferProgress): String =
+    "${Format.bytes(progress.doneBytes)} / ${Format.bytes(progress.totalBytes)} · ${progress.totalFiles} 项"
 
 // --------------------------------------------------------------------- overlays
 
@@ -916,19 +953,8 @@ private fun PaneMenuCard(state: AppState, side: Side) {
     FloatingCard(width = 300) {
         FloatingHeader(if (side == Side.LEFT) Words.LOCAL_PANE else Words.REMOTE_PANE, onClose = { state.paneMenu = null })
 
-        Block("地址") {
-            ListLine(
-                title = Browsing.name(pane.path).ifEmpty { pane.path },
-                detail = pane.path,
-                trailing = {
-                    QuietButton("复制") {
-                        copyToClipboard(pane.path)
-                        state.notify("已复制 ${pane.path}", NoticeKind.SUCCESS)
-                    }
-                },
-            )
-        }
-
+        // §3.4: 排序, 文件夹优先, 作用范围 — and nothing else. The address has its own box
+        // above the list and the display mode has the heading's menu.
         Block("排序") {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (key in SortKey.entries) {
@@ -1016,7 +1042,6 @@ private fun ActionSheetCard(state: AppState, side: Side, name: String, isDirecto
             state.deleteSelection(side)
             state.actionSheet = null
         }
-        colors.hashCode()
     }
 }
 
@@ -1044,9 +1069,13 @@ private fun DetailCard(state: AppState, side: Side, name: String) {
                 copyToClipboard(Browsing.child(pane.path, name))
                 state.notify("已复制路径", NoticeKind.SUCCESS)
             }
-            QuietButton("在新窗口打开所在目录") {
-                val target = pickDirectory("")
-                target.hashCode()
+            // Only for a row that lives on this machine: the far pane's path belongs to
+            // the peer, and handing it to Explorer would open a folder that is not there.
+            if (pane.backendId == io.github.cubsync.service.EndpointId.LOCAL) {
+                QuietButton("打开所在目录") {
+                    val target = if (entry?.isDirectory == true) Browsing.child(pane.path, name) else pane.path
+                    if (!openDirectory(target)) state.notify("打不开 $target", NoticeKind.WARNING)
+                }
             }
         }
     }

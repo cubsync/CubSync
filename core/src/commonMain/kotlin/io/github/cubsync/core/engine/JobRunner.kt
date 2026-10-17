@@ -156,6 +156,13 @@ class JobRunner(
     private val chunkSize: Int = ChunkPlan.DEFAULT_CHUNK_SIZE,
     private val verifyCopies: Boolean = true,
     private val caseSensitive: Boolean = true,
+    /**
+     * 断点续传. When it is off, a half-written target file is started again from byte
+     * zero instead of being continued — which is what the setting promises.
+     */
+    private val resumeEnabled: Boolean = true,
+    /** 暂停 / 继续 for a run in flight; null means "never paused". */
+    private val gate: PauseGate? = null,
 ) {
 
     suspend fun run(config: SyncConfig, jobId: String = "job"): JobResult {
@@ -480,7 +487,7 @@ class JobRunner(
                 relPath = relPath,
                 size = meta.size,
                 mtimeMs = meta.mtimeMs,
-                resume = true,
+                resume = resumeEnabled,
             )
             writer = stream
             val startOffset = stream.startOffset
@@ -495,6 +502,7 @@ class JobRunner(
             val reader = source.openRead(sourceRoot, relPath, startOffset)
             try {
                 while (true) {
+                    gate?.awaitGo()
                     val chunk: Chunk = reader.read(chunkSize) ?: break
                     if (chunk.length == 0) break
                     stream.write(chunk.data, 0, chunk.length)

@@ -13,6 +13,7 @@ import io.github.cubsync.core.model.FolderPair
 import io.github.cubsync.core.model.SyncConfig
 import io.github.cubsync.core.model.SyncDirection
 import io.github.cubsync.service.AppLog
+import io.github.cubsync.service.DisplayMode
 import io.github.cubsync.service.EndpointId
 import io.github.cubsync.service.Favorite
 import io.github.cubsync.service.JobRecord
@@ -71,7 +72,13 @@ object Preview {
     )
 
     /** One screenshot to take. */
-    data class Shot(val name: String, val section: Section, val dark: Boolean, val jobDetail: Boolean = false)
+    data class Shot(
+        val name: String,
+        val section: Section,
+        val dark: Boolean,
+        val jobDetail: Boolean = false,
+        val view: DisplayMode? = null,
+    )
 
     val shots: List<Shot> = listOf(
         Shot("00-transfer", Section.TRANSFER, dark = true),
@@ -82,6 +89,8 @@ object Preview {
         Shot("05-logs", Section.LOGS, dark = true),
         Shot("06-settings", Section.SETTINGS, dark = true),
         Shot("07-transfer-light", Section.TRANSFER, dark = false),
+        Shot("08-transfer-compare", Section.TRANSFER, dark = true, view = DisplayMode.COMPARE),
+        Shot("09-transfer-card", Section.TRANSFER, dark = false, view = DisplayMode.CARD),
     )
 
     /**
@@ -91,7 +100,7 @@ object Preview {
      * started by [AppState] has finished by the time the frame is composed. A screenshot
      * test that sleeps to wait for its own data is one that fails on a slow machine.
      */
-    fun state(section: Section, dark: Boolean, jobDetail: Boolean = false): AppState {
+    fun state(section: Section, dark: Boolean, jobDetail: Boolean = false, view: DisplayMode? = null): AppState {
         val directory = Files.createTempDirectory("cubsync-preview-")
         val log = AppLog()
         val desktop = DesktopSettings.inStateDirectory(directory)
@@ -126,6 +135,10 @@ object Preview {
         val right = previewFolder("Mirror")
         state.openPane(Side.LEFT, left.toString())
         state.openPane(Side.RIGHT, right.toString())
+        if (view != null) {
+            state.setDisplayMode(Side.LEFT, view)
+            state.setDisplayMode(Side.RIGHT, view)
+        }
         state.browsing.select(Side.LEFT, listOf("IMG_20261016_0731.jpg", "IMG_20261016_0730.jpg"))
         return state
     }

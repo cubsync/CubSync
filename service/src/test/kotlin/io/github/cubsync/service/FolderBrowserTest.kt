@@ -246,8 +246,7 @@ class FolderBrowserTest {
     }
 
     @Test
-    fun a_deleted_row_goes_to_the_trash_and_a_renamed_one_keeps_its_content() = runBlocking {
-        val dir = tempDir("edit-")
+    fun a_deleted_row_goes_to_the_trash_and_a_renamed_one_keeps_its_content() = runBlocking {        val dir = tempDir("edit-")
         Files.write(dir.resolve("draft.txt"), "draft".toByteArray())
         val session = BrowserSession(FolderBrowser(pool()), CoroutineScope(Dispatchers.IO + SupervisorJob()))
         session.open(Side.LEFT, EndpointId.LOCAL, dir.toAbsolutePath().toString().replace('\\', '/'))
@@ -262,8 +261,54 @@ class FolderBrowserTest {
         assertTrue(Files.isDirectory(dir.resolve(".cub_trash")), "the default delete has to be recoverable")
     }
 
-    private suspend fun awaitUntil(what: String, timeoutMs: Long = 20_000, condition: () -> Boolean) {
-        val deadline = System.currentTimeMillis() + timeoutMs
+    /** 多选 changes what a tap means, for folders as well as files. */
+    @Test
+    fun a_tap_enters_a_folder_unless_multi_select_is_on() = runBlocking {
+        val dir = tempDir("multi-")
+        Files.createDirectories(dir.resolve("sub"))
+        Files.write(dir.resolve("a.txt"), "a".toByteArray())
+        val session = BrowserSession(FolderBrowser(pool()), CoroutineScope(Dispatchers.IO + SupervisorJob()))
+        session.open(Side.LEFT, EndpointId.LOCAL, dir.toAbsolutePath().toString().replace('\\', '/'))
+        awaitUntil("the folder to list") { session.left.value.entries.any { it.relPath == "sub" } }
+
+        val folder = session.left.value.entries.first { it.relPath == "sub" }
+        session.tap(Side.LEFT, folder)
+        awaitUntil("the folder to open") { session.left.value.path.endsWith("/sub") }
+
+        session.open(Side.LEFT, EndpointId.LOCAL, dir.toAbsolutePath().toString().replace('\\', '/'))
+        awaitUntil("the folder to list again") { session.left.value.entries.any { it.relPath == "sub" } }
+        session.toggleMultiSelect()
+        session.tap(Side.LEFT, session.left.value.entries.first { it.relPath == "sub" })
+
+        assertEquals(setOf("sub"), session.left.value.selection, "in 多选 a folder is ticked, not entered")
+        assertEquals(true, session.left.value.path.endsWith(dir.fileName.toString()))
+    }
+
+    /** 取消 stops between chunks, and says so rather than looking like a failure. */
+    @Test
+    fun a_cancelled_copy_reports_itself_as_cancelled() = runBlocking {
+        val from = tempDir("cancel-from-")
+        val to = tempDir("cancel-to-")
+        Files.write(from.resolve("big.bin"), ByteArray(4 * 1024 * 1024) { it.toByte() })
+
+        val control = io.github.cubsync.core.engine.PauseGate()
+        control.cancel()
+        val outcome = FolderBrowser(pool(), AppLog()).copy(
+            fromBackendId = EndpointId.LOCAL,
+            fromDirectory = PathTools.normalizeRoot(from.toString()),
+            toBackendId = EndpointId.LOCAL,
+            toDirectory = PathTools.normalizeRoot(to.toString()),
+            names = listOf("big.bin"),
+            control = control,
+        )
+
+        assertTrue(outcome.cancelled, "the outcome has to say it was cancelled, not that it failed")
+        assertTrue(outcome.ok, "a cancel is not a failure")
+        assertEquals(0, outcome.copied)
+        assertTrue(!Files.exists(to.resolve("big.bin")), "nothing is left behind under the real name")
+    }
+
+    private suspend fun awaitUntil(what: String, timeoutMs: Long = 20_000, condition: () -> Boolean) {        val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             if (condition()) return
             delay(25)

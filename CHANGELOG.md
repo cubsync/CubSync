@@ -8,6 +8,35 @@ with the pre-1.0 rules described in [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ## [Unreleased]
 
+## [0.3.10] - 2026-10-17
+
+### Changed
+
+- 对比 is two aligned panes with an edge-coloured difference and a ghost row for what the
+  other side has, on both ends; either pane selecting it shows both.
+- The phone's card/thumbnail modes are real grids, so the column count applies.
+- The phone's sub-row ⋮ opens 更多 (new folder, multi-select, favourites, zoom); sorting
+  and scope stay behind each pane's own ⋮.
+- Multi-select: a tap ticks a row, folders included.
+- The phone's header copies its address on a long press, goes to the pane's root on a long
+  press of ←, and a sideways drag is not a tap; a narrow two-pane header uses N lines.
+- The desktop's per-row ⋮ is replaced by right-click, which the screen already promised.
+
+### Added
+
+- The transfer strip has a progress bar, a percentage, pause/resume and cancel, all of
+  which act on the copy instead of describing it.
+- A sync run can be paused and resumed; `PauseGate` is shared by both kinds of copy.
+- `断点续传` is passed to the engine, and `默认接收目录` is honoured when the far pane has
+  nowhere open.
+
+### Fixed
+
+- Compare showed 这个文件夹是空的 in a pane whose files were about to be created.
+- The phone's transfer button named the wrong direction when the selection was remote.
+- The settings screen hard-coded a receive path and a row height.
+- 在新窗口打开所在目录 did nothing; it opens the folder, local pane only.
+
 ## [0.3.9] - 2026-10-17
 
 ### Fixed
