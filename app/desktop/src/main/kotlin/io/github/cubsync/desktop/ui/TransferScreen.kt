@@ -295,11 +295,11 @@ private fun PaneHeader(state: AppState, side: Side, pane: PaneState, active: Boo
             val starred = state.service.settings.isFavourite(pane.backendId, pane.path)
             IconButton(
                 IconPaths.STAR,
-                size = 26,
+                size = 28,
                 mark = 16,
                 tint = if (starred) colors.accent else null,
             ) { state.toggleFavourite(side) }
-            IconButton(IconPaths.MORE, size = 26, mark = 18, stroke = 3.4f) {
+            IconButton(IconPaths.MORE, size = 28, mark = 18, stroke = 3.4f) {
                 state.paneMenu = io.github.cubsync.desktop.PaneMenu(side)
             }
         }
@@ -510,7 +510,7 @@ private fun RowLine(
                 modifier = Modifier.width(72.dp),
             )
         }
-        IconButton(IconPaths.MORE, size = 22, mark = 16, stroke = 3.4f) {
+        IconButton(IconPaths.MORE, size = 28, mark = 16, stroke = 3.4f) {
             state.actionSheet = io.github.cubsync.desktop.ActionSheet(side, entry.relPath, entry.isDirectory)
         }
     }

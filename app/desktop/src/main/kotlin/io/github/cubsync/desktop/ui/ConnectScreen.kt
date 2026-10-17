@@ -201,7 +201,7 @@ private fun NegotiationCard(state: AppState, modifier: Modifier) {
                                     state.notify(
                                         if (reserved) "$row.name 已留位：协议尚未实现这一位"
                                         else if (on) "$row.name 已协商"
-                                        else "$row.name 未协商：对端没有这一位",
+                                        else "$row.name 未协商：远端没有这一位",
                                         if (on) NoticeKind.SUCCESS else NoticeKind.INFO,
                                     )
                                 }
@@ -224,11 +224,11 @@ private fun NegotiationCard(state: AppState, modifier: Modifier) {
         }
 
         Spacer(Modifier.height(14.dp))
-        Kv("本地版本 / 对端版本") {
+        Kv("本机版本 / 远端版本") {
             "${BuildInfo.PROTOCOL_VERSION * 100} / ${(peer?.protocolVersion ?: 0) * 100}"
         }
         Kv("比对到的能力位") { "$agreed / $total" }
-        Kv("v3 老版本对端") { "仅退出双向模式（清晰提示，不错位）" }
+        Kv("v3 老版本远端") { "仅退出双向模式（清晰提示，不错位）" }
     }
 }
 
