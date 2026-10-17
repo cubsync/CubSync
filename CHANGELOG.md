@@ -8,6 +8,16 @@ with the pre-1.0 rules described in [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-10-17
+
+### Fixed
+
+- Desktop icon buttons are 28px, which is what the prototype's `.iconbtn` is and
+  inside the 26–34px the specification asks for; four of them were 22–24px.
+- Forbidden vocabulary from §2: 对端, 本地版本, 垃圾箱, 对比视图, 是全局的.
+- The navigation test asserted that a listing had arrived as well as that the pane
+  had moved, so it failed on timing. `up()` was never broken.
+
 ## [0.3.8] - 2026-10-17
 
 ### Fixed
