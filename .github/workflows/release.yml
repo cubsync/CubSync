@@ -240,6 +240,14 @@ jobs:
           #
           # The guard asks the API rather than `gh release view`, because a draft is
           # invisible to the latter and a second run would try to create it again.
+          # Defined here as well as in the windows job: each job is its own shell, so a
+          # function declared over there does not exist over here. Calling it without this
+          # gave exit code 127 — "command not found" after a five-minute wait — and the APK
+          # never uploaded for v0.3.8.
+          release_exists() {
+            gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100"               --jq "[.[] | select(.tag_name==\"$GITHUB_REF_NAME\")] | length" 2>/dev/null               | grep -qv '^0$'
+          }
+
           # Only the windows job creates the release.
           #
           # A draft release is not unique per tag: GitHub allows several with the same
