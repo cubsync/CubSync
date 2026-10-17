@@ -209,7 +209,18 @@ class AndroidAppState(
 
     // ---------------------------------------------------------------- navigation
 
+    /** Where the last few sections came from, so ← goes back the way it came. */
+    private val sectionHistory = ArrayDeque<Section>()
+    private var goingBack = false
+
     fun go(target: Section) {
+        if (goingBack) {
+            goingBack = false
+        } else if (target != tab) {
+            sectionHistory.remove(target)
+            sectionHistory.addLast(tab)
+            if (sectionHistory.size > 12) sectionHistory.removeFirst()
+        }
         tab = target
         route = Route.Tabs
         drawerOpen = false
@@ -236,7 +247,7 @@ class AndroidAppState(
         val right = service.browsing.current(Side.RIGHT)
         if (right.backendId == EndpointId.LOCAL) {
             peers.firstOrNull()?.let { peer ->
-                service.browsing.open(Side.RIGHT, peer.backendId, peer.roots.firstOrNull().orEmpty())
+                service.browsing.open(Side.RIGHT, peer.backendId, "")
             }
         }
     }
@@ -267,7 +278,12 @@ class AndroidAppState(
             paneMenu != null -> paneMenu = null
             actionSheet != null -> actionSheet = null
             route !is Route.Tabs -> route = Route.Tabs
-            tab != Section.TRANSFER -> go(Section.TRANSFER)
+            sectionHistory.isNotEmpty() -> {
+                // Popped rather than pushed: going back must not record the place it is
+                // leaving, or ← would bounce between two screens forever.
+                goingBack = true
+                go(sectionHistory.removeLast())
+            }
             else -> {
                 val side = liveSettings.activeSide
                 service.browsing.up(side)
@@ -281,7 +297,7 @@ class AndroidAppState(
         get() {
             if (drawerOpen || moreSheet || connectSheet || sharedSheet || screenMenu ||
                 paneMenu != null || actionSheet != null || route !is Route.Tabs ||
-                tab != Section.TRANSFER
+                sectionHistory.isNotEmpty()
             ) {
                 return true
             }
@@ -503,6 +519,34 @@ class AndroidAppState(
         go(Section.TRANSFER)
         service.browsing.open(liveSettings.activeSide, favourite.backendId, favourite.path)
         touch()
+    }
+
+    /** The drawer row whose menu is open. */
+    var favouriteMenu by mutableStateOf<Favorite?>(null)
+
+    /** The pane whose 展开 list is open. */
+    var historySide by mutableStateOf<Side?>(null)
+
+    fun moveFavourite(favourite: Favorite, by: Int) {
+        val all = service.settings.favourites.toMutableList()
+        val from = all.indexOfFirst { it.key == favourite.key }
+        if (from < 0) return
+        val to = (from + by).coerceIn(0, all.lastIndex)
+        if (to == from) return
+        val moved = all.removeAt(from)
+        all.add(to, moved)
+        service.settings.reorderFavourites(all)
+        revision++
+    }
+
+    fun renameFavourite(favourite: Favorite, label: String, group: String) {
+        service.settings.updateFavourite(favourite, label = label, group = group)
+        revision++
+    }
+
+    fun addFavouriteGroup(name: String) {
+        val created = service.settings.addFavouriteGroup(name)
+        if (created.isNotEmpty()) revision++
     }
 
     fun removeFavourite(favourite: Favorite) {
@@ -728,13 +772,15 @@ class AndroidAppState(
                 // A handshake that leaves both panes as they were is a handshake the person
                 // cannot see. The right pane becomes the peer and opens on the first folder
                 // it offers — the same thing the desktop does when it connects out.
-                val first = session.roots.firstOrNull()
-                service.browsing.open(Side.RIGHT, session.backendId, first.orEmpty())
+                // An empty path lists every folder the other side exposes. Opening the
+                // first one only hid the rest: a machine sharing two folders looked like a
+                // machine sharing one.
+                service.browsing.open(Side.RIGHT, session.backendId, "")
                 liveSettings.activeSide = Side.RIGHT
                 notify(
-                    if (first == null) "已连接 ${session.nodeName}，但对面没有共享文件夹"
-                    else "已连接 ${session.nodeName} · ${first}",
-                    if (first == null) NoticeKind.WARNING else NoticeKind.SUCCESS,
+                    if (session.roots.isEmpty()) "已连接 ${session.nodeName}，但对面没有共享文件夹"
+                    else "已连接 ${session.nodeName} · ${session.roots.size} 个共享文件夹",
+                    if (session.roots.isEmpty()) NoticeKind.WARNING else NoticeKind.SUCCESS,
                 )
             } catch (failure: Throwable) {
                 peerError = failure.message ?: "连接失败"

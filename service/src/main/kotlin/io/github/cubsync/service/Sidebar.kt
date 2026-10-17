@@ -23,9 +23,22 @@ data class Favorite(
      * reachable two ways it is the protocol that says which one.
      */
     val protocol: String = if (backendId == EndpointId.LOCAL) "本端" else "CubSync",
+    /**
+     * The drawer group this row sits in, once somebody has organised the list.
+     *
+     * Empty means "file it under its end", which is what a favourite does when it is
+     * created: 本端, then one heading per peer and protocol. A named group is a list the
+     * person made, and it stays where they put it.
+     */
+    val groupName: String = "",
 ) {
-    /** The heading this favourite belongs under. */
-    val group: String get() = if (backendId == EndpointId.LOCAL) Words.LOCAL else "$device · $protocol"
+    /** Stable identity: the same folder on the same backend is the same favourite. */
+    val key: String get() = "$backendId|$path"
+
+    /** The heading this favourite belongs under when it has not been filed by hand. */
+    val autoGroup: String get() = if (backendId == EndpointId.LOCAL) Words.LOCAL else "$device · $protocol"
+
+    val group: String get() = groupName.ifEmpty { autoGroup }
 }
 
 data class FavoriteGroup(val device: String, val items: List<Favorite>)

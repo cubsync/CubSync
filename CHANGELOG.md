@@ -8,6 +8,28 @@ with the pre-1.0 rules described in [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ## [Unreleased]
 
+## [0.3.14] - 2026-10-17
+
+### Fixed
+
+- Both ends: one dark palette (the phone's), real buttons with a border and a hover, a 46×26
+  switch, themed notices that disappear after four seconds, and a lit focused pane.
+- Favourites: grouped by end and protocol, custom groups, a right-click / long-press menu
+  (open, edit, move, remove, new group, add path, settings), drag order on the desktop, up/down on
+  the phone, and a rail that updates as soon as a favourite is written.
+- Desktop: the context menu opens at the pointer; 展开 lists the paths a pane has visited.
+- After connecting, the remote pane lists every shared folder instead of the first one.
+- Phone: back returns to the previous section; breadcrumbs keep the longest path, light the current
+  layer and copy a layer on a long press; the connect card names the peer and offers 断开; the
+  display pill drops the extra words and hides 列数 where a mode has none.
+
+### Known gaps
+
+- Root / Shizuku remain a recorded setting: both need a backend that speaks through `su` or the
+  Shizuku API, and that has not been verified on a device.
+- WebDAV / FTP / SFTP / SMB are not implemented.
+- The desktop folder picker is still the system dialog.
+
 ## [0.3.13] - 2026-10-17
 
 ### Fixed

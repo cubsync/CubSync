@@ -3,7 +3,9 @@ package io.github.cubsync.android
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -813,6 +815,7 @@ fun SheetHeader(title: String, onClose: () -> Unit) {
 
 /** One line of a list: a name, a detail and optional trailing controls. */
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun ListRow(
     title: String,
     detail: String = "",
@@ -821,6 +824,7 @@ fun ListRow(
     tint: Color? = null,
     leadingIcon: String? = null,
     onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     trailing: @Composable (RowScope.() -> Unit)? = null,
 ) {
     val colors = CubTheme.colors
@@ -830,7 +834,18 @@ fun ListRow(
             .heightIn(min = 56.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(if (selected) colors.accentContainer else Color.Transparent)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .then(
+                when {
+                    // A long press is the phone's right click: the drawer's rows use it for
+                    // their menu, without losing the tap that opens them.
+                    onClick != null && onLongClick != null -> Modifier.combinedClickable(
+                        onClick = onClick,
+                        onLongClick = onLongClick,
+                    )
+                    onClick != null -> Modifier.clickable(onClick = onClick)
+                    else -> Modifier
+                },
+            )
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

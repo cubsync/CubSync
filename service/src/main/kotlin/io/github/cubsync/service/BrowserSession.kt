@@ -125,10 +125,59 @@ class BrowserSession(
         listingGeneration[side] == generation
     }
 
+    /**
+     * The deepest path each pane has opened, which is what its breadcrumbs show.
+     *
+     * The design's address is not "the folders above this one": it is the whole route that
+     * got here. Going up keeps the route on screen — the layer you are on is lit and the
+     * ones below it stay where they were — so a step back up is one click away from being
+     * undone. Mix does this, and so does the prototype's `pbcrumb`.
+     */
+    private val trails = mutableMapOf<Side, String>()
+
+    fun trail(side: Side): String = trails[side] ?: current(side).path
+
+    /** The paths this pane has been to, newest first — the 展开 list beside the star. */
+    private val recents = mutableMapOf<Side, ArrayDeque<String>>()
+
+    fun recent(side: Side): List<String> = synchronized(recents) {
+        recents[side]?.toList().orEmpty()
+    }
+
+    private fun noteRecent(side: Side, backendId: String, path: String) {
+        if (backendId != current(side).backendId || path.isBlank()) return
+        synchronized(recents) {
+            val list = recents.getOrPut(side) { ArrayDeque() }
+            list.remove(path)
+            list.addFirst(path)
+            while (list.size > 20) list.removeLast()
+        }
+    }
+
+    private fun extendTrail(side: Side, backendId: String, path: String) {
+        val before = current(side)
+        if (before.backendId != backendId || path.isBlank()) {
+            trails.remove(side)
+            if (path.isNotBlank()) trails[side] = path
+            return
+        }
+        val trail = trails[side] ?: before.path.ifEmpty { path }
+        trails[side] = when {
+            path.startsWith("$trail/") -> path
+            trail.startsWith("$path/") || trail == path -> trail
+            else -> path
+        }
+    }
+
+    /** The crumbs for a pane: its whole trail, with the current layer marked by the caller. */
+    fun crumbs(side: Side): List<Crumb> = Browsing.crumbs(trail(side))
+
     /** Points a pane at a folder and lists it. */
     fun open(side: Side, backendId: String = current(side).backendId, path: String) {
         val generation = nextGeneration(side)
         val before = current(side)
+        extendTrail(side, backendId, path)
+        noteRecent(side, backendId, path)
         set(
             side,
             before.copy(

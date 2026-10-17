@@ -36,6 +36,7 @@ import io.github.cubsync.service.SyncService
 import io.github.cubsync.service.Words
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -138,7 +139,16 @@ class AppState(
 
     /** The 显示方式 drop-down on the transfer heading. */
     var displayMenu by mutableStateOf(false)
+
+    /** 展开: the paths this pane has been to, listed beside the star. */
+    var historyMenu by mutableStateOf<Side?>(null)
     var actionSheet by mutableStateOf<ActionSheet?>(null)
+
+    /** Where the context menu was asked for, in window coordinates. */
+    var actionSheetAt by mutableStateOf(androidx.compose.ui.geometry.Offset.Zero)
+
+    /** The transfer screen's top-left corner, so a pointer can be turned into an offset. */
+    var screenOrigin by mutableStateOf(androidx.compose.ui.geometry.Offset.Zero)
     var editingAddress by mutableStateOf<Side?>(null)
     var renaming by mutableStateOf<String?>(null)
     var detailOf by mutableStateOf<Pair<Side, String>?>(null)
@@ -246,8 +256,22 @@ class AppState(
 
     // ------------------------------------------------------------------ messages
 
+    /**
+     * Shows a notice for four seconds.
+     *
+     * It used to stay until it was clicked, which meant a window could hold a sentence from
+     * ten minutes ago — the person who wrote it had already read it. A newer notice cancels
+     * the older timer, so the last thing said is the thing that stays.
+     */
+    private var noticeJob: Job? = null
+
     fun notify(text: String, kind: NoticeKind = NoticeKind.INFO) {
         notice = Notice(text, kind)
+        noticeJob?.cancel()
+        noticeJob = scope.launch {
+            delay(4_000)
+            if (notice?.text == text) notice = null
+        }
     }
 
     fun dismissNotice() {
@@ -406,6 +430,26 @@ class AppState(
     /** 收藏夹's `+`: a folder added by address, not only the one a pane happens to show. */
     var favouriteDraft by mutableStateOf<String?>(null)
 
+    /** Which favourite's context menu is open, and where it opened. */
+    var favouriteMenu by mutableStateOf<Favorite?>(null)
+    var favouriteMenuAt by mutableStateOf(androidx.compose.ui.geometry.Offset.Zero)
+
+    /** The 收藏夹 dialogs: add a path, a new group, editing one row, or the panel settings. */
+    sealed interface FavDialog {
+        data object AddPath : FavDialog
+        data object NewGroup : FavDialog
+        data class Edit(val favourite: Favorite) : FavDialog
+        data object Settings : FavDialog
+    }
+
+    var favouriteDialog by mutableStateOf<FavDialog?>(null)
+
+    /** 收藏夹's own ⋮: add a path, a group, an account, or open its settings. */
+    var favouriteHeaderMenu by mutableStateOf(false)
+
+    /** 排序模式: rows become draggable and the star is out of the way. */
+    var favouriteSorting by mutableStateOf(false)
+
     fun addFavourite(path: String) {
         val clean = io.github.cubsync.service.PathTools.normalizeRoot(path.trim())
         if (clean.isEmpty()) return
@@ -428,6 +472,42 @@ class AppState(
         service.settings.removeFavourite(favourite)
         settingsRevision++
         notify("已取消收藏 ${favourite.path}", NoticeKind.INFO)
+    }
+
+    fun renameFavourite(favourite: Favorite, label: String, group: String) {
+        service.settings.updateFavourite(favourite, label = label, group = group)
+        settingsRevision++
+        notify("已保存「${label.ifEmpty { favourite.path }}」", NoticeKind.SUCCESS)
+    }
+
+    fun addFavouriteGroup(name: String) {
+        val created = service.settings.addFavouriteGroup(name)
+        if (created.isEmpty()) return
+        settingsRevision++
+        notify("已新建分组「$created」", NoticeKind.SUCCESS)
+    }
+
+    /** Moves one row up or down inside the drawer — the keyboard/no-drag way to order them. */
+    fun moveFavourite(favourite: Favorite, by: Int) {
+        val all = service.settings.favourites.toMutableList()
+        val from = all.indexOfFirst { it.key == favourite.key }
+        if (from < 0) return
+        val to = (from + by).coerceIn(0, all.lastIndex)
+        if (to == from) return
+        val moved = all.removeAt(from)
+        all.add(to, moved)
+        service.settings.reorderFavourites(all)
+        settingsRevision++
+    }
+
+    /** Drops a row onto another row's place, which is what a drag ends with. */
+    fun dropFavourite(from: Int, to: Int) {
+        val all = service.settings.favourites.toMutableList()
+        if (from !in all.indices || to !in all.indices || from == to) return
+        val moved = all.removeAt(from)
+        all.add(to, moved)
+        service.settings.reorderFavourites(all)
+        settingsRevision++
     }
 
     /**
@@ -728,10 +808,12 @@ class AppState(
                 // The far end just said which folders it offers; the right pane opens on one
                 // of them, because a pane that stays empty after a successful handshake
                 // reads as a failed handshake.
-                session.roots.firstOrNull()?.let { root ->
-                    service.browsing.open(Side.RIGHT, session.backendId, root)
-                }
-                notify("已连接 ${session.nodeName}", NoticeKind.SUCCESS)
+                // Every shared folder, as a list — the pane's empty path means "the roots".
+                service.browsing.open(Side.RIGHT, session.backendId, "")
+                notify(
+                    "已连接 ${session.nodeName} · ${session.roots.size} 个共享文件夹",
+                    NoticeKind.SUCCESS,
+                )
             } catch (failure: Throwable) {
                 peerError = failure.message ?: "连接失败"
                 notify("连接失败：$peerError", NoticeKind.ERROR)
