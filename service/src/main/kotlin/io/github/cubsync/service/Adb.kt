@@ -78,12 +78,14 @@ object Adb {
         val process = ProcessBuilder(listOf("adb") + args)
             .redirectErrorStream(true)
             .start()
-        val output = process.inputStream.bufferedReader().use { it.readText() }
+        runCatching { process.outputStream.close() }
         if (!process.waitFor(8, TimeUnit.SECONDS)) {
             process.destroyForcibly()
             return@runCatching -1 to "adb 没有在 8 秒内回答"
         }
-        process.exitValue() to output
+        // Read after it exits: a tool that waits on stdin would otherwise hold the reader
+        // open forever, which is a hang rather than an error.
+        process.exitValue() to process.inputStream.bufferedReader().use { it.readText() }
     }.getOrElse { failure ->
         -1 to (failure.message ?: "找不到 adb")
     }

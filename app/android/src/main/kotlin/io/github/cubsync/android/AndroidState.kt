@@ -830,8 +830,17 @@ class AndroidAppState(
     /** Whether `su` answers with uid 0. A probe, not a promise. */
     private fun suAvailable(): Boolean = runCatching {
         val process = ProcessBuilder("su", "-c", "id").redirectErrorStream(true).start()
-        val output = process.inputStream.bufferedReader().readText()
-        process.waitFor(3, java.util.concurrent.TimeUnit.SECONDS) && output.contains("uid=0")
+        // Close its input: `su` that wants a password otherwise waits for one, and reading
+        // its output first blocks the caller forever. That is what hung CI's test step —
+        // the JVM there has `su` and no root.
+        runCatching { process.outputStream.close() }
+        val finished = process.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
+        if (!finished) {
+            process.destroyForcibly()
+            return@runCatching false
+        }
+        process.exitValue() == 0 &&
+            process.inputStream.bufferedReader().use { it.readText() }.contains("uid=0")
     }.getOrDefault(false)
 
     // ------------------------------------------------------------ 传输通道
