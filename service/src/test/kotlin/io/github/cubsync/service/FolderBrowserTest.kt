@@ -267,21 +267,28 @@ class FolderBrowserTest {
         val dir = tempDir("multi-")
         Files.createDirectories(dir.resolve("sub"))
         Files.write(dir.resolve("a.txt"), "a".toByteArray())
+        val root = PathTools.normalizeRoot(dir.toAbsolutePath().toString().replace('\\', '/'))
         val session = BrowserSession(FolderBrowser(pool()), CoroutineScope(Dispatchers.IO + SupervisorJob()))
-        session.open(Side.LEFT, EndpointId.LOCAL, dir.toAbsolutePath().toString().replace('\\', '/'))
+
+        session.open(Side.LEFT, EndpointId.LOCAL, root)
         awaitUntil("the folder to list") { session.left.value.entries.any { it.relPath == "sub" } }
 
         val folder = session.left.value.entries.first { it.relPath == "sub" }
         session.tap(Side.LEFT, folder)
         awaitUntil("the folder to open") { session.left.value.path.endsWith("/sub") }
 
-        session.open(Side.LEFT, EndpointId.LOCAL, dir.toAbsolutePath().toString().replace('\\', '/'))
-        awaitUntil("the folder to list again") { session.left.value.entries.any { it.relPath == "sub" } }
+        // Back to the parent, and wait for its listing rather than for the address: the
+        // address arrives synchronously, the entries do not.
+        session.open(Side.LEFT, EndpointId.LOCAL, root)
+        awaitUntil("the parent to list again") {
+            session.left.value.path == root && session.left.value.entries.any { it.relPath == "sub" }
+        }
+
         session.toggleMultiSelect()
         session.tap(Side.LEFT, session.left.value.entries.first { it.relPath == "sub" })
 
         assertEquals(setOf("sub"), session.left.value.selection, "in 多选 a folder is ticked, not entered")
-        assertEquals(true, session.left.value.path.endsWith(dir.fileName.toString()))
+        assertEquals(root, session.left.value.path, "in 多选 a folder tap must not navigate")
     }
 
     /** 取消 stops between chunks, and says so rather than looking like a failure. */

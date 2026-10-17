@@ -103,8 +103,31 @@ class BrowserSession(
 
     // ----------------------------------------------------------------- listing
 
+    /**
+     * Which listing each pane asked for last.
+     *
+     * Two listings can be in flight at once — enter a folder, then press ← before the
+     * first one comes back — and the older answer must not land on the newer pane. Without
+     * this, going back fast could leave the parent's address over a child's entries, or a
+     * listing that never contains what the pane now holds. CI found it as a test that
+     * timed out; the observable symptom is a folder whose contents are the folder you
+     * just left.
+     */
+    private val listingGeneration = mutableMapOf<Side, Int>()
+
+    private fun nextGeneration(side: Side): Int = synchronized(listingGeneration) {
+        val next = (listingGeneration[side] ?: 0) + 1
+        listingGeneration[side] = next
+        next
+    }
+
+    private fun isCurrent(side: Side, generation: Int): Boolean = synchronized(listingGeneration) {
+        listingGeneration[side] == generation
+    }
+
     /** Points a pane at a folder and lists it. */
     fun open(side: Side, backendId: String = current(side).backendId, path: String) {
+        val generation = nextGeneration(side)
         val before = current(side)
         set(
             side,
@@ -122,8 +145,10 @@ class BrowserSession(
                 // An empty path lists the exposed roots, which is the answer to "where
                 // can this pane go back to" and is worth remembering.
                 if (path.isBlank()) rootsCache[backendId] = entries.map { it.relPath }
+                if (!isCurrent(side, generation)) return@launch
                 set(side, current(side).copy(entries = sort(side, entries), loading = false))
             } catch (failure: Throwable) {
+                if (!isCurrent(side, generation)) return@launch
                 val message = failure.message ?: failure::class.simpleName ?: "无法读取这个文件夹"
                 log.warn("browse", "cannot list $path on $backendId: $message")
                 set(side, current(side).copy(entries = emptyList(), loading = false, error = message))
