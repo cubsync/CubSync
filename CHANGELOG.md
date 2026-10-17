@@ -8,6 +8,14 @@ with the pre-1.0 rules described in [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ## [Unreleased]
 
+## [0.3.12] - 2026-10-17
+
+### Fixed
+
+- The log's time column held a full date in 72dp and wrapped on every line; both ends now
+  print the clock, one line, as the prototype does.
+- 同步's 策略 panel printed its summary twice.
+
 ## [0.3.11] - 2026-10-17
 
 ### Added

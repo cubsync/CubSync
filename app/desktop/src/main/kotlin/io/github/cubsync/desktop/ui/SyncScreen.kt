@@ -174,8 +174,7 @@ private fun ConfigDetail(state: AppState, config: SyncConfig) {
 /** 策略: direction, comparison, conflict, deletion, parallelism, and the derived summary. */
 @Composable
 private fun PolicyPanel(state: AppState, draft: SyncConfig, onChange: (SyncConfig) -> Unit) {
-    val colors = CubTheme.colors
-    Panel(Modifier.fillMaxWidth(), title = "策略", subtitle = policySentence(draft)) {
+    Panel(Modifier.fillMaxWidth(), title = "策略") {
         SettingRow("同步方向", Format.direction(draft.direction)) {
             Segmented(
                 options = SyncDirection.entries.toList(),
@@ -216,8 +215,6 @@ private fun PolicyPanel(state: AppState, draft: SyncConfig, onChange: (SyncConfi
                 onSelect = { onChange(draft.copy(parallelism = it)) },
             )
         }
-        Spacer(Modifier.height(6.dp))
-        Text(policySentence(draft), style = CubType.meta, color = colors.textFaint)
     }
 }
 

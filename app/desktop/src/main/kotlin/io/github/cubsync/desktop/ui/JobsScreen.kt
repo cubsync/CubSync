@@ -364,7 +364,16 @@ fun LogsBody(state: AppState, modifier: Modifier = Modifier) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                 for (entry in shown) {
                     Row(Modifier.fillMaxWidth().padding(vertical = 1.dp), verticalAlignment = Alignment.Top) {
-                        Text(Format.stamp(entry.atMs), style = CubType.monoDim, color = colors.textFaint, modifier = Modifier.width(72.dp))
+                        // The prototype prints the clock, not the date: a log page is read
+                        // in one sitting, and a wrapped date column is what a 72dp box does
+                        // to "10-17 13:25:33".
+                        Text(
+                            Format.clockTime(entry.atMs),
+                            style = CubType.monoDim,
+                            color = colors.textFaint,
+                            maxLines = 1,
+                            modifier = Modifier.width(58.dp),
+                        )
                         Text(Format.level(entry.level), style = CubType.monoDim, color = levelColor(entry.level), modifier = Modifier.width(44.dp))
                         Text(entry.area, style = CubType.monoDim, color = colors.textDim, modifier = Modifier.width(56.dp))
                         Column(Modifier.weight(1f)) {

@@ -166,7 +166,7 @@ fun JobDetailScreen(state: AndroidAppState, jobId: String) {
             }
             for (entry in detail.logs.takeLast(40)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                    Text(Format.stamp(entry.atMs), style = CubType.mono, color = colors.textFaint, modifier = Modifier.width(68.dp))
+                    Text(Format.clockTime(entry.atMs), style = CubType.mono, color = colors.textFaint, maxLines = 1, modifier = Modifier.width(58.dp))
                     Text(entry.area, style = CubType.mono, color = levelColor(entry.level), modifier = Modifier.width(50.dp))
                     Text(entry.message, style = CubType.mono, color = colors.textDim, modifier = Modifier.weight(1f))
                 }
@@ -279,7 +279,7 @@ fun LogsBody(state: AndroidAppState, modifier: Modifier = Modifier) {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 for (entry in shown) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                        Text(Format.stamp(entry.atMs), style = CubType.mono, color = colors.textFaint, modifier = Modifier.width(66.dp))
+                        Text(Format.clockTime(entry.atMs), style = CubType.mono, color = colors.textFaint, maxLines = 1, modifier = Modifier.width(58.dp))
                         Text(Format.level(entry.level), style = CubType.mono, color = levelColor(entry.level), modifier = Modifier.width(40.dp))
                         Column(Modifier.weight(1f)) {
                             Text(entry.message, style = CubType.mono, color = colors.text)
