@@ -8,6 +8,29 @@ with the pre-1.0 rules described in [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ## [Unreleased]
 
+## [0.3.13] - 2026-10-17
+
+### Fixed
+
+- Desktop: 显示方式 / right-click overlays no longer eat the pane area; the card hangs under its
+  button and the five modes keep their marks.
+- Desktop: notices are drawn over the window instead of taking a row of their own.
+- Desktop: a pane takes focus when clicked, and 显示方式 acts on the focused pane.
+- Desktop favourites: grouped by 本端 / 远端 and protocol, opened in the focused pane, deletable,
+  and `+` adds an address rather than only the current view.
+- Desktop: USB works through `adb forward`; the address box is split into host and port with the
+  protocol's port as the default.
+- Accent: one list on both ends, the first chip is the brand indigo called 默认; the broken
+  「回到品牌靛蓝」 button is gone.
+- Android: the system back button closes panels, leaves screens, returns to 传输, then goes up one
+  folder, and only then exits.
+- Android: 停止共享 updates the card; breadcrumbs show every layer and scroll to the current one.
+- Android: 分栏方向 uses the real screen size, so 自动 is two columns in landscape.
+- Android: no root, ← stops at the exposed root instead of climbing to `/`.
+- Android: 连接另一台设备 is a visible card with host and port; connecting opens the remote pane on
+  the first shared folder, and an unshared path lists what is shared instead of 读不了这个文件夹.
+- 本机 → 本端 throughout: the far end may be another computer, another disk, or a WebDAV mount.
+
 ## [0.3.12] - 2026-10-17
 
 ### Fixed

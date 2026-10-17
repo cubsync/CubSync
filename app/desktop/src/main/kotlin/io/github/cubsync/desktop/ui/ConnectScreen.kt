@@ -87,9 +87,13 @@ fun ConnectScreen(state: AppState, server: ServerState) {
 private fun LinkCard(state: AppState, modifier: Modifier) {
     val colors = CubTheme.colors
     var mode by remember { mutableStateOf(LinkMode.ADB) }
-    val devices = state.peers
+    val settings = state.liveSettings
 
-    Card(modifier, title = "连接方式", sub = "USB 需 adb 在 PATH") {
+    // Ask once, on the frame the card first appears, so the list is not empty until the
+    // person presses 刷新 for no reason.
+    androidx.compose.runtime.LaunchedEffect(Unit) { state.refreshAdb() }
+
+    Card(modifier, title = "连接方式", sub = if (io.github.cubsync.service.Adb.available()) "adb 已就绪" else "USB 需要 adb 在 PATH") {
         Row(
             Modifier
                 .clip(RoundedCornerShape(8.dp))
@@ -102,10 +106,7 @@ private fun LinkCard(state: AppState, modifier: Modifier) {
                     Modifier
                         .weight(1f)
                         .background(if (active) colors.accent else Color.Transparent)
-                        .clickable {
-                            mode = option
-                            state.notify(Channels.ADB_RESERVED, NoticeKind.INFO)
-                        }
+                        .clickable { mode = option }
                         .padding(vertical = 7.dp),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -119,42 +120,67 @@ private fun LinkCard(state: AppState, modifier: Modifier) {
         }
 
         Spacer(Modifier.height(14.dp))
-        FieldLabel("USB 设备")
-        Spacer(Modifier.height(6.dp))
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(colors.surface)
-                .border(1.dp, colors.outline, RoundedCornerShape(8.dp))
-                .clickable { state.notify(Channels.ADB_RESERVED, NoticeKind.INFO) }
-                .padding(horizontal = 10.dp, vertical = 7.dp),
-        ) {
-            Text(
-                if (devices.isEmpty()) "没有已连接的 USB 设备" else devices.joinToString(" · ") { it.nodeName },
-                style = CubType.body,
-                color = if (devices.isEmpty()) colors.textFaint else colors.text,
-            )
-        }
-
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            QuietButton("启动 ADB 转发 :5740", Modifier.weight(1f)) {
-                state.notify(Channels.ADB_RESERVED, NoticeKind.INFO)
+        if (mode == LinkMode.ADB) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                FieldLabel("USB 设备")
+                Spacer(Modifier.weight(1f))
+                QuietButton("刷新") { state.refreshAdb() }
             }
-            PrimaryButton("连接并协商", Modifier.weight(1f)) { state.connectPeer(state.peerDraft) }
+            Spacer(Modifier.height(6.dp))
+            val ready = state.adbDevices.filter { it.ready }
+            if (ready.isEmpty()) {
+                Text(
+                    state.adbNote ?: "没有已连接的 USB 设备",
+                    style = CubType.body,
+                    color = colors.textFaint,
+                )
+            }
+            for (device in ready) {
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(device.label, style = CubType.body, color = colors.text, modifier = Modifier.weight(1f))
+                    QuietButton(if (state.connecting) "连接中…" else "连接并协商") {
+                        // The phone's port, not this machine's: empty means the protocol
+                        // default, which is what a phone shares on unless it was changed.
+                        state.connectUsb(device.serial, state.peerPortText.toIntOrNull() ?: 0)
+                    }
+                }
+            }
+            state.adbNote?.takeIf { ready.isNotEmpty() }?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(it, style = CubType.tiny, color = colors.textFaint)
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "USB 走的是 adb 转发：把设备上的端口（默认 ${settings.sharePort}）映射到本机同名端口，之后与局域网是同一条连接。",
+                style = CubType.tiny,
+                color = colors.textFaint,
+            )
+        } else {
+            FieldLabel("地址")
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Field(
+                    value = state.peerHost,
+                    onValueChange = { state.peerHost = it },
+                    modifier = Modifier.weight(2f),
+                    placeholder = "192.168.1.20",
+                    onSubmit = { state.connectPeerAddress() },
+                )
+                Field(
+                    value = state.peerPortText,
+                    onValueChange = { state.peerPortText = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = "端口（默认 ${settings.sharePort}）",
+                    onSubmit = { state.connectPeerAddress() },
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            PrimaryButton(if (state.connecting) "连接中…" else "连接并协商") { state.connectPeerAddress() }
         }
 
-        Spacer(Modifier.height(12.dp))
-        FieldLabel("HOST:PORT")
-        Spacer(Modifier.height(6.dp))
-        Field(
-            value = state.peerDraft,
-            onValueChange = { state.peerDraft = it },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = "192.168.1.20:43817",
-            onSubmit = { state.connectPeer(state.peerDraft) },
-        )
         state.peerError?.let {
             Spacer(Modifier.height(6.dp))
             Text(it, style = CubType.tiny, color = colors.danger)

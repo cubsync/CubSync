@@ -145,6 +145,13 @@ class BrowserSession(
                 // An empty path lists the exposed roots, which is the answer to "where
                 // can this pane go back to" and is worth remembering.
                 if (path.isBlank()) rootsCache[backendId] = entries.map { it.relPath }
+                // Prime the boundary for a pane opened straight onto a folder, so ← knows
+                // where the exposed root is before it has been listed as a listing.
+                if (rootsCache[backendId].isNullOrEmpty()) {
+                    runCatching { browser.list(backendId, "").map { it.relPath } }
+                        .getOrNull()
+                        ?.let { rootsCache[backendId] = it }
+                }
                 if (!isCurrent(side, generation)) return@launch
                 set(side, current(side).copy(entries = sort(side, entries), loading = false))
             } catch (failure: Throwable) {
@@ -162,9 +169,35 @@ class BrowserSession(
     fun enter(side: Side, name: String) =
         open(side, current(side).backendId, Browsing.child(current(side).path, name))
 
+    /**
+     * One level up — but not out of the folder the backend actually exposes.
+     *
+     * A phone without root can read `/storage/emulated/0`, and its pane started there. ←
+     * used to keep going: `/storage/emulated`, `/storage`, `/` — three levels of a
+     * filesystem the process cannot read, each one an error screen. The exposed root is
+     * the boundary; above it there is nothing to show.
+     */
     fun up(side: Side) {
-        val parent = Browsing.parent(current(side).path)
-        if (parent != current(side).path) open(side, current(side).backendId, parent)
+        val state = current(side)
+        val parent = Browsing.parent(state.path)
+        if (parent == state.path) return
+        // A phone without root can read `/storage/emulated/0`, and its pane started there.
+        // ← used to keep going: `/storage/emulated`, `/storage`, `/` — three levels of a
+        // filesystem the process cannot read, each one an error screen. The exposed root is
+        // the boundary. The roots are cached by the listing that got us here, and the check
+        // is synchronous so that one press moves one level, as it says.
+        val root = synchronized(rootsCache) {
+            rootsCache[state.backendId].orEmpty()
+                .filter { state.path == it || state.path.startsWith("$it/") }
+                .maxByOrNull { it.length }
+        }
+        if (root != null) {
+            if (state.path == root) return
+            val inside = parent == root || parent.startsWith("$root/")
+            open(side, state.backendId, if (inside) parent else root)
+            return
+        }
+        open(side, state.backendId, parent)
     }
 
     /**
@@ -220,6 +253,24 @@ class BrowserSession(
         scope.launch {
             val cleaned = PathTools.normalizeRoot(typed.trim())
             if (cleaned.isEmpty()) {
+                open(side, backendId, cleaned)
+                return@launch
+            }
+            if (backendId != EndpointId.LOCAL) {
+                // A pane on a peer holds a path the peer exposed, not a path on this
+                // machine. Pasting the other machine's absolute path is the obvious thing
+                // to try, so an unshared one is answered with what is shared instead of a
+                // listing error from the other side.
+                val roots = rootsOf(backendId)
+                if (roots.isNotEmpty() && roots.none { cleaned == it || cleaned.startsWith("$it/") }) {
+                    set(
+                        side,
+                        current(side).copy(
+                            error = "远端只共享了这些目录：${roots.joinToString("、")}",
+                        ),
+                    )
+                    return@launch
+                }
                 open(side, backendId, cleaned)
                 return@launch
             }

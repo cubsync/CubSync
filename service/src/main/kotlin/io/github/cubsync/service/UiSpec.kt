@@ -54,11 +54,19 @@ fun sectionHint(section: Section): String = section.hint
  * file.
  */
 object Words {
-    const val LOCAL = "本机"
+    /**
+     * 本端 / 远端 rather than 本机 / 远端.
+     *
+     * The two panes are two ends of a link, and neither end has to be this computer: a
+     * phone talking to a phone, a disk copied to another disk, a WebDAV or SFTP mount on
+     * the far side. Calling the near end 本机 stopped being true the moment the far end
+     * could be anything, and it reads as a lie on a phone.
+     */
+    const val LOCAL = "本端"
     const val REMOTE = "远端"
     const val SERVER = "服务端"
     const val CLIENT = "客户端"
-    const val LOCAL_PANE = "本机栏"
+    const val LOCAL_PANE = "本端栏"
     const val REMOTE_PANE = "远端栏"
     const val TRASH = "回收站"
     const val FILTER = "过滤"
@@ -252,8 +260,18 @@ object Accent {
         )
     }
 
+    /**
+     * The first chip is the brand's own indigo and is called 默认 on both ends.
+     *
+     * It used to be a guess at `--m3-primary` (`#4C6EF5`) while the desktop's list began
+     * with `#3A5CCC` and its reset button set a third colour (`#1E88E5`) — three answers
+     * to one question, and the screen offered two of them side by side. One value now,
+     * taken from the mark rather than from a stylesheet.
+     */
+    val BRAND: String = Brand.PRIMARY
+
     val SWATCHES: List<Swatch> = listOf(
-        Swatch("靛蓝", 245, "#4C6EF5"),
+        Swatch("默认", 232, BRAND),
         Swatch("紫", 275, hsl(275)),
         Swatch("青", 200, hsl(200)),
         Swatch("绿", 150, hsl(150)),

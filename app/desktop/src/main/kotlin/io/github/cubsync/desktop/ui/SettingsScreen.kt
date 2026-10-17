@@ -192,30 +192,34 @@ private fun AppearancePanel(state: AppState) {
             )
         }
 
-        SettingRow("取色", "强调色用在选中档、聚焦栏与进度上") {
+        SettingRow("取色", "强调色用在选中档、聚焦栏与进度上；第一个是默认") {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 for (swatch in ACCENTS) {
-                    Box(
-                        Modifier
-                            .size(24.dp)
-                            .clip(CircleShape)
-                            .background(parseHexColour(swatch))
-                            .border(
-                                2.dp,
-                                if (settings.accent.equals(swatch, ignoreCase = true)) colors.text else Color.Transparent,
-                                CircleShape,
-                            )
-                            .clickable { state.changeSettings { it.accent = swatch } },
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(
+                            Modifier
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(parseHexColour(swatch.hex))
+                                .border(
+                                    2.dp,
+                                    if (settings.accent.equals(swatch.hex, ignoreCase = true)) colors.text else Color.Transparent,
+                                    CircleShape,
+                                )
+                                .clickable { state.changeSettings { it.accent = swatch.hex } },
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        // The phone's chips carry their names, so these do too — and the
+                        // first one is called 默认 on both, because that is what it is.
+                        Text(swatch.label, style = CubType.tiny, color = colors.textFaint)
+                    }
                 }
-                Spacer(Modifier.width(4.dp))
-                QuietButton("回到品牌靛蓝") { state.changeSettings { it.accent = AppSettings.ACCENT_DEFAULT } }
             }
         }
 
         Spacer(Modifier.height(6.dp))
         Text(
-            "品牌主色 ${AppSettings.ACCENT_DEFAULT}，辅色 #1FA8A0。换成别的颜色是允许的，但标志和界面会开始不像一套。",
+            "默认 ${AppSettings.ACCENT_DEFAULT} 是标志的靛蓝；辅色 ${io.github.cubsync.service.Brand.ACCENT}。换成别的颜色是允许的，但标志和界面会开始不像一套。",
             style = CubType.meta,
             color = colors.textFaint,
         )
@@ -256,8 +260,13 @@ private fun AboutPanel(state: AppState) {
     }
 }
 
-/** The accents offered. The first is the brand's; the rest are there so it can be changed. */
-private val ACCENTS = listOf("#3A5CCC", "#1FA8A0", "#7A5AF8", "#D9480F", "#2E9E5B")
+/**
+ * The accents offered — the phone's list, verbatim.
+ *
+ * Two lists meant two first chips: the desktop began with `#3A5CCC` and called it 靛蓝, the
+ * phone began with `#4C6EF5`, and 回到品牌靛蓝 set a third. One list, one name, one colour.
+ */
+private val ACCENTS = io.github.cubsync.service.Accent.SWATCHES
 
 /**
  * 设置's `.chead .acts`.

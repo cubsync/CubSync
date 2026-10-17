@@ -322,10 +322,18 @@ class AppSettings(private val storage: SettingsStorage = SettingsStorage.memory(
     var favourites: List<Favorite>
         get() = values[KEY_FAVOURITES].orEmpty().lines().mapNotNull { line ->
             val parts = line.split('\t')
-            if (parts.size < 3) null else Favorite(parts[0], parts[1], parts[2], parts.getOrElse(3) { "" })
+            if (parts.size < 3) null else Favorite(
+                device = parts[0],
+                backendId = parts[1],
+                path = parts[2],
+                label = parts.getOrElse(3) { "" },
+                protocol = parts.getOrElse(4) { if (parts[1] == EndpointId.LOCAL) "本端" else "CubSync" },
+            )
         }
         set(list) {
-            values[KEY_FAVOURITES] = list.joinToString("\n") { "${it.device}\t${it.backendId}\t${it.path}\t${it.label}" }
+            values[KEY_FAVOURITES] = list.joinToString("\n") {
+                "${it.device}\t${it.backendId}\t${it.path}\t${it.label}\t${it.protocol}"
+            }
             persist()
         }
 
@@ -354,12 +362,23 @@ class AppSettings(private val storage: SettingsStorage = SettingsStorage.memory(
 
     fun toggleFavourite(favorite: Favorite) {
         val current = favourites
-        val existing = current.firstOrNull { it.device == favorite.device && it.path == favorite.path }
+        val existing = current.firstOrNull { it.backendId == favorite.backendId && it.path == favorite.path }
         favourites = if (existing != null) current - existing else current + favorite
     }
 
-    fun isFavourite(device: String, path: String): Boolean =
-        favourites.any { it.device == device && it.path == path }
+    /**
+     * Whether a folder is starred.
+     *
+     * Keyed on the backend and the path rather than on the display name: the name of a
+     * peer can change, and 本端 is a label rather than an address — the same folder must
+     * keep its star either way.
+     */
+    fun isFavourite(backendId: String, path: String): Boolean =
+        favourites.any { it.backendId == backendId && it.path == path }
+
+    fun removeFavourite(favorite: Favorite) {
+        favourites = favourites - favorite
+    }
 
     // ------------------------------------------------------------ scope layering
 
@@ -406,12 +425,14 @@ class AppSettings(private val storage: SettingsStorage = SettingsStorage.memory(
 
     companion object {
         /**
-         * The desktop's accent, which is the prototype's `--win-accent` verbatim.
+         * The accent both ends start on: the brand's indigo.
          *
-         * The phone does not use this: its accent comes from [phoneAccent], because the
-         * prototype gives the phone its own token (`--m3-primary`) and a hue ramp on top.
+         * This used to be the prototype's `--win-accent` (`#1E88E5`), while the first chip
+         * in 取色 was `#3A5CCC` and the phone's was `#4C6EF5`. Pressing 回到品牌靛蓝 then
+         * produced a colour that appeared nowhere else on the screen. One value now, and
+         * it is the mark's.
          */
-        const val ACCENT_DEFAULT: String = "#1E88E5"
+        const val ACCENT_DEFAULT: String = Brand.PRIMARY
 
         /** How many peers are remembered. Beyond this the list stops being a shortcut. */
         const val KNOWN_PEER_LIMIT: Int = 12

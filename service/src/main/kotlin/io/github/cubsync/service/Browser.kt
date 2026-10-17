@@ -109,7 +109,15 @@ object Browsing {
      * ones that survive a narrow pane; the fold is a crumb of its own so it can be
      * clicked to show the rest.
      */
-    fun crumbs(path: String, maxSegments: Int = 5): List<Crumb> {
+    /**
+     * Breadcrumbs for a path, every layer of it.
+     *
+     * The default used to be five segments, so a phone header folded `/sdcard/DCIM/Camera`
+     * into `/ › ⋯ › Camera` even when there was room for all four and every layer is
+     * tappable in the design. Nothing folds now unless a caller asks for a limit; a header
+     * that runs out of width scrolls, which loses nothing.
+     */
+    fun crumbs(path: String, maxSegments: Int = Int.MAX_VALUE): List<Crumb> {
         val normalized = PathTools.normalizeRoot(path)
         val absolute = normalized.startsWith("/")
         val parts = normalized.split('/').filter { it.isNotEmpty() }

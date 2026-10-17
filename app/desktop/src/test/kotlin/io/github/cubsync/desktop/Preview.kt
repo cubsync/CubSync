@@ -78,6 +78,7 @@ object Preview {
         val dark: Boolean,
         val jobDetail: Boolean = false,
         val view: DisplayMode? = null,
+        val displayMenu: Boolean = false,
     )
 
     val shots: List<Shot> = listOf(
@@ -91,6 +92,9 @@ object Preview {
         Shot("07-transfer-light", Section.TRANSFER, dark = false),
         Shot("08-transfer-compare", Section.TRANSFER, dark = true, view = DisplayMode.COMPARE),
         Shot("09-transfer-card", Section.TRANSFER, dark = false, view = DisplayMode.CARD),
+        Shot("10-transfer-viewmenu", Section.TRANSFER, dark = true, displayMenu = true),
+        Shot("11-transfer-compact", Section.TRANSFER, dark = true, view = DisplayMode.COMPACT),
+        Shot("12-transfer-thumb", Section.TRANSFER, dark = true, view = DisplayMode.THUMBNAIL),
     )
 
     /**
@@ -100,7 +104,13 @@ object Preview {
      * started by [AppState] has finished by the time the frame is composed. A screenshot
      * test that sleeps to wait for its own data is one that fails on a slow machine.
      */
-    fun state(section: Section, dark: Boolean, jobDetail: Boolean = false, view: DisplayMode? = null): AppState {
+    fun state(
+        section: Section,
+        dark: Boolean,
+        jobDetail: Boolean = false,
+        view: DisplayMode? = null,
+        displayMenu: Boolean = false,
+    ): AppState {
         val directory = Files.createTempDirectory("cubsync-preview-")
         val log = AppLog()
         val desktop = DesktopSettings.inStateDirectory(directory)
@@ -140,6 +150,7 @@ object Preview {
             state.setDisplayMode(Side.RIGHT, view)
         }
         state.browsing.select(Side.LEFT, listOf("IMG_20261016_0731.jpg", "IMG_20261016_0730.jpg"))
+        state.displayMenu = displayMenu
         return state
     }
 

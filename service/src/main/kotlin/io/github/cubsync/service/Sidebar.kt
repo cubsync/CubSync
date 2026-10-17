@@ -15,7 +15,18 @@ data class Favorite(
     val backendId: String,
     val path: String,
     val label: String = PathTools.leafName(path).ifEmpty { path },
-)
+    /**
+     * Which protocol answers for this end: 本端 for a local disk, CubSync for a peer, and
+     * the name of whatever comes next (WebDAV, FTP, SFTP) once those backends exist.
+     *
+     * A favourite is a place on a machine rather than a place on a screen, and on a machine
+     * reachable two ways it is the protocol that says which one.
+     */
+    val protocol: String = if (backendId == EndpointId.LOCAL) "本端" else "CubSync",
+) {
+    /** The heading this favourite belongs under. */
+    val group: String get() = if (backendId == EndpointId.LOCAL) Words.LOCAL else "$device · $protocol"
+}
 
 data class FavoriteGroup(val device: String, val items: List<Favorite>)
 

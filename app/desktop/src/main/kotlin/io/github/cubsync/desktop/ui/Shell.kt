@@ -71,6 +71,7 @@ fun CubApp(state: AppState, chrome: WindowChrome) {
     val server by state.server.state.collectAsState()
     var railFolded by remember { mutableStateOf(false) }
 
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().background(CubTheme.colors.surface)) {
         TitleBar(state, server, chrome)
         Row(Modifier.fillMaxWidth().weight(1f)) {
@@ -90,7 +91,41 @@ fun CubApp(state: AppState, chrome: WindowChrome) {
             }
         }
         StatusBar(state, server)
-        NoticeBar(state)
+    }
+    // Drawn over the window rather than under the status bar. As a child of the column it
+    // took a row of its own, so every notice pushed the whole screen up and left a band of
+    // empty surface below it — the window resized itself to say one sentence.
+    NoticeBar(state)
+
+    // 收藏夹's `+`: the folder a pane is showing is not always the one worth keeping, so
+    // adding a favourite takes an address rather than only the current view.
+    if (state.favouriteDraft != null) {
+        var text by remember(state.favouriteDraft) { mutableStateOf(state.favouriteDraft.orEmpty()) }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.3f))
+                .clickable { state.favouriteDraft = null },
+            contentAlignment = Alignment.Center,
+        ) {
+            FloatingCard(width = 380) {
+                FloatingHeader("添加收藏", onClose = { state.favouriteDraft = null })
+                Block("地址") {
+                    Field(
+                        value = text,
+                        onValueChange = { text = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = "收藏在聚焦的那一栏里：本端路径或远端路径",
+                        style = CubType.meta,
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PrimaryButton("收藏") { state.addFavourite(text) }
+                    QuietButton("取消") { state.favouriteDraft = null }
+                }
+            }
+        }
+    }
     }
 }
 
@@ -233,36 +268,44 @@ private fun Rail(state: AppState, server: ServerState, folded: Boolean, onFold: 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(Words.FAVOURITES, style = CubType.railLabel, color = colors.textFaint, modifier = Modifier.weight(1f))
-                IconButton(IconPaths.PLUS, size = 28, mark = 13) { state.toggleFavourite(Side.LEFT) }
+                IconButton(IconPaths.PLUS, size = 28, mark = 13) { state.favouriteDraft = "" }
             }
             val favourites = state.service.settings.favourites
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                for (group in favourites.groupBy { it.device }.toSortedMap()) {
+                // Grouped by end, not by insertion order: 本端 first, then one heading per
+                // peer and protocol. A list that mixes a folder on this disk with a folder
+                // on a phone is a list nobody can scan.
+                val groups = favourites.groupBy { it.group }
+                    .toList()
+                    .sortedWith(compareBy({ if (it.first == Words.LOCAL) 0 else 1 }, { it.first }))
+                for ((heading, items) in groups) {
                     Text(
-                        group.key,
+                        heading,
                         style = CubType.tiny,
                         color = colors.textFaint,
                         modifier = Modifier.padding(start = 10.dp, top = 6.dp, bottom = 3.dp),
                     )
-                    for (favourite in group.value) {
+                    for (favourite in items) {
                         Row(
                             Modifier
                                 .fillMaxWidth()
+                                .padding(end = 4.dp)
                                 .clip(RoundedCornerShape(6.dp))
-                                .clickable {
-                                    state.goTo(Section.TRANSFER)
-                                    state.openPane(Side.LEFT, favourite.path, favourite.backendId)
-                                }
-                                .padding(start = 20.dp, end = 10.dp, top = 5.dp, bottom = 5.dp),
+                                .clickable { state.openFavourite(favourite) }
+                                .padding(start = 20.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                favourite.path,
-                                style = CubType.monoSmall,
+                                favourite.label.ifEmpty { favourite.path },
+                                style = CubType.body,
                                 color = colors.textDim,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
                             )
+                            IconButton(IconPaths.CLOSE, size = 22, mark = 11) {
+                                state.removeFavourite(favourite)
+                            }
                         }
                     }
                 }
@@ -458,9 +501,10 @@ private fun NoticeBar(state: AppState) {
     val notice = state.notice ?: return
     val colors = CubTheme.colors
     val tone = colourFor(notice, colors)
-    Box(Modifier.fillMaxWidth().padding(bottom = 46.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         Row(
             Modifier
+                .padding(bottom = 40.dp)
                 .clip(RoundedCornerShape(9.dp))
                 .background(colors.text)
                 .clickable { state.dismissNotice() }

@@ -116,6 +116,22 @@ class PhoneScreenshotTest {
             fixture.state.setDisplayMode(Side.RIGHT, io.github.cubsync.service.DisplayMode.CARD)
             shot("13-transfer-card", fixture)
 
+            // 传输 · 紧凑 / 缩略：五种显示方式必须长得不一样
+            fixture.state.setDisplayMode(Side.LEFT, io.github.cubsync.service.DisplayMode.COMPACT)
+            fixture.state.setDisplayMode(Side.RIGHT, io.github.cubsync.service.DisplayMode.COMPACT)
+            shot("15-transfer-compact", fixture)
+
+            fixture.state.setDisplayMode(Side.LEFT, io.github.cubsync.service.DisplayMode.THUMBNAIL)
+            fixture.state.setDisplayMode(Side.RIGHT, io.github.cubsync.service.DisplayMode.THUMBNAIL)
+            shot("16-transfer-thumb", fixture)
+
+            // 副行「显示方式」展开条
+            fixture.state.setDisplayMode(Side.LEFT, io.github.cubsync.service.DisplayMode.DETAIL)
+            fixture.state.setDisplayMode(Side.RIGHT, io.github.cubsync.service.DisplayMode.DETAIL)
+            fixture.state.liveSettings.displayBarOpen = true
+            shot("17-transfer-viewbar", fixture)
+            fixture.state.liveSettings.displayBarOpen = false
+
             // 副行 ⋮ 的「更多」
             fixture.state.setDisplayMode(Side.LEFT, io.github.cubsync.service.DisplayMode.DETAIL)
             fixture.state.setDisplayMode(Side.RIGHT, io.github.cubsync.service.DisplayMode.DETAIL)
