@@ -159,7 +159,7 @@ fun SettingsScreen(state: AndroidAppState) {
                 }
             }
 
-            SettingRow("分栏方向", "双栏浏览与对比视图共用 · 自动＝宽 ≥ 高 时左右，否则上下") {
+            SettingRow("分栏方向", "双栏浏览与对比档共用 · 自动＝宽 ≥ 高 时左右，否则上下") {
                 ChoiceChips(
                     options = PaneDirection.entries,
                     selected = settings.paneDirection,

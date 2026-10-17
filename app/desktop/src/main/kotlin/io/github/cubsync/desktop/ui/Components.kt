@@ -458,7 +458,7 @@ fun FloatingHeader(title: String, onClose: () -> Unit) {
     val colors = CubTheme.colors
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(title, style = CubType.cardTitle, color = colors.text, modifier = Modifier.weight(1f))
-        IconButton(IconPaths.CLOSE, size = 24, mark = 14, onClick = onClose)
+        IconButton(IconPaths.CLOSE, size = 28, mark = 14, onClick = onClose)
     }
     Spacer(Modifier.height(6.dp))
 }

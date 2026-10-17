@@ -233,7 +233,7 @@ private fun Rail(state: AppState, server: ServerState, folded: Boolean, onFold: 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(Words.FAVOURITES, style = CubType.railLabel, color = colors.textFaint, modifier = Modifier.weight(1f))
-                IconButton(IconPaths.PLUS, size = 22, mark = 13) { state.toggleFavourite(Side.LEFT) }
+                IconButton(IconPaths.PLUS, size = 28, mark = 13) { state.toggleFavourite(Side.LEFT) }
             }
             val favourites = state.service.settings.favourites
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
@@ -290,7 +290,7 @@ private fun Rail(state: AppState, server: ServerState, folded: Boolean, onFold: 
                         color = colors.textDim,
                     )
                 }
-                IconButton(IconPaths.FOLD, size = 22, mark = 13, onClick = onFold)
+                IconButton(IconPaths.FOLD, size = 28, mark = 13, onClick = onFold)
             }
         } else {
             IconButton(IconPaths.FOLD, size = 28, mark = 14, onClick = onFold)

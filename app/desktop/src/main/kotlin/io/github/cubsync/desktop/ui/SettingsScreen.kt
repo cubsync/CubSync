@@ -156,7 +156,7 @@ fun SettingsScreen(state: AppState) {
 
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "行密度（${Density.MIN}–${Density.MAX}%）是全局的，两栏同时生效；" +
+                    "行密度（${Density.MIN}–${Density.MAX}%）两栏都生效，两栏同时生效；" +
                         "排序 / 文件夹优先 / 作用范围在传输页每栏的 ⋯ 里。",
                     style = CubType.meta,
                     color = colors.textFaint,
@@ -250,7 +250,7 @@ private fun AboutPanel(state: AppState) {
         )
         Spacer(Modifier.height(6.dp))
         Text("作用范围越具体越优先：${Scope.entries.joinToString(" > ") { it.label }} > 出厂默认。", style = CubType.meta, color = colors.textFaint)
-        Text("两个目录的命名口径：${Words.LOCAL} / ${Words.REMOTE}，${Words.TRASH}不叫垃圾箱。", style = CubType.meta, color = colors.textFaint)
+        Text("两个目录的命名口径：${Words.LOCAL} / ${Words.REMOTE}，${Words.TRASH}不叫回收站。", style = CubType.meta, color = colors.textFaint)
     }
 }
 
