@@ -347,9 +347,15 @@ fun LogsBody(state: AppState, modifier: Modifier = Modifier) {
             QuietButton("清空") { state.clearLogs() }
         }
 
+        val needle = state.logQuery.trim()
         val shown = state.logs
             .filter { it.level >= state.logMinimumLevel }
             .filter { area.isEmpty() || it.area == area }
+            .filter {
+                needle.isEmpty() ||
+                    it.message.contains(needle, ignoreCase = true) ||
+                    it.area.contains(needle, ignoreCase = true)
+            }
 
         Panel(Modifier.fillMaxSize(), title = "日志", subtitle = "最新在最后") {
             if (shown.isEmpty()) {

@@ -107,6 +107,9 @@ class AppState(
     var logs by mutableStateOf<List<LogEntry>>(emptyList())
     var logMinimumLevel by mutableStateOf(LogLevel.INFO)
 
+    /** The log page's filter box, which the heading draws and the body reads. */
+    var logQuery by mutableStateOf("")
+
     var peers by mutableStateOf<List<PeerSession>>(emptyList())
     var peerError by mutableStateOf<String?>(null)
     var peerDraft by mutableStateOf("")
