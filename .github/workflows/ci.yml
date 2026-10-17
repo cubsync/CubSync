@@ -182,3 +182,26 @@ jobs:
             exit 1
           fi
           echo "ok: no trailing whitespace"
+
+      - name: Release notes are collapsed and bilingual
+        run: |
+          set -eu
+          # Every note ships closed behind 中文说明 / English, so the download links stay
+          # above the fold. v0.3.13 was written as one flat file and published that way:
+          # the shape is written down in docs/RELEASING.md and applied by
+          # tools/collapse-release-notes.py, so this step exists to catch the next time
+          # somebody (or some agent) forgets to run it.
+          bad=0
+          for f in docs/releases/*.md; do
+            [ -e "$f" ] || continue
+            if ! grep -q '<summary><h3>中文说明</h3></summary>' "$f"; then
+              echo "::error file=$f::missing the closed 中文说明 block"
+              bad=1
+            fi
+            if ! grep -q '<summary><h3>English</h3></summary>' "$f"; then
+              echo "::error file=$f::missing the closed English block"
+              bad=1
+            fi
+          done
+          [ "$bad" -eq 0 ]
+          echo "ok: release notes are collapsed"
