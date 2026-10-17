@@ -61,6 +61,7 @@ class MainActivity : ComponentActivity() {
         val server = ServerController(log)
 
         setContent {
+            RequestStorageAccess()
             // Built inside the composition rather than in onCreate, so a configuration
             // change does not leave a service holding a dead window.
             var state by remember { mutableStateOf<AndroidAppState?>(null) }
