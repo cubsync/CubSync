@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -110,6 +111,7 @@ fun QuietButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     danger: Boolean = false,
+    ghost: Boolean = false,
     onClick: () -> Unit,
 ) {
     val colors = CubTheme.colors
@@ -118,18 +120,41 @@ fun QuietButton(
         danger -> colors.danger
         else -> colors.text
     }
+    // `.btn` in the prototype: a border, a panel fill and a hover — the screen is full of
+    // words that do something, and a word that looks like the words around it is not a
+    // button. `.btn.ghost` is the exception, for the ones that sit inside a menu.
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
     Box(
         modifier
-            .heightIn(min = 26.dp)
+            .heightIn(min = 28.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(if (danger && enabled) colors.danger.copy(alpha = 0.12f) else Color.Transparent)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .background(
+                when {
+                    ghost && hovered && enabled -> colors.hover
+                    ghost -> Color.Transparent
+                    danger && enabled -> colors.danger.copy(alpha = 0.10f)
+                    hovered && enabled -> colors.hover
+                    else -> colors.surface
+                },
+            )
+            .border(
+                1.dp,
+                when {
+                    ghost -> Color.Transparent
+                    danger && enabled -> colors.danger.copy(alpha = 0.45f)
+                    else -> colors.outline
+                },
+                RoundedCornerShape(8.dp),
+            )
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
+            .padding(horizontal = 11.dp, vertical = 5.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(text, style = CubType.label, color = tint, maxLines = 1)
     }
 }
+
 
 /** A filled button, for the one action a panel exists to perform. */
 @Composable
@@ -225,7 +250,7 @@ fun <T> Segmented(
                     .clip(RoundedCornerShape(99.dp))
                     .background(if (active) colors.accent else Color.Transparent)
                     .clickable { onSelect(option) }
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                    .padding(horizontal = 11.dp, vertical = 6.dp),
             ) {
                 Text(
                     label(option),
@@ -262,18 +287,24 @@ fun SettingRow(
 @Composable
 fun Toggle(checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     val colors = CubTheme.colors
-    Switch(
-        checked = checked,
-        onCheckedChange = onChange,
-        enabled = enabled,
-        colors = SwitchDefaults.colors(
-            checkedThumbColor = Color.White,
-            checkedTrackColor = colors.accent,
-            uncheckedThumbColor = colors.textFaint,
-            uncheckedTrackColor = colors.surfaceSunken,
-            uncheckedBorderColor = colors.outline,
-        ),
-    )
+    // The prototype's `.sw` is 46x26 with a 15px knob. Material's is 52x32 with a 24px one,
+    // which sat next to a 24px segmented control like a different design language.
+    Box(
+        Modifier
+            .size(width = 46.dp, height = 26.dp)
+            .clip(RoundedCornerShape(99.dp))
+            .background(if (checked) colors.accent else colors.surfaceSunken)
+            .border(1.5.dp, if (checked) colors.accent else colors.textFaint, RoundedCornerShape(99.dp))
+            .clickable(enabled = enabled) { onChange(!checked) },
+    ) {
+        Box(
+            Modifier
+                .padding(start = if (checked) 26.dp else 4.dp, top = 4.5.dp)
+                .size(15.dp)
+                .clip(CircleShape)
+                .background(if (checked) Color.White else colors.textFaint),
+        )
+    }
 }
 
 /** A row of label and value, for the key/value blocks. */

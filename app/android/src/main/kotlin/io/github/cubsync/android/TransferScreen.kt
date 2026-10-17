@@ -208,8 +208,9 @@ private fun SubRow(state: AndroidAppState, left: PaneState, right: PaneState, bu
         ) {
             CubIcon(viewIcon(prefs.displayMode), size = 16, tint = colors.text)
             Spacer(Modifier.width(7.dp))
-            // The prototype's pill reads 显示方式：详细 — the words, not only the mode.
-            Text("显示方式 · ${prefs.displayMode.label}", style = CubType.label, color = colors.text, maxLines = 1)
+            // The prototype's pill is the mark and the mode, nothing else. The words
+            // 显示方式 were a second label beside a label.
+            Text(prefs.displayMode.label, style = CubType.label, color = colors.text, maxLines = 1)
             Spacer(Modifier.width(5.dp))
             CubIcon(
                 if (settings.displayBarOpen) IconPaths.CHEVRON_DOWN else IconPaths.CHEVRON_RIGHT,
@@ -287,11 +288,11 @@ private fun DisplayBar(state: AndroidAppState) {
             Text("100% ＝出厂", style = CubType.meta, color = colors.textFaint)
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            GroupLabel("列数", Modifier.width(58.dp))
-            if (!prefs.displayMode.hasColumns) {
-                Text("${prefs.displayMode.label}没有列数参数", style = CubType.meta, color = colors.textFaint)
-            } else {
+        // 列数 exists only where a mode has columns. A row that says "详细没有列数参数"
+        // is a row about nothing, and the design simply does not draw it.
+        if (prefs.displayMode.hasColumns) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                GroupLabel("列数", Modifier.width(58.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     for (count in Columns.SHORTCUTS) {
                         QuietButton(count.toString()) {
@@ -482,7 +483,7 @@ private fun PaneHeader(state: AndroidAppState, side: Side, pane: PaneState, acti
                 // the header had room, so what looked like "only the parent" was really
                 // "the parent and an ellipsis" — and a layer in the ellipsis cannot be
                 // tapped, which is half the navigation the design promises.
-                val crumbs = Browsing.crumbs(pane.path)
+                val crumbs = state.browsing.crumbs(side)
                 Box(
                     Modifier
                         .weight(1f)
@@ -518,14 +519,27 @@ private fun PaneHeader(state: AndroidAppState, side: Side, pane: PaneState, acti
                                     Text(
                                         crumb.label,
                                         style = CubType.meta.copy(fontSize = 11.5.sp),
-                                        color = if (index == crumbs.lastIndex) colors.text else colors.textDim,
+                                        // The layer you are on is lit; the layers below it,
+                                        // when going back up, stay on screen and stay
+                                        // reachable in the dim colour.
+                                        color = when {
+                                            crumb.path == pane.path -> colors.text
+                                            pane.path.startsWith(crumb.path + "/") -> colors.textFaint
+                                            else -> colors.textDim
+                                        },
                                         maxLines = 1,
                                         softWrap = false,
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(4.dp))
-                                            .clickableCustom {
-                                                state.openPane(side, crumb.path, pane.backendId)
-                                            }
+                                            .combinedClickable(
+                                                onClick = {
+                                                    state.openPane(side, crumb.path, pane.backendId)
+                                                },
+                                                onLongClick = {
+                                                    copy(crumb.path)
+                                                    state.notify("已复制 " + crumb.path, NoticeKind.INFO)
+                                                },
+                                            )
                                             .padding(horizontal = 1.dp),
                                     )
                                 }
@@ -535,13 +549,16 @@ private fun PaneHeader(state: AndroidAppState, side: Side, pane: PaneState, acti
                 }
             }
 
+            // 展开, then the star, then ⋮ — packed tighter, and the new one lists the
+            // paths this pane has been to.
+            IconButton(IconPaths.CLOCK, size = 32, mark = 16) { state.historySide = side }
             IconButton(
                 if (settings.isFavourite(pane.backendId, pane.path)) IconPaths.STAR else IconPaths.STAR,
-                size = 34,
-                mark = 17,
+                size = 32,
+                mark = 16,
                 tint = if (settings.isFavourite(pane.backendId, pane.path)) colors.accent else colors.textDim,
             ) { state.toggleFavourite(side) }
-            IconButton(IconPaths.MORE, size = 34, mark = 17, stroke = 3.4f) {
+            IconButton(IconPaths.MORE, size = 32, mark = 16, stroke = 3.4f) {
                 settings.activeSide = side
                 state.paneMenu = side
             }

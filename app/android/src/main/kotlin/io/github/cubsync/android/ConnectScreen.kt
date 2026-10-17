@@ -165,6 +165,21 @@ fun ConnectScreen(state: AndroidAppState) {
 
             SectionLabel("连接另一台设备")
             Panel(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                // What is connected, by name, with the way out beside it. The button used to
+                // still say 连接 after a successful handshake, and nothing said who was on
+                // the other end.
+                for (peer in state.peers) {
+                    CardRow(
+                        title = peer.nodeName.ifEmpty { peer.backendId },
+                        detail = "${peer.host}:${peer.port} · ${peer.roots.size} 个共享文件夹",
+                        icon = IconPaths.LINK,
+                        onClick = {
+                            state.go(Section.TRANSFER)
+                            state.openPane(Side.RIGHT, "", peer.backendId)
+                        },
+                        trailing = { QuietButton("断开") { state.disconnectPeer(peer.backendId) } },
+                    )
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Field(
                         value = state.peerHost,
@@ -183,7 +198,14 @@ fun ConnectScreen(state: AndroidAppState) {
                     )
                 }
                 Spacer(Modifier.height(8.dp))
-                PrimaryButton(if (state.connecting) "连接中…" else "连接", enabled = !state.connecting) {
+                PrimaryButton(
+                    when {
+                        state.connecting -> "连接中…"
+                        state.peers.size == 1 -> "再连一台"
+                        else -> "连接"
+                    },
+                    enabled = !state.connecting,
+                ) {
                     state.connectPeerAddress()
                 }
                 state.peerError?.let {

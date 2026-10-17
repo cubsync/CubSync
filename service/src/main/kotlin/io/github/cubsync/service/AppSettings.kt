@@ -377,7 +377,75 @@ class AppSettings(private val storage: SettingsStorage = SettingsStorage.memory(
         favourites.any { it.backendId == backendId && it.path == path }
 
     fun removeFavourite(favorite: Favorite) {
-        favourites = favourites - favorite
+        favourites = favourites.filterNot { it.key == favorite.key }
+    }
+
+    /** 收藏夹's own setting: draw each row's path under its name. */
+    var favouritesShowPath: Boolean
+        get() = flag(KEY_FAV_SHOW_PATH, false)
+        set(value) {
+            values[KEY_FAV_SHOW_PATH] = value.toString()
+            persist()
+        }
+
+    /** The groups somebody named, in the order they arranged them. */
+    var favouriteGroups: List<String>
+        get() = values[KEY_FAV_GROUPS].orEmpty().lines().map { it.trim() }.filter { it.isNotEmpty() }
+        set(list) {
+            values[KEY_FAV_GROUPS] = list.distinct().joinToString("\n")
+            persist()
+        }
+
+    fun addFavouriteGroup(name: String): String {
+        val clean = name.trim()
+        if (clean.isEmpty()) return ""
+        if (clean !in favouriteGroups) favouriteGroups = favouriteGroups + clean
+        return clean
+    }
+
+    fun renameFavouriteGroup(from: String, to: String) {
+        val clean = to.trim()
+        if (clean.isEmpty() || from == clean) return
+        favouriteGroups = favouriteGroups.map { if (it == from) clean else it }
+        favourites = favourites.map { if (it.groupName == from) it.copy(groupName = clean) else it }
+    }
+
+    /** Deleting a group keeps its rows: they fall back to the heading of their own end. */
+    fun deleteFavouriteGroup(name: String) {
+        favouriteGroups = favouriteGroups - name
+        favourites = favourites.map { if (it.groupName == name) it.copy(groupName = "") else it }
+    }
+
+    fun updateFavourite(favorite: Favorite, label: String = favorite.label, group: String = favorite.groupName) {
+        favourites = favourites.map {
+            if (it.key == favorite.key) it.copy(label = label.trim(), groupName = group) else it
+        }
+        if (group.isNotEmpty() && group !in favouriteGroups) favouriteGroups = favouriteGroups + group
+    }
+
+    /** Replaces the order — what a drag ends with. */
+    fun reorderFavourites(ordered: List<Favorite>) {
+        favourites = ordered
+    }
+
+    fun reorderFavouriteGroups(ordered: List<String>) {
+        favouriteGroups = ordered
+    }
+
+    /**
+     * Every heading, in the order the drawer should draw them.
+     *
+     * Named groups first, in the order they were arranged, then the automatic ones that
+     * have rows but no name — 本端 first among those, because it is the one that is always
+     * there.
+     */
+    fun favouriteHeadings(): List<String> {
+        val named = favouriteGroups
+        val automatic = favourites.map { it.group }
+            .filterNot { it in named }
+            .distinct()
+            .sortedWith(compareBy({ if (it == Words.LOCAL) 0 else 1 }, { it }))
+        return named + automatic
     }
 
     // ------------------------------------------------------------ scope layering
@@ -465,6 +533,8 @@ class AppSettings(private val storage: SettingsStorage = SettingsStorage.memory(
         const val KEY_NODE_NAME = "server.nodeName"
         const val KEY_RECENT_FOLDERS = "browse.recent"
         const val KEY_FAVOURITES = "browse.favourites"
+        const val KEY_FAV_GROUPS = "browse.favouriteGroups"
+        const val KEY_FAV_SHOW_PATH = "browse.favouriteShowPath"
         const val KEY_BROWSE_SHARED = "browse.shared"
     }
 }

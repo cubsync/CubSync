@@ -78,6 +78,9 @@ import io.github.cubsync.service.Words
 import io.github.cubsync.service.resolveDirection
 import io.github.cubsync.service.fileIcon
 import io.github.cubsync.service.viewIcon
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 
 /**
  * 传输: two panes, a display menu that acts on the pane you touched last, and the arrow
@@ -105,7 +108,11 @@ fun TransferScreen(state: AppState) {
     val direction = resolveDirection(settings.paneDirection, 1000f, if (revision >= 0) 600f else 600f)
     val sideBySide = direction == PaneDirection.SIDE_BY_SIDE
 
-    Box(Modifier.fillMaxSize()) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .onGloballyPositioned { state.screenOrigin = it.positionInWindow() },
+    ) {
     Column(Modifier.fillMaxSize()) {
         // The prototype's transfer screen has no sub-row and no standing display bar: the
         // three verbs are on `.chead .acts`, and 显示方式 opens a drop-down from there. Both
@@ -262,15 +269,17 @@ private fun PaneHeader(state: AppState, side: Side, pane: PaneState, active: Boo
                 onSubmit = { state.openPane(side, typed, pane.backendId); state.touchBrowsing() },
                 style = CubType.meta,
             )
-            Spacer(Modifier.width(4.dp))
             val starred = state.service.settings.isFavourite(pane.backendId, pane.path)
+            // Tighter, and one more button: 展开 lists the paths this pane has been to, so a
+            // folder three levels up is one click instead of three.
+            IconButton(IconPaths.CLOCK, size = 26, mark = 15) { state.historyMenu = side }
             IconButton(
                 IconPaths.STAR,
-                size = 28,
-                mark = 16,
+                size = 26,
+                mark = 15,
                 tint = if (starred) colors.accent else null,
             ) { state.toggleFavourite(side) }
-            IconButton(IconPaths.MORE, size = 28, mark = 18, stroke = 3.4f) {
+            IconButton(IconPaths.MORE, size = 26, mark = 16, stroke = 3.4f) {
                 state.paneMenu = io.github.cubsync.desktop.PaneMenu(side)
             }
         }
@@ -415,6 +424,7 @@ private fun RowLine(
     showMetadata: Boolean,
 ) {
     val colors = CubTheme.colors
+    var rowOrigin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     Row(
         Modifier
             .fillMaxWidth()
@@ -436,8 +446,12 @@ private fun RowLine(
                 },
             )
             // The screen's own hint says 右键理管, and until now nothing listened for it.
+            .onGloballyPositioned { rowOrigin = it.positionInWindow() }
             .onPointerEvent(PointerEventType.Press) { event ->
                 if (event.buttons.isSecondaryPressed) {
+                    // Where the pointer is, not the middle of the window: a context menu
+                    // that opens far from the thing it is about makes the person look for it.
+                    state.actionSheetAt = rowOrigin + event.changes.first().position
                     state.actionSheet = io.github.cubsync.desktop.ActionSheet(side, entry.relPath, entry.isDirectory)
                 }
             }
@@ -811,8 +825,9 @@ private fun Overlays(state: AppState) {
     val sheet = state.actionSheet
     val detail = state.detailOf
     val displayMenu = state.displayMenu
+    val history = state.historyMenu
 
-    if (paneMenu == null && sheet == null && detail == null && !displayMenu) return
+    if (paneMenu == null && sheet == null && detail == null && !displayMenu && history == null) return
 
     Box(Modifier.fillMaxSize()) {
         Scrim {
@@ -821,6 +836,7 @@ private fun Overlays(state: AppState) {
             state.detailOf = null
             state.renaming = null
             state.displayMenu = false
+            state.historyMenu = null
         }
         if (displayMenu) {
             // Under the button that opened it: the heading's 显示方式 sits at the top-right
@@ -830,11 +846,65 @@ private fun Overlays(state: AppState) {
                 DisplayModeMenuCard(state)
             }
         }
+        if (history != null) {
+            Box(Modifier.fillMaxSize().padding(top = 6.dp, end = 14.dp), contentAlignment = Alignment.TopEnd) {
+                HistoryCard(state, history)
+            }
+        }
         Box(Modifier.fillMaxSize().padding(40.dp), contentAlignment = Alignment.Center) {
             when {
                 paneMenu != null -> PaneMenuCard(state, paneMenu.side)
-                sheet != null -> ActionSheetCard(state, sheet.side, sheet.name, sheet.isDirectory)
                 detail != null -> DetailCard(state, detail.first, detail.second)
+            }
+        }
+        if (sheet != null) {
+            val at = state.actionSheetAt - state.screenOrigin
+            Box(
+                Modifier.offset {
+                    androidx.compose.ui.unit.IntOffset(
+                        at.x.toInt().coerceAtLeast(0),
+                        at.y.toInt().coerceAtLeast(0),
+                    )
+                },
+            ) {
+                ActionSheetCard(state, sheet.side, sheet.name, sheet.isDirectory)
+            }
+        }
+    }
+}
+
+/** 展开: the paths this pane has been to, newest first. */
+@Composable
+private fun HistoryCard(state: AppState, side: Side) {
+    val colors = CubTheme.colors
+    val recent = state.browsing.recent(side).filter { it != state.browsing.current(side).path }
+    FloatingCard(width = 340) {
+        FloatingHeader("展开 · ${if (side == Side.LEFT) Words.LOCAL_PANE else Words.REMOTE_PANE}") {
+            state.historyMenu = null
+        }
+        Block("打开过的路径") {
+            if (recent.isEmpty()) {
+                Text("这个栏还没有打开过别的目录。", style = CubType.meta, color = colors.textFaint)
+            }
+            for (path in recent.take(10)) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable {
+                            state.openPane(side, path, state.browsing.current(side).backendId)
+                            state.historyMenu = null
+                        }
+                        .padding(horizontal = 8.dp, vertical = 5.dp),
+                ) {
+                    Text(
+                        path,
+                        style = CubType.monoSmall,
+                        color = colors.textDim,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }

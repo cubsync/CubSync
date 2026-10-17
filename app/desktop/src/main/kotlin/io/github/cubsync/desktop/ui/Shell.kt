@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -42,6 +43,8 @@ import io.github.cubsync.desktop.AppState
 import io.github.cubsync.desktop.CubTheme
 import io.github.cubsync.desktop.CubType
 import io.github.cubsync.desktop.Notice
+import io.github.cubsync.service.Favorite
+import io.github.cubsync.service.PathTools
 import io.github.cubsync.desktop.NoticeKind
 import io.github.cubsync.service.BuildInfo
 import io.github.cubsync.service.EndpointId
@@ -53,6 +56,10 @@ import io.github.cubsync.service.ServerState
 import io.github.cubsync.service.Side
 import io.github.cubsync.service.Words
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.layout.positionInWindow
 
 /**
  * The window, built the way the prototype builds it.
@@ -99,33 +106,7 @@ fun CubApp(state: AppState, chrome: WindowChrome) {
 
     // 收藏夹's `+`: the folder a pane is showing is not always the one worth keeping, so
     // adding a favourite takes an address rather than only the current view.
-    if (state.favouriteDraft != null) {
-        var text by remember(state.favouriteDraft) { mutableStateOf(state.favouriteDraft.orEmpty()) }
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.3f))
-                .clickable { state.favouriteDraft = null },
-            contentAlignment = Alignment.Center,
-        ) {
-            FloatingCard(width = 380) {
-                FloatingHeader("添加收藏", onClose = { state.favouriteDraft = null })
-                Block("地址") {
-                    Field(
-                        value = text,
-                        onValueChange = { text = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = "收藏在聚焦的那一栏里：本端路径或远端路径",
-                        style = CubType.meta,
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PrimaryButton("收藏") { state.addFavourite(text) }
-                    QuietButton("取消") { state.favouriteDraft = null }
-                }
-            }
-        }
-    }
+    FavouriteOverlays(state)
     }
 }
 
@@ -264,49 +245,57 @@ private fun Rail(state: AppState, server: ServerState, folded: Boolean, onFold: 
         if (!folded) {
             HorizontalDivider(Modifier.padding(top = 8.dp), color = colors.outline)
             Row(
-                Modifier.fillMaxWidth().padding(start = 10.dp, end = 4.dp, top = 8.dp, bottom = 4.dp),
+                Modifier.fillMaxWidth().padding(start = 10.dp, end = 2.dp, top = 6.dp, bottom = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(Words.FAVOURITES, style = CubType.railLabel, color = colors.textFaint, modifier = Modifier.weight(1f))
-                IconButton(IconPaths.PLUS, size = 28, mark = 13) { state.favouriteDraft = "" }
+                // No plus here any more: adding a folder is a menu item, and the icon that
+                // used to be 加 is 排序 — the same control on both ends, because a list you
+                // can order needs a place to say so.
+                IconButton(
+                    IconPaths.SORT,
+                    size = 26,
+                    mark = 14,
+                    selected = state.favouriteSorting,
+                    tint = if (state.favouriteSorting) Color.White else null,
+                ) {
+                    state.favouriteSorting = !state.favouriteSorting
+                }
+                IconButton(IconPaths.MORE, size = 24, mark = 15, stroke = 3.4f) {
+                    state.favouriteDialog = null
+                    state.favouriteHeaderMenu = true
+                }
             }
+
+            // Read, not cached: a favourite added on another screen has to appear here the
+            // moment it is written, and this list used to wait for a section change.
+            state.settingsRevision
             val favourites = state.service.settings.favourites
+            val headings = state.service.settings.favouriteHeadings()
+            val showPath = state.service.settings.favouritesShowPath
+
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                // Grouped by end, not by insertion order: 本端 first, then one heading per
-                // peer and protocol. A list that mixes a folder on this disk with a folder
-                // on a phone is a list nobody can scan.
-                val groups = favourites.groupBy { it.group }
-                    .toList()
-                    .sortedWith(compareBy({ if (it.first == Words.LOCAL) 0 else 1 }, { it.first }))
-                for ((heading, items) in groups) {
-                    Text(
-                        heading,
-                        style = CubType.tiny,
-                        color = colors.textFaint,
-                        modifier = Modifier.padding(start = 10.dp, top = 6.dp, bottom = 3.dp),
-                    )
-                    for (favourite in items) {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(end = 4.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .clickable { state.openFavourite(favourite) }
-                                .padding(start = 20.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                favourite.label.ifEmpty { favourite.path },
-                                style = CubType.body,
-                                color = colors.textDim,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
-                            )
-                            IconButton(IconPaths.CLOSE, size = 22, mark = 11) {
-                                state.removeFavourite(favourite)
-                            }
-                        }
+                var flat = 0
+                for (heading in headings) {
+                    val items = favourites.filter { it.group == heading }
+                    if (items.isEmpty() && heading !in state.service.settings.favouriteGroups) continue
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 10.dp, end = 4.dp, top = 7.dp, bottom = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            heading,
+                            style = CubType.tiny,
+                            color = colors.textFaint,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    for (item in items) {
+                        val index = favourites.indexOfFirst { it.key == item.key }.coerceAtLeast(flat)
+                        FavouriteRow(state, item, index, showPath, state.favouriteSorting)
+                        flat++
                     }
                 }
             }
@@ -506,12 +495,15 @@ private fun NoticeBar(state: AppState) {
             Modifier
                 .padding(bottom = 40.dp)
                 .clip(RoundedCornerShape(9.dp))
-                .background(colors.text)
+                // A floating bar in the window's own colours, not the inverse of them: on a
+                // dark desktop the old `colors.text` background came out as a white slab.
+                .background(colors.surfaceRaised)
+                .border(1.dp, colors.outlineStrong, RoundedCornerShape(9.dp))
                 .clickable { state.dismissNotice() }
                 .padding(horizontal = 15.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(notice.text, style = CubType.button, color = colors.surface)
+            Text(notice.text, style = CubType.button, color = colors.text)
             Spacer(Modifier.width(8.dp))
             Box(Modifier.size(7.dp).clip(CircleShape).background(tone))
         }
@@ -524,6 +516,283 @@ private fun colourFor(notice: Notice, colors: io.github.cubsync.desktop.CubColor
     NoticeKind.SUCCESS -> colors.success
     NoticeKind.WARNING -> colors.warning
     NoticeKind.ERROR -> colors.danger
+}
+
+/**
+ * One row of 收藏夹.
+ *
+ * Three ways in: a click opens it in the focused pane, a right click opens the row's menu,
+ * and in 排序 mode a press-and-drag moves it. The row used to be a click and a × — no menu,
+ * no order, and a delete that was the only thing you could do to it.
+ */
+@Composable
+private fun FavouriteRow(
+    state: AppState,
+    favourite: Favorite,
+    index: Int,
+    showPath: Boolean,
+    sorting: Boolean,
+) {
+    val colors = CubTheme.colors
+    var origin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    var dragged by remember { mutableStateOf(0f) }
+    val rowPx = with(androidx.compose.ui.platform.LocalDensity.current) { 28.dp.toPx() }
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .onGloballyPositioned { origin = it.positionInWindow() }
+            .padding(end = 2.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (dragged != 0f) colors.hover else Color.Transparent)
+            .pointerInput(favourite.key, sorting) {
+                if (!sorting) return@pointerInput
+                detectDragGesturesAfterLongPress(
+                    onDrag = { change, amount ->
+                        change.consume()
+                        dragged += amount.y
+                    },
+                    onDragEnd = {
+                        val rows = kotlin.math.round(dragged / rowPx).toInt()
+                        val last = state.service.settings.favourites.lastIndex
+                        if (rows != 0) state.dropFavourite(index, (index + rows).coerceIn(0, last))
+                        dragged = 0f
+                    },
+                    onDragCancel = { dragged = 0f },
+                )
+            }
+            .pointerInput(favourite.key) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        if (event.type == androidx.compose.ui.input.pointer.PointerEventType.Press &&
+                            event.buttons.isSecondaryPressed
+                        ) {
+                            state.favouriteMenuAt = origin
+                            state.favouriteMenu = favourite
+                        }
+                    }
+                }
+            }
+            .clickable { if (!sorting) state.openFavourite(favourite) }
+            .padding(start = 12.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (sorting) {
+            CubIcon(IconPaths.SORT, size = 12, tint = colors.textFaint)
+            Spacer(Modifier.width(5.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(
+                favourite.label.ifEmpty { PathTools.leafName(favourite.path).ifEmpty { favourite.path } },
+                style = CubType.body,
+                color = colors.textDim,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (showPath) {
+                Text(
+                    favourite.path,
+                    style = CubType.monoSmall,
+                    color = colors.textFaint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/** The row menu, the header menu and the four dialogs 收藏夹 needs. */
+@Composable
+private fun FavouriteOverlays(state: AppState) {
+    val colors = CubTheme.colors
+    val menu = state.favouriteMenu
+    val dialog = state.favouriteDialog
+    val headerMenu = state.favouriteHeaderMenu
+    if (menu == null && dialog == null && !headerMenu) return
+
+    fun closeAll() {
+        state.favouriteMenu = null
+        state.favouriteDialog = null
+        state.favouriteHeaderMenu = false
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        Scrim { closeAll() }
+
+        if (menu != null) {
+            val at = state.favouriteMenuAt
+            Box(Modifier.offset { androidx.compose.ui.unit.IntOffset(at.x.toInt(), at.y.toInt()) }) {
+                FloatingCard(width = 230) {
+                    MenuLine("打开") { state.openFavourite(menu); closeAll() }
+                    MenuLine("编辑…") {
+                        state.favouriteDialog = AppState.FavDialog.Edit(menu)
+                        state.favouriteMenu = null
+                    }
+                    MenuLine("上移") { state.moveFavourite(menu, -1) }
+                    MenuLine("下移") { state.moveFavourite(menu, +1) }
+                    MenuLine("取消收藏", danger = true) {
+                        state.removeFavourite(menu)
+                        closeAll()
+                    }
+                }
+            }
+        }
+
+        if (headerMenu) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                FloatingCard(width = 300) {
+                    FloatingHeader("收藏夹", onClose = { closeAll() })
+                    MenuLine("添加路径…") {
+                        state.favouriteDialog = AppState.FavDialog.AddPath
+                        state.favouriteHeaderMenu = false
+                    }
+                    MenuLine("新建分组…") {
+                        state.favouriteDialog = AppState.FavDialog.NewGroup
+                        state.favouriteHeaderMenu = false
+                    }
+                    MenuLine("添加账户…（远端协议，尚未实现）", enabled = false) {}
+                    MenuLine("收藏夹设置…") {
+                        state.favouriteDialog = AppState.FavDialog.Settings
+                        state.favouriteHeaderMenu = false
+                    }
+                }
+            }
+        }
+
+        when (dialog) {
+            is AppState.FavDialog.AddPath -> {
+                var text by remember { mutableStateOf("") }
+                FavouriteDialogCard("添加路径", onClose = { closeAll() }) {
+                    Field(
+                        value = text,
+                        onValueChange = { text = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = "收藏在聚焦的那一栏里：本端路径或远端路径",
+                        style = CubType.meta,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PrimaryButton("收藏") {
+                            state.addFavourite(text)
+                            closeAll()
+                        }
+                        QuietButton("取消") { closeAll() }
+                    }
+                }
+            }
+
+            is AppState.FavDialog.NewGroup -> {
+                var text by remember { mutableStateOf("") }
+                FavouriteDialogCard("新建分组", onClose = { closeAll() }) {
+                    Field(
+                        value = text,
+                        onValueChange = { text = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = "分组名，例如「工作」「备份」",
+                        style = CubType.meta,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PrimaryButton("新建") {
+                            state.addFavouriteGroup(text)
+                            closeAll()
+                        }
+                        QuietButton("取消") { closeAll() }
+                    }
+                }
+            }
+
+            is AppState.FavDialog.Edit -> {
+                val favourite = dialog.favourite
+                var label by remember {
+                    mutableStateOf(favourite.label.ifEmpty { PathTools.leafName(favourite.path) })
+                }
+                var group by remember { mutableStateOf(favourite.groupName) }
+                FavouriteDialogCard("编辑收藏", onClose = { closeAll() }) {
+                    Text(favourite.path, style = CubType.monoSmall, color = colors.textFaint, maxLines = 2)
+                    Field(
+                        value = label,
+                        onValueChange = { label = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = "名称",
+                        style = CubType.meta,
+                    )
+                    Text("分组", style = CubType.meta, color = colors.textFaint)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (name in state.service.settings.favouriteHeadings().take(4)) {
+                            QuietButton(name, ghost = group != name) {
+                                group = if (group == name) "" else name
+                            }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PrimaryButton("保存") {
+                            state.renameFavourite(favourite, label, group)
+                            closeAll()
+                        }
+                        QuietButton("取消") { closeAll() }
+                    }
+                }
+            }
+
+            is AppState.FavDialog.Settings -> {
+                val settings = state.liveSettings
+                FavouriteDialogCard("收藏夹设置", onClose = { closeAll() }) {
+                    SettingRow("在名称下显示路径", "一行放不下时省略") {
+                        Toggle(settings.favouritesShowPath) { on ->
+                            state.changeSettings { it.favouritesShowPath = on }
+                        }
+                    }
+                    Text(
+                        "排序：点亮左上角的排序图标后，按住一行拖动即可调整顺序；也可以右键用上移/下移。",
+                        style = CubType.meta,
+                        color = colors.textFaint,
+                    )
+                    QuietButton("关闭") { closeAll() }
+                }
+            }
+
+            null -> Unit
+        }
+    }
+}
+
+@Composable
+private fun FavouriteDialogCard(title: String, onClose: () -> Unit, content: @Composable () -> Unit) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        FloatingCard(width = 380) {
+            FloatingHeader(title, onClose = onClose)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
+        }
+    }
+}
+
+/** One line of a floating menu: the whole row is the target, and it says so on hover. */
+@Composable
+private fun MenuLine(text: String, enabled: Boolean = true, danger: Boolean = false, onClick: () -> Unit) {
+    val colors = CubTheme.colors
+    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (hovered && enabled) colors.hover else Color.Transparent)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+    ) {
+        Text(
+            text,
+            style = CubType.body,
+            color = when {
+                !enabled -> colors.textFaint
+                danger -> colors.danger
+                else -> colors.text
+            },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
 
 /** The label a pane's title uses. */

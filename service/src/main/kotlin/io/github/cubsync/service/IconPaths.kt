@@ -57,6 +57,9 @@ object IconPaths {
     const val REFRESH = "M20.5 11.5a8.5 8.5 0 1 0-2.4 5.9M20.5 5v6.5H14"
     const val CLOSE = "M6 6l12 12M18 6L6 18"
     const val PLUS = "M12 5v14M5 12h14"
+
+    /** 排序: three rows of different lengths with a handle, which is what a drag does. */
+    const val SORT = "M4 7h9M4 12h6M4 17h3M17 5v14M14.5 16.5L17 19l2.5-2.5"
     const val MINUS = "M5 12h14"
     const val CHECK = "M5 12.5l4.5 4.5L19 7.5"
     const val CHEVRON_DOWN = "M6 9.5l6 6 6-6"

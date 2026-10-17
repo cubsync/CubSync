@@ -43,6 +43,9 @@ import io.github.cubsync.service.IconPaths
 import io.github.cubsync.service.Section
 import io.github.cubsync.service.Words
 import kotlinx.coroutines.delay
+import io.github.cubsync.service.Favorite
+import io.github.cubsync.service.PathTools
+import io.github.cubsync.service.Side
 
 /**
  * The phone: a top bar, one screen, and a bar of five.
@@ -95,6 +98,8 @@ fun CubAndroidApp(state: AndroidAppState) {
             state.sharedSheet -> SharedRootsSheet(state)
         }
         Overlays(state)
+        state.favouriteMenu?.let { FavouriteSheet(state, it) }
+        state.historySide?.let { HistorySheet(state, it) }
         if (state.drawerOpen) Drawer(state)
 
         // The drawer also opens with a left swipe, which is what the design document lists
@@ -283,6 +288,102 @@ private fun NoticeBar(state: AndroidAppState) {
     }
 }
 
+/**
+ * 收藏夹's row menu, opened by a long press.
+ *
+ * The desktop opens the same set on a right click: rename, re-group, move, remove. A phone
+ * has no right button, so the long press is the one it has — the drawer row keeps its tap
+ * for opening the folder.
+ */
+@Composable
+fun FavouriteSheet(state: AndroidAppState, favourite: Favorite) {
+    val colors = CubTheme.colors
+    var label by remember(favourite.key) {
+        mutableStateOf(favourite.label.ifEmpty { PathTools.leafName(favourite.path) })
+    }
+    var group by remember(favourite.key) { mutableStateOf(favourite.groupName) }
+    var newGroup by remember { mutableStateOf("") }
+
+    BottomSheet(onClose = { state.favouriteMenu = null }) {
+        SheetHeader(favourite.label.ifEmpty { favourite.path }) { state.favouriteMenu = null }
+        Text(favourite.path, style = CubType.mono, color = colors.textFaint, maxLines = 2)
+        Spacer(Modifier.height(8.dp))
+
+        Field(
+            value = label,
+            onValueChange = { label = it },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = "名称",
+            onSubmit = { state.renameFavourite(favourite, label, group) },
+        )
+        Spacer(Modifier.height(8.dp))
+        Text("分组", style = CubType.rowDetail, color = colors.textFaint)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (name in state.service.settings.favouriteHeadings().take(3)) {
+                QuietButton(name) { group = if (group == name) "" else name }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Field(
+                value = newGroup,
+                onValueChange = { newGroup = it },
+                modifier = Modifier.weight(1f),
+                placeholder = "新建分组",
+                onSubmit = {
+                    state.addFavouriteGroup(newGroup)
+                    newGroup = ""
+                },
+            )
+            Spacer(Modifier.width(6.dp))
+            QuietButton("新建") {
+                state.addFavouriteGroup(newGroup)
+                newGroup = ""
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PrimaryButton("保存") {
+                state.renameFavourite(favourite, label, group)
+                state.favouriteMenu = null
+            }
+            QuietButton("上移") { state.moveFavourite(favourite, -1) }
+            QuietButton("下移") { state.moveFavourite(favourite, +1) }
+        }
+        Spacer(Modifier.height(6.dp))
+        ListRow("取消收藏", favourite.path, leadingIcon = IconPaths.CLOSE) {
+            state.removeFavourite(favourite)
+            state.favouriteMenu = null
+        }
+        Spacer(Modifier.height(6.dp))
+    }
+}
+
+/** 展开: the paths this pane has been to. */
+@Composable
+fun HistorySheet(state: AndroidAppState, side: Side) {
+    val colors = CubTheme.colors
+    BottomSheet(onClose = { state.historySide = null }) {
+        SheetHeader("展开 · ${if (side == Side.LEFT) Words.LOCAL_PANE else Words.REMOTE_PANE}") {
+            state.historySide = null
+        }
+        val recent = state.browsing.recent(side)
+        if (recent.isEmpty()) {
+            Text("这个栏还没有打开过别的目录。", style = CubType.rowDetail, color = colors.textFaint)
+        }
+        for (path in recent.take(10)) {
+            ListRow(
+                title = PathTools.leafName(path).ifEmpty { path },
+                detail = path,
+                leadingIcon = IconPaths.CLOCK,
+            ) {
+                state.historySide = null
+                state.openPane(side, path, state.browsing.current(side).backendId)
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+    }
+}
+
 /** The drawer: favourites, accounts, roots. Opened by `☰`, which is on every top-level screen. */
 @Composable
 private fun Drawer(state: AndroidAppState) {
@@ -347,11 +448,9 @@ private fun Drawer(state: AndroidAppState) {
                             detail = item.path,
                             leadingIcon = IconPaths.FOLDER,
                             modifier = Modifier.padding(horizontal = 8.dp),
-                            trailing = {
-                                IconButton(IconPaths.CLOSE, size = 30, mark = 13) {
-                                    state.removeFavourite(item)
-                                }
-                            },
+                            // A long press is the phone's right click: rename, regroup,
+                            // move, remove — the same menu the desktop's right click opens.
+                            onLongClick = { state.favouriteMenu = item },
                             onClick = { state.openFavourite(item) },
                         )
                     }

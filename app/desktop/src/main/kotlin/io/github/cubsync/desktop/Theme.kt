@@ -58,16 +58,19 @@ data class CubColors(
 
 internal val DarkCubColors = CubColors(
     isDark = true,
-    background = Color(0xFF0F1116),
-    surface = Color(0xFF181B21),
-    surfaceRaised = Color(0xFF1E222A),
-    surfaceSunken = Color(0xFF242932),
+    // The phone's dark palette, value for value. The desktop had its own near-black set
+    // (#0F1116 against #141318), so the two ends looked like two products side by side —
+    // and the phone's is the one the design tokens name.
+    background = Color(0xFF141318),
+    surface = Color(0xFF141318),
+    surfaceRaised = Color(0xFF1F1F26),
+    surfaceSunken = Color(0xFF26252C),
     outline = Color(0xFF2A2F39),
-    outlineFaint = Color(0xFF22262E),
-    outlineStrong = Color(0xFF2A2F39),
-    text = Color(0xFFE8EBF1),
-    textDim = Color(0xFF98A1B0),
-    textFaint = Color(0xFF6D7686),
+    outlineFaint = Color(0xFF232229),
+    outlineStrong = Color(0xFF3A3942),
+    text = Color(0xFFE6E1E9),
+    textDim = Color(0xFFC9C5D0),
+    textFaint = Color(0xFF8E8A97),
     accent = Color(0xFF1E88E5),
     // `color-mix(in srgb, var(--win-accent) 14%, transparent)` — translucent on purpose,
     // so it composites over whatever it is put on exactly as the prototype's does.
@@ -78,10 +81,10 @@ internal val DarkCubColors = CubColors(
     success = Color(0xFF2E9E5B),
     conflict = Color(0xFFF0731F),
     info = Color(0xFF3B82F6),
-    rail = Color(0xFF1E222A),
-    hover = Color(0xFF232833),
-    selected = Color(0xFF1D2C3E),
-    selectedLine = Color(0xFF2B5F8F),
+    rail = Color(0xFF1F1F26),
+    hover = Color(0xFF26252C),
+    selected = Color(0x2E4C6EF5),
+    selectedLine = Color(0xFF4C6EF5),
 )
 
 internal val LightCubColors = CubColors(
