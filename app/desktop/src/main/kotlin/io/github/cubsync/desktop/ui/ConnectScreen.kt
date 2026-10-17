@@ -142,7 +142,9 @@ private fun LinkCard(state: AppState, modifier: Modifier) {
                 ) {
                     Text(device.label, style = CubType.body, color = colors.text, modifier = Modifier.weight(1f))
                     QuietButton(if (state.connecting) "连接中…" else "连接并协商") {
-                        state.connectUsb(device.serial, settings.sharePort)
+                        // The phone's port, not this machine's: empty means the protocol
+                        // default, which is what a phone shares on unless it was changed.
+                        state.connectUsb(device.serial, state.peerPortText.toIntOrNull() ?: 0)
                     }
                 }
             }
@@ -152,7 +154,7 @@ private fun LinkCard(state: AppState, modifier: Modifier) {
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                "USB 走的是 adb 转发：把设备上的 ${settings.sharePort} 映射到本机同名端口，之后与局域网是同一条连接。",
+                "USB 走的是 adb 转发：把设备上的端口（默认 ${settings.sharePort}）映射到本机同名端口，之后与局域网是同一条连接。",
                 style = CubType.tiny,
                 color = colors.textFaint,
             )
