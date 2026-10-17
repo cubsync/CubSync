@@ -100,9 +100,19 @@ jobs:
           # rather than a second release. Asking first, then tolerating the failure and
           # asking again, is what makes that a race rather than a bug — it produced two
           # drafts for v0.3.5 before it looked like this.
+          # `releases/tags/<tag>` does not return draft releases: for a draft that exists it
+          # answers 404. That single fact explains both bugs this workflow has had — two
+          # drafts for one tag (both jobs asked, both were told "no", both created one) and
+          # the android job waiting five minutes for a release that was already there and
+          # then failing with 404.
+          #
+          # The list endpoint does include drafts, so ask it instead.
+          release_exists() {
+            gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100"               --jq "[.[] | select(.tag_name==\"$GITHUB_REF_NAME\")] | length" 2>/dev/null               | grep -qv '^0$'
+          }
           ensure_release() {
             for attempt in 1 2 3 4 5; do
-              if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" >/dev/null 2>&1; then
+              if release_exists; then
                 return 0
               fi
               if [ -f "$NOTES" ]; then
@@ -239,12 +249,12 @@ jobs:
           # "already exists"; it gets a second release. So this job only waits: the
           # release is created once, by the job that also builds the installer.
           for attempt in $(seq 1 20); do
-            if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            if release_exists; then
               break
             fi
             sleep 15
           done
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" >/dev/null
+          release_exists
           # Whichever APK the build produced: release-signed when the signing secret is
           # present, the debug one when it is not. The glob covers both.
           gh release upload "$GITHUB_REF_NAME" CubSync-*.apk --clobber
