@@ -1,5 +1,6 @@
 package io.github.cubsync.service
 
+import io.github.cubsync.core.engine.PauseGate
 import io.github.cubsync.core.spi.FileMeta
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,12 +53,45 @@ class BrowserSession(
     private val _left = MutableStateFlow(PaneState())
     private val _right = MutableStateFlow(PaneState())
     private val _busy = MutableStateFlow(false)
+    private val _multi = MutableStateFlow(false)
+    private val _progress = MutableStateFlow<TransferProgress?>(null)
 
     val left: StateFlow<PaneState> = _left.asStateFlow()
     val right: StateFlow<PaneState> = _right.asStateFlow()
 
     /** True while a copy is in flight, so a screen can refuse a second one. */
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
+
+    /**
+     * 多选: while it is on, a tap ticks a row instead of entering a folder.
+     *
+     * A mode rather than a modifier key, because a phone has no modifier key — and the
+     * design's 更多 panel names it as one of the six things that panel is for.
+     */
+    val multiSelect: StateFlow<Boolean> = _multi.asStateFlow()
+
+    fun toggleMultiSelect() {
+        _multi.value = !_multi.value
+    }
+
+    /** How far the copy in flight has got, or null when nothing is moving. */
+    val transferProgress: StateFlow<TransferProgress?> = _progress.asStateFlow()
+
+    private var control: PauseGate? = null
+
+    fun pauseTransfer() {
+        control?.pause()
+        _progress.value = _progress.value?.copy(paused = true)
+    }
+
+    fun resumeTransfer() {
+        control?.resume()
+        _progress.value = _progress.value?.copy(paused = false)
+    }
+
+    fun cancelTransfer() {
+        control?.cancel()
+    }
 
     fun pane(side: Side): StateFlow<PaneState> = if (side == Side.LEFT) _left else _right
 
@@ -69,8 +103,31 @@ class BrowserSession(
 
     // ----------------------------------------------------------------- listing
 
+    /**
+     * Which listing each pane asked for last.
+     *
+     * Two listings can be in flight at once — enter a folder, then press ← before the
+     * first one comes back — and the older answer must not land on the newer pane. Without
+     * this, going back fast could leave the parent's address over a child's entries, or a
+     * listing that never contains what the pane now holds. CI found it as a test that
+     * timed out; the observable symptom is a folder whose contents are the folder you
+     * just left.
+     */
+    private val listingGeneration = mutableMapOf<Side, Int>()
+
+    private fun nextGeneration(side: Side): Int = synchronized(listingGeneration) {
+        val next = (listingGeneration[side] ?: 0) + 1
+        listingGeneration[side] = next
+        next
+    }
+
+    private fun isCurrent(side: Side, generation: Int): Boolean = synchronized(listingGeneration) {
+        listingGeneration[side] == generation
+    }
+
     /** Points a pane at a folder and lists it. */
     fun open(side: Side, backendId: String = current(side).backendId, path: String) {
+        val generation = nextGeneration(side)
         val before = current(side)
         set(
             side,
@@ -88,8 +145,10 @@ class BrowserSession(
                 // An empty path lists the exposed roots, which is the answer to "where
                 // can this pane go back to" and is worth remembering.
                 if (path.isBlank()) rootsCache[backendId] = entries.map { it.relPath }
+                if (!isCurrent(side, generation)) return@launch
                 set(side, current(side).copy(entries = sort(side, entries), loading = false))
             } catch (failure: Throwable) {
+                if (!isCurrent(side, generation)) return@launch
                 val message = failure.message ?: failure::class.simpleName ?: "无法读取这个文件夹"
                 log.warn("browse", "cannot list $path on $backendId: $message")
                 set(side, current(side).copy(entries = emptyList(), loading = false, error = message))
@@ -176,6 +235,21 @@ class BrowserSession(
         val state = current(side)
         val selection = if (state.isSelected(name)) state.selection - name else state.selection + name
         set(side, state.copy(selection = selection))
+    }
+
+    /**
+     * What a tap on a row means, decided once for both ends.
+     *
+     * In 多选 a tap ticks anything, folders included; outside it a tap enters a folder and
+     * ticks a file. Two front ends each deciding this is how a phone and a desktop end up
+     * disagreeing about whether a folder can be selected.
+     */
+    fun tap(side: Side, entry: FileMeta) {
+        if (entry.isDirectory && !_multi.value) {
+            enter(side, Browsing.name(entry.relPath))
+        } else {
+            toggle(side, entry.relPath)
+        }
     }
 
     fun select(side: Side, names: Collection<String>) {
@@ -305,6 +379,9 @@ class BrowserSession(
     /** The two listings aligned by name, for the compare mode. */
     fun compare(): List<CompareRow> = Browsing.compare(current(Side.LEFT).entries, current(Side.RIGHT).entries)
 
+    /** The compare rows as one pane draws them: its own entries, aligned, with ghost lines. */
+    fun compareLines(side: Side): List<CompareLine> = Browsing.compareLines(compare(), side)
+
     // ----------------------------------------------------------------- transfer
 
     /**
@@ -320,7 +397,13 @@ class BrowserSession(
             return
         }
         val source = current(from)
-        val target = current(from.other)
+        var target = current(from.other)
+        // 默认接收目录 is the answer to "the far pane has not been pointed anywhere yet",
+        // which is the state a first transfer starts in on a fresh phone.
+        if (target.path.isBlank() && settings.defaultReceiveDir.isNotBlank()) {
+            open(from.other, target.backendId, settings.defaultReceiveDir)
+            target = current(from.other)
+        }
         if (target.path.isBlank()) {
             onFinished(TransferOutcome(failures = listOf("对面还没有打开文件夹")))
             return
@@ -336,7 +419,11 @@ class BrowserSession(
         }
 
         _busy.value = true
+        val gate = PauseGate()
+        control = gate
         scope.launch {
+            var total = 0L
+            var done = 0L
             val outcome = try {
                 browser.copy(
                     fromBackendId = source.backendId,
@@ -344,11 +431,22 @@ class BrowserSession(
                     toBackendId = target.backendId,
                     toDirectory = target.path,
                     names = names,
+                    control = gate,
+                    onTotal = { bytes, files ->
+                        total = bytes
+                        _progress.value = TransferProgress(bytes, 0L, files, gate.isPaused)
+                    },
+                    onProgress = { delta ->
+                        done += delta
+                        _progress.value = TransferProgress(total, done, _progress.value?.totalFiles ?: 0, gate.isPaused)
+                    },
                 )
             } catch (failure: Throwable) {
                 TransferOutcome(failures = listOf(failure.message ?: "传送失败"))
             } finally {
                 _busy.value = false
+                control = null
+                _progress.value = null
             }
             // The target changed on disk, so it is re-listed rather than guessed at.
             if (outcome.copied > 0) refresh(from.other)

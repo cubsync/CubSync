@@ -5,6 +5,8 @@ import io.github.cubsync.core.spi.BackendException
 import io.github.cubsync.core.spi.FileMeta
 import io.github.cubsync.core.spi.RemoteBackend
 import io.github.cubsync.core.spi.RootRef
+import io.github.cubsync.core.engine.PauseGate
+import io.github.cubsync.core.engine.RunCancelled
 import io.github.cubsync.core.spi.SimpleRoot
 import io.github.cubsync.core.transfer.ChunkPlan
 
@@ -13,8 +15,21 @@ data class TransferOutcome(
     val copied: Int = 0,
     val bytes: Long = 0,
     val failures: List<String> = emptyList(),
+    val cancelled: Boolean = false,
 ) {
+    /** Whether anything went wrong. A cancel is not a failure — it is what was asked for. */
     val ok: Boolean get() = failures.isEmpty()
+}
+
+/** How far a copy has got, for the bar that draws it. */
+data class TransferProgress(
+    val totalBytes: Long,
+    val doneBytes: Long,
+    val totalFiles: Int = 0,
+    val paused: Boolean = false,
+) {
+    val fraction: Float get() = if (totalBytes <= 0L) 0f else (doneBytes.toFloat() / totalBytes).coerceIn(0f, 1f)
+    val percent: Int get() = (fraction * 100f).toInt()
 }
 
 /**
@@ -52,6 +67,8 @@ class FolderBrowser(private val pool: BackendPool, private val log: AppLog = App
         toBackendId: String,
         toDirectory: String,
         names: List<String>,
+        control: PauseGate = PauseGate(),
+        onTotal: (bytes: Long, files: Int) -> Unit = { _, _ -> },
         onProgress: (Long) -> Unit = {},
     ): TransferOutcome {
         if (names.isEmpty()) return TransferOutcome()
@@ -67,9 +84,14 @@ class FolderBrowser(private val pool: BackendPool, private val log: AppLog = App
         val wanted = names.map { it.trim('/') }.filter { it.isNotEmpty() }
         val tree = source.list(sourceRoot, "", recursive = true)
             .filter { meta -> wanted.any { name -> meta.relPath == name || meta.relPath.startsWith("$name/") } }
+        val files = tree.filterNot { it.isDirectory }
+        // The bar has to know the denominator before the first byte moves, or it shows a
+        // percentage of something it cannot see.
+        onTotal(files.sumOf { it.size }, files.size)
 
         var copied = 0
         var bytes = 0L
+        var cancelled = false
         val failures = ArrayList<String>()
 
         try {
@@ -79,10 +101,13 @@ class FolderBrowser(private val pool: BackendPool, private val log: AppLog = App
                 runCatching { target.mkdir(targetRoot, meta.relPath, createParents = true) }
                     .onFailure { failures.add("${meta.relPath}: ${it.message}") }
             }
-            for (meta in tree.filterNot { it.isDirectory }) {
+            for (meta in files) {
                 try {
-                    bytes += copyFile(source, sourceRoot, target, targetRoot, meta, onProgress)
+                    bytes += copyFile(source, sourceRoot, target, targetRoot, meta, control, onProgress)
                     copied++
+                } catch (stop: RunCancelled) {
+                    cancelled = true
+                    break
                 } catch (failure: Throwable) {
                     failures.add("${meta.relPath}: ${failure.message ?: failure::class.simpleName}")
                 }
@@ -93,10 +118,14 @@ class FolderBrowser(private val pool: BackendPool, private val log: AppLog = App
 
         log.info(
             "browse",
-            if (failures.isEmpty()) "copied $copied item(s)" else "copied $copied item(s), ${failures.size} failed",
+            when {
+                cancelled -> "copied $copied item(s), then cancelled"
+                failures.isEmpty() -> "copied $copied item(s)"
+                else -> "copied $copied item(s), ${failures.size} failed"
+            },
             "$fromDirectory -> $toDirectory",
         )
-        return TransferOutcome(copied = copied, bytes = bytes, failures = failures)
+        return TransferOutcome(copied = copied, bytes = bytes, failures = failures, cancelled = cancelled)
     }
 
     private suspend fun copyFile(
@@ -105,6 +134,7 @@ class FolderBrowser(private val pool: BackendPool, private val log: AppLog = App
         target: RemoteBackend,
         targetRoot: RootRef,
         meta: FileMeta,
+        control: PauseGate,
         onProgress: (Long) -> Unit,
     ): Long {
         val reader = source.openRead(sourceRoot, meta.relPath, offset = 0, length = meta.size)
@@ -119,6 +149,7 @@ class FolderBrowser(private val pool: BackendPool, private val log: AppLog = App
             try {
                 var written = 0L
                 while (true) {
+                    control.awaitGo()
                     val chunk = reader.read(ChunkPlan.DEFAULT_CHUNK_SIZE) ?: break
                     writer.write(chunk.data, 0, chunk.length)
                     written += chunk.length

@@ -367,6 +367,7 @@ class AppState(
         service.browsing.transfer(from) { outcome ->
             val tone = if (outcome.ok) NoticeKind.SUCCESS else NoticeKind.WARNING
             val text = when {
+                outcome.cancelled -> "已取消：传送了 ${outcome.copied} 项"
                 !outcome.ok -> "传送了 ${outcome.copied} 项，${outcome.failures.size} 项失败：${outcome.failures.first()}"
                 outcome.copied == 0 -> "没有需要传送的内容"
                 else -> "已传送 ${outcome.copied} 项（${Format.bytes(outcome.bytes)}）"
@@ -499,9 +500,12 @@ class AppState(
         )
         dismissNotice()
 
+        val gate = io.github.cubsync.core.engine.PauseGate()
+        runGate = gate
+        runPaused = false
         runTask = scope.launch {
             try {
-                val result = service.run(prepared, jobId = jobId, observer = WindowObserver())
+                val result = service.run(prepared, jobId = jobId, observer = WindowObserver(), gate = gate)
                 reloadJobs()
                 selectedJobId = result.jobId
                 jobsSegment = JobsSegment.JOBS
@@ -518,9 +522,26 @@ class AppState(
         }
     }
 
+    /** 暂停 / 继续 the run in flight. Pauses between blocks; nothing is torn down. */
+    var runPaused by mutableStateOf(false)
+        private set
+
+    private var runGate: io.github.cubsync.core.engine.PauseGate? = null
+
+    fun pauseRun() {
+        runGate?.pause()
+        runPaused = true
+    }
+
+    fun resumeRun() {
+        runGate?.resume()
+        runPaused = false
+    }
+
     fun cancelRun() {
         val task = runTask ?: return
         running = null
+        runPaused = false
         task.cancel()
     }
 

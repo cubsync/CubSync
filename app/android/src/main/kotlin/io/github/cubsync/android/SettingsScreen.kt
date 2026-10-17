@@ -110,7 +110,7 @@ fun SettingsScreen(state: AndroidAppState) {
 
         SectionLabel("浏览与传输")
         Panel(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-            SettingRow("默认显示方式", "${settings.defaultDisplayMode.label}（条目 40dp · 行高 72dp）") {
+            SettingRow("默认显示方式", settings.defaultDisplayMode.label) {
                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     for (mode in DisplayMode.entries) {
                         val active = settings.defaultDisplayMode == mode
@@ -171,14 +171,17 @@ fun SettingsScreen(state: AndroidAppState) {
             SettingRow("缓冲块数", "1MB × ${settings.bufferBlocks}") {
                 StepperField(
                     value = settings.bufferBlocks,
-                    onChange = { value -> state.changeSettings { it.bufferBlocks = value } },
+                    onChange = { value ->
+                        state.changeSettings { it.bufferBlocks = Buffering.clamp(value) }
+                        state.notify(Buffering.RESERVED, NoticeKind.INFO)
+                    },
                     canDecrease = settings.bufferBlocks > Buffering.MIN,
                     canIncrease = settings.bufferBlocks < Buffering.MAX,
                     fieldWidth = 24,
                 )
             }
 
-            SettingRow("默认接收目录", "/storage/emulated/0/Download") {
+            SettingRow("默认接收目录", settings.defaultReceiveDir.ifEmpty { "用对面的当前目录" }) {
                 Field(
                     value = settings.defaultReceiveDir,
                     onValueChange = { value -> state.changeSettings { it.defaultReceiveDir = value } },
@@ -223,7 +226,4 @@ fun SettingsScreen(state: AndroidAppState) {
         Spacer(Modifier.height(16.dp))
     }
 }
-
-/** An accent, with the name the design gives it. */
-private data class Accent(val name: String, val hex: String)
 

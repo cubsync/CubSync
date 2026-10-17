@@ -119,10 +119,13 @@ fun SettingsScreen(state: AppState) {
                     )
                 }
 
-                SettingRow("缓冲块数", "${Buffering.MIN}–${Buffering.MAX}，同时留多少块在传输中") {
+                SettingRow("缓冲块数", "1MB × ${settings.bufferBlocks}") {
                     StepperField(
                         value = settings.bufferBlocks,
-                        onChange = { value -> state.changeSettings { it.bufferBlocks = value } },
+                        onChange = { value ->
+                            state.changeSettings { it.bufferBlocks = Buffering.clamp(value) }
+                            state.notify(Buffering.RESERVED, NoticeKind.INFO)
+                        },
                         canDecrease = settings.bufferBlocks > Buffering.MIN,
                         canIncrease = settings.bufferBlocks < Buffering.MAX,
                         fieldWidth = 26,

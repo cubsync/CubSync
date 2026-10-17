@@ -105,6 +105,22 @@ class PhoneScreenshotTest {
             // 抽屉
             fixture.state.drawerOpen = true
             shot("11-drawer", fixture)
+            fixture.state.drawerOpen = false
+
+            // 传输 · 对比档（两栏按名称对齐，缺项是灰行）
+            fixture.state.setDisplayMode(Side.LEFT, io.github.cubsync.service.DisplayMode.COMPARE)
+            shot("12-transfer-compare", fixture)
+
+            // 传输 · 卡片档（网格，列数来自设置）
+            fixture.state.setDisplayMode(Side.LEFT, io.github.cubsync.service.DisplayMode.CARD)
+            fixture.state.setDisplayMode(Side.RIGHT, io.github.cubsync.service.DisplayMode.CARD)
+            shot("13-transfer-card", fixture)
+
+            // 副行 ⋮ 的「更多」
+            fixture.state.setDisplayMode(Side.LEFT, io.github.cubsync.service.DisplayMode.DETAIL)
+            fixture.state.setDisplayMode(Side.RIGHT, io.github.cubsync.service.DisplayMode.DETAIL)
+            fixture.state.moreSheet = true
+            shot("14-more-sheet", fixture)
         } finally {
             fixture.close()
         }

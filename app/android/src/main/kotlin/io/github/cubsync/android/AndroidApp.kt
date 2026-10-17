@@ -485,11 +485,12 @@ private fun ScreenMenu(state: AndroidAppState) {
 private fun Overlays(state: AndroidAppState) {
     val paneMenu = state.paneMenu
     val sheet = state.actionSheet
-    if (paneMenu == null && sheet == null) return
+    if (paneMenu == null && sheet == null && !state.moreSheet) return
     Box(Modifier.fillMaxSize()) {
         when {
             paneMenu != null -> PaneSheet(state, paneMenu)
             sheet != null -> ActionSheetPanel(state, sheet)
+            state.moreSheet -> MoreSheet(state)
         }
     }
 }
@@ -593,8 +594,8 @@ fun RunningScreen(state: AndroidAppState, jobId: String) {
         }
 
         Panel(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
-            CardButton("暂停", CardButtonKind.TONAL) {
-                state.notify("协议还没实现暂停，只能取消；取消会保留续传信息", NoticeKind.WARNING)
+            CardButton(if (state.runPaused) "继续" else "暂停", CardButtonKind.TONAL) {
+                if (state.runPaused) state.resumeRun() else state.pauseRun()
             }
             CardButton("取消并保留续传信息", CardButtonKind.OUTLINED) { state.cancelRun() }
         }

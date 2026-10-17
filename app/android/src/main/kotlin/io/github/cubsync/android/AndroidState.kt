@@ -133,6 +133,14 @@ class AndroidAppState(
     var showSoloLocal by mutableStateOf(false)
     var showSoloRemote by mutableStateOf(false)
 
+    /**
+     * 副行最右那颗 ⋮: 新建文件夹 / 多选 / 收藏当前目录 / 收藏列表 / 放大 / 缩小.
+     *
+     * A separate panel from the per-pane ⋮, which is 排序与作用范围 — the prototype keeps
+     * them apart so one control does not mean two things depending on where it was tapped.
+     */
+    var moreSheet by mutableStateOf(false)
+
     /** The top bar's ⋮ menu, which is a different list on every screen. */
     var screenMenu by mutableStateOf(false)
 
@@ -313,6 +321,7 @@ class AndroidAppState(
         service.browsing.transfer(from) { outcome ->
             val tone = if (outcome.ok) NoticeKind.SUCCESS else NoticeKind.WARNING
             val text = when {
+                outcome.cancelled -> "已取消：传送了 ${outcome.copied} 项"
                 !outcome.ok -> "传送了 ${outcome.copied} 项，${outcome.failures.size} 项失败"
                 outcome.copied == 0 -> "没有需要传送的内容"
                 else -> "已传送 ${outcome.copied} 项（${Format.bytes(outcome.bytes)}）"
@@ -346,6 +355,16 @@ class AndroidAppState(
     fun setDisplayMode(side: Side, mode: io.github.cubsync.service.DisplayMode) {
         service.browsing.setDisplayMode(side, mode)
         revision++
+    }
+
+    /** 多选: the sub-row's ⋮ toggles it, and the row tap follows it. */
+    fun toggleMultiSelect() {
+        service.browsing.toggleMultiSelect()
+        revision++
+        notify(
+            if (service.browsing.multiSelect.value) "多选：单击行＝勾选，不再进入目录" else "多选已关：单击目录＝进入",
+            NoticeKind.INFO,
+        )
     }
 
     fun newFolder(side: Side) {
@@ -495,9 +514,12 @@ class AndroidAppState(
         dismissNotice()
         open(Route.Running(jobId))
 
+        val gate = io.github.cubsync.core.engine.PauseGate()
+        runGate = gate
+        runPaused = false
         runTask = scope.launch {
             try {
-                val result = service.run(prepared, jobId = jobId, observer = PhoneObserver())
+                val result = service.run(prepared, jobId = jobId, observer = PhoneObserver(), gate = gate)
                 reloadJobs()
                 go(Section.JOBS)
                 // The run screen becomes the job's detail screen when it finishes, which
@@ -511,6 +533,8 @@ class AndroidAppState(
             } finally {
                 running = null
                 runTask = null
+                runGate = null
+                runPaused = false
             }
         }
     }
@@ -533,9 +557,26 @@ class AndroidAppState(
         }
     }
 
+    /** 暂停 / 继续 the run in flight, between blocks rather than by tearing it down. */
+    var runPaused by mutableStateOf(false)
+        private set
+
+    private var runGate: io.github.cubsync.core.engine.PauseGate? = null
+
+    fun pauseRun() {
+        runGate?.pause()
+        runPaused = true
+    }
+
+    fun resumeRun() {
+        runGate?.resume()
+        runPaused = false
+    }
+
     fun cancelRun() {
         val task = runTask ?: return
         running = null
+        runPaused = false
         task.cancel()
     }
 

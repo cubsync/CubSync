@@ -3,6 +3,7 @@ package io.github.cubsync.service
 import io.github.cubsync.core.engine.ActionKind
 import io.github.cubsync.core.engine.JobListener
 import io.github.cubsync.core.engine.JobResult
+import io.github.cubsync.core.engine.PauseGate
 import io.github.cubsync.core.engine.JobRunner
 import io.github.cubsync.core.engine.JobStatus
 import io.github.cubsync.core.engine.PairOutcome
@@ -127,6 +128,8 @@ class SyncService(
          * moved no files.
          */
         record: Boolean = true,
+        /** 暂停 / 继续 for this run; null when nobody can pause it. */
+        gate: PauseGate? = null,
     ): JobResult {
         val owned = pool == null
         val actual = pool ?: BackendPool(
@@ -152,6 +155,10 @@ class SyncService(
                 backends = actual.resolver,
                 snapshots = configs.snapshotStore(),
                 listener = listener,
+                // The setting is somebody's answer to "may a copy continue where it
+                // stopped", so the engine has to read it rather than always continuing.
+                resumeEnabled = settings.resumeEnabled,
+                gate = gate,
             )
             val result = runner.run(config, jobId)
             log.write(

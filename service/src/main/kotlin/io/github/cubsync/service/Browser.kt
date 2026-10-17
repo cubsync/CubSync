@@ -23,6 +23,33 @@ data class CompareRow(
 )
 
 /**
+ * How one pane should mark a compare line.
+ *
+ * The prototype does not print the difference in a column beside the rows — both panes
+ * keep their own columns, and the mark is a coloured edge plus a dimmed ghost row. So the
+ * thing a screen needs is not the sentence but the mark.
+ */
+enum class CompareMark {
+    SAME,
+    ONLY_HERE,
+    DIFFERS,
+    MISSING,
+}
+
+/** A compare line as one pane draws it: this side's row, or the hole where it would be. */
+data class CompareLine(
+    val name: String,
+    val entry: FileMeta?,
+    val mark: CompareMark,
+    /** What the other side has, so a ghost row can still draw the right icon. */
+    val elsewhere: FileMeta? = null,
+) {
+    val ghost: Boolean get() = entry == null
+    /** The row to describe when this side has none: the other side's, for the ghost. */
+    val shown: FileMeta? get() = entry ?: elsewhere
+}
+
+/**
  * Pure browsing arithmetic: order, paths, breadcrumbs, differences.
  *
  * Everything here is a function of its arguments, which is what makes it testable as a
@@ -115,7 +142,7 @@ object Browsing {
         val hidden = trailing.size - keep
         return buildList {
             add(Crumb(anchorLabel, anchorPath))
-            add(Crumb("...", under(trailing.take(hidden)), collapsed = true))
+            add(Crumb("⋯", under(trailing.take(hidden)), collapsed = true))
             for (index in hidden until trailing.size) {
                 add(Crumb(trailing[index], under(trailing.take(index + 1))))
             }
@@ -157,8 +184,27 @@ object Browsing {
         }
     }
 
-    private fun differenceBetween(left: FileMeta?, right: FileMeta?): Difference = when {
-        left == null && right == null -> Difference.SAME
+    /**
+     * The same alignment, seen from one pane.
+     *
+     * Both panes stay two panes in 对比: each keeps its own columns and its own rows, and
+     * the names are aligned so a missing file is a real hole rather than a row that
+     * silently disappears. A ghost line carries the name of what the other side has, so
+     * "will be created" and "does not exist here" are the same row.
+     */
+    fun compareLines(rows: List<CompareRow>, side: Side): List<CompareLine> = rows.map { row ->
+        val mine = if (side == Side.LEFT) row.left else row.right
+        val other = if (side == Side.LEFT) row.right else row.left
+        val mark = when {
+            mine == null -> CompareMark.MISSING
+            row.difference == Difference.SAME -> CompareMark.SAME
+            row.difference == Difference.CONTENT_DIFFERS -> CompareMark.DIFFERS
+            else -> CompareMark.ONLY_HERE
+        }
+        CompareLine(row.name, mine, mark, other)
+    }
+
+    private fun differenceBetween(left: FileMeta?, right: FileMeta?): Difference = when {        left == null && right == null -> Difference.SAME
         right == null -> Difference.ONLY_LEFT
         left == null -> Difference.ONLY_RIGHT
         left.isDirectory != right.isDirectory -> Difference.CONTENT_DIFFERS

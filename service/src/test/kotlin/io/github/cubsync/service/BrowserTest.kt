@@ -99,7 +99,7 @@ class BrowserTest {
         assertEquals(emptyList(), short.filter { it.collapsed })
 
         val long = Browsing.crumbs("/sdcard/DCIM/Camera/2026/10/16", maxSegments = 5)
-        assertEquals(listOf("/", "...", "2026", "10", "16"), long.map { it.label })
+        assertEquals(listOf("/", "⋯", "2026", "10", "16"), long.map { it.label })
         val folded = long.single { it.collapsed }
         assertEquals("/sdcard/DCIM/Camera", folded.path, "the fold has to carry the path it hides")
         assertEquals("/sdcard/DCIM/Camera/2026/10/16", long.last().path)
@@ -153,6 +153,33 @@ class BrowserTest {
         val rows = Browsing.compare(listOf(file("a.txt")), emptyList())
         assertEquals(1, rows.size)
         assertEquals(null, rows.first().right)
+    }
+
+    /**
+     * Each pane marks the same alignment from its own side.
+     *
+     * The prototype draws a ghost row where the other side has something this one does
+     * not, and a coloured edge where the two disagree — one mark per line, per pane.
+     */
+    @Test
+    fun each_pane_marks_the_alignment_from_its_own_side() {
+        val rows = Browsing.compare(
+            listOf(file("same.txt", size = 1, mtime = 1), file("left.txt", size = 2), file("differs.txt", size = 3)),
+            listOf(file("same.txt", size = 1, mtime = 1), file("right.txt", size = 4), file("differs.txt", size = 9)),
+        )
+
+        val left = Browsing.compareLines(rows, Side.LEFT).associateBy { it.name }
+        val right = Browsing.compareLines(rows, Side.RIGHT).associateBy { it.name }
+
+        assertEquals(CompareMark.SAME, left.getValue("same.txt").mark)
+        assertEquals(CompareMark.ONLY_HERE, left.getValue("left.txt").mark)
+        assertEquals(CompareMark.DIFFERS, left.getValue("differs.txt").mark)
+        assertEquals(CompareMark.MISSING, left.getValue("right.txt").mark)
+        assertTrue(left.getValue("right.txt").ghost)
+
+        assertEquals(CompareMark.MISSING, right.getValue("left.txt").mark)
+        assertEquals(CompareMark.ONLY_HERE, right.getValue("right.txt").mark)
+        assertEquals(9, right.getValue("differs.txt").entry?.size)
     }
 
     // ------------------------------------------------------------------- steps

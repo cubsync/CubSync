@@ -213,7 +213,10 @@ private fun JobDetailScreen(state: AppState, showLogs: Boolean) {
             val config = state.configs.firstOrNull { it.configId == job.configId }
             when {
                 state.running != null -> {
-                    QuietButton("暂停 / 取消", danger = true) { state.cancelRun() }
+                    QuietButton(if (state.runPaused) "继续" else "暂停") {
+                        if (state.runPaused) state.resumeRun() else state.pauseRun()
+                    }
+                    QuietButton("取消", danger = true) { state.cancelRun() }
                 }
                 detail.canRetryFailedPairs -> {
                     PrimaryButton("重试失败对") {

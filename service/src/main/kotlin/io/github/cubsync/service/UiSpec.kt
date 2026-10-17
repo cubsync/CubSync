@@ -372,6 +372,16 @@ object Buffering {
     const val MIN = 1
     const val MAX = 1024
 
+    /**
+     * What changing the field says today.
+     *
+     * The number is stored and shown, but the copy pipeline reads one 1MB block at a
+     * time: there is no queue of blocks in flight to size yet. Saying so on the change is
+     * the same treatment the prototype's unwired channels get — the control stays, the
+     * sentence tells the truth.
+     */
+    const val RESERVED = "缓冲块数已记下：读写目前按 1MB 块顺序进行，并行块队列还没接上"
+
     fun clamp(value: Int): Int = value.coerceIn(MIN, MAX)
 }
 
