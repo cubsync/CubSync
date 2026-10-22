@@ -757,7 +757,7 @@ private fun TransferBar(state: AppState) {
                 Text(
                     when {
                         progress != null -> progressLine(progress!!)
-                        running != null -> Format.duration(System.currentTimeMillis() - running.startedAtMs)
+                        running != null -> Format.duration(state.now() - running.startedAtMs)
                         else -> "选中文件后点中间的 → / ← 发起传输"
                     },
                     style = CubType.meta,

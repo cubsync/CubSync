@@ -271,7 +271,7 @@ private fun ChannelsCard(state: AppState, server: ServerState) {
     }
     val adbOn = selected.contains(Channels.USB_ADB_NAME)
     val rate = state.running?.let {
-        val elapsed = System.currentTimeMillis() - it.startedAtMs
+        val elapsed = state.now() - it.startedAtMs
         if (elapsed > 0) Format.rate(it.bytes, elapsed) else DASH
     } ?: DASH
 

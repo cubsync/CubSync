@@ -612,7 +612,7 @@ private fun Overlays(state: AndroidAppState) {
 fun RunningScreen(state: AndroidAppState, jobId: String) {
     val colors = CubTheme.colors
     val running = state.running
-    val elapsed = running?.let { System.currentTimeMillis() - it.startedAtMs } ?: 0
+    val elapsed = running?.let { state.now() - it.startedAtMs } ?: 0
 
     if (running == null) {
         EmptyState(

@@ -446,7 +446,7 @@ private fun HeadActions(state: AppState) {
 private fun StatusBar(state: AppState, server: ServerState) {
     val colors = CubTheme.colors
     val running = state.running
-    val elapsed = if (running != null) System.currentTimeMillis() - running.startedAtMs else 0
+    val elapsed = if (running != null) state.now() - running.startedAtMs else 0
     val rate = if (running != null && elapsed > 0) Format.rate(running.bytes, elapsed) else DASH
 
     Row(

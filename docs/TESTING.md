@@ -77,6 +77,42 @@ that manifest is debug-only on purpose.
 **CLI tests** (`cli/src/test`) cover argument parsing, the quirks of flags that take
 no value, and the summary format.
 
+## Screenshot baselines
+
+Rendering a screen proves it composes. Comparing it with the picture that screen is
+supposed to be proves something stronger: that a change somewhere else did not
+quietly move it. Both screenshot tests do the second as well as the first.
+
+The baselines are in the repository, drawn by the tests themselves:
+
+| End | Baselines |
+|---|---|
+| Desktop | `app/desktop/src/test/resources/screenshots/<os>/` |
+| Phone | `app/android/src/test/resources/screenshots/phone/<os>/` |
+
+Both are filed per operating system: text goes through the host's rasteriser, and a
+run on Linux is not the same picture as a run on Windows. A machine with no baseline
+for its own system records one and passes, so CI on Linux neither verifies nor lies
+about the Windows baselines. The comparison is only as good as the baseline that
+belongs to the machine running it.
+
+A screen fails when more than 0.1% of its pixels differ by more than 10 per channel.
+The failure names the screen, the share that moved, and the region it moved in, and
+writes three images to `build/screenshots-diff/<screen>/`: the baseline, this run, and
+a diff with the changed pixels in red. That is enough to see which control moved
+without opening the window.
+
+`CUBSYNC_SCREENSHOTS=update` accepts the current rendering as the new baseline:
+
+```
+CUBSYNC_SCREENSHOTS=update ./gradlew :app:desktop:test --tests "*ScreenshotTest*"
+CUBSYNC_SCREENSHOTS=update ./gradlew :app:android:testDebugUnitTest --tests "*PhoneScreenshotTest*"
+```
+
+Run it when the change was meant, and commit the images with the code that changed
+them. A baseline that does not exist yet is written rather than failed, so a screen
+that gains coverage is not a red build on somebody else's machine.
+
 ## End-to-end acceptance
 
 The acceptance for the first milestone is a real transfer between two processes,

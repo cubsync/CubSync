@@ -91,6 +91,8 @@ class AppState(
     val server: ServerController,
     val settings: DesktopSettings,
     private val scope: CoroutineScope,
+    /** Where elapsed times come from; pinned by the screenshot test, untouched by the app. */
+    val now: () -> Long = System::currentTimeMillis,
 ) {
 
     var section by mutableStateOf(Section.CONNECT)
@@ -631,7 +633,7 @@ class AppState(
             configName = prepared.name,
             dryRun = dryRun,
             pairCount = prepared.pairs.size,
-            startedAtMs = System.currentTimeMillis(),
+            startedAtMs = now(),
         )
         dismissNotice()
 

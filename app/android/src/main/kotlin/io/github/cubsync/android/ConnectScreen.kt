@@ -86,7 +86,7 @@ fun ConnectScreen(state: AndroidAppState) {
                 }
                 val running = state.running
                 val rate = if (running != null) {
-                    val elapsed = System.currentTimeMillis() - running.startedAtMs
+                    val elapsed = state.now() - running.startedAtMs
                     if (elapsed > 0) Format.rate(running.bytes, elapsed) else "0.0 MB/s"
                 } else {
                     "0.0 MB/s"

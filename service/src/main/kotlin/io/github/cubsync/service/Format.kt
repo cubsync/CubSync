@@ -23,6 +23,15 @@ object Format {
     private val time = DateTimeFormatter.ofPattern("HH:mm:ss")
     private val dateTime = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss")
 
+    /**
+     * The clock a relative time is measured against.
+     *
+     * "3 分钟前" is the one thing on a screen that is different every time it is drawn.
+     * The screenshot tests pin it so that a picture taken on Tuesday can still be the
+     * baseline on Friday; the application never touches it.
+     */
+    var clock: () -> Long = System::currentTimeMillis
+
     fun bytes(value: Long): String {
         if (value < 0) return "-"
         if (value < 1024) return "$value B"
@@ -52,7 +61,7 @@ object Format {
         if (epochMs <= 0) "-" else dateTime.format(Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()))
 
     /** A rough "how long ago", which is what a person reads in a list. */
-    fun ago(epochMs: Long, now: Long = System.currentTimeMillis()): String {
+    fun ago(epochMs: Long, now: Long = clock()): String {
         if (epochMs <= 0) return "从未"
         val seconds = (now - epochMs) / 1000
         return when {
