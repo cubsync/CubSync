@@ -58,19 +58,25 @@ data class CubColors(
 
 internal val DarkCubColors = CubColors(
     isDark = true,
-    // The phone's dark palette, value for value. The desktop had its own near-black set
-    // (#0F1116 against #141318), so the two ends looked like two products side by side —
-    // and the phone's is the one the design tokens name.
-    background = Color(0xFF141318),
-    surface = Color(0xFF141318),
-    surfaceRaised = Color(0xFF1F1F26),
-    surfaceSunken = Color(0xFF26252C),
+    // `html[data-theme="dark"]`, value for value — the desktop's own dark set, not the
+    // phone's. Taking the phone's (#141318 for both the canvas and the panels) put every
+    // card on the colour it was meant to stand on, and a window of one flat black field
+    // is what "深色模式看不清" looks like: nothing separates, so nothing reads.
+    background = Color(0xFF0F1116),
+    surface = Color(0xFF181B21),
+    surfaceRaised = Color(0xFF1E222A),
+    surfaceSunken = Color(0xFF242932),
     outline = Color(0xFF2A2F39),
-    outlineFaint = Color(0xFF232229),
-    outlineStrong = Color(0xFF3A3942),
-    text = Color(0xFFE6E1E9),
-    textDim = Color(0xFFC9C5D0),
-    textFaint = Color(0xFF8E8A97),
+    outlineFaint = Color(0xFF22262E),
+    outlineStrong = Color(0xFF343A46),
+    text = Color(0xFFE8EBF1),
+    // `--dim` is #98A1B0 and `--dim-2` is #6D7686 in the prototype. Both were raised for
+    // the dark window: at 11–12sp these two carry every explanatory line, and on a panel
+    // the prototype's own values read as grey-on-grey — the complaint that started this.
+    // The structure (canvas, panel, raised, sunken) is still the prototype's, value for
+    // value; only the two text weights moved, and `决策记录` says why.
+    textDim = Color(0xFFC2CAD8),
+    textFaint = Color(0xFF97A0AE),
     accent = Color(0xFF1E88E5),
     // `color-mix(in srgb, var(--win-accent) 14%, transparent)` — translucent on purpose,
     // so it composites over whatever it is put on exactly as the prototype's does.
@@ -81,10 +87,10 @@ internal val DarkCubColors = CubColors(
     success = Color(0xFF2E9E5B),
     conflict = Color(0xFFF0731F),
     info = Color(0xFF3B82F6),
-    rail = Color(0xFF1F1F26),
-    hover = Color(0xFF26252C),
-    selected = Color(0x2E4C6EF5),
-    selectedLine = Color(0xFF4C6EF5),
+    rail = Color(0xFF181B21),
+    hover = Color(0xFF232833),
+    selected = Color(0xFF1D2C3E),
+    selectedLine = Color(0xFF2B5F8F),
 )
 
 internal val LightCubColors = CubColors(

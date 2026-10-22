@@ -128,6 +128,12 @@ object Preview {
         view: DisplayMode? = null,
         displayMenu: Boolean = false,
     ): AppState {
+        // Each state starts from the same tree: the scratch area is emptied here rather
+        // than once per JVM, so a screen cannot be photographed with whatever the test
+        // before it happened to leave behind.
+        runCatching { scratch.toFile().deleteRecursively() }
+        Files.createDirectories(scratch)
+
         val directory = Files.createTempDirectory("cubsync-preview-")
         val log = AppLog(now = { NOW })
         val desktop = DesktopSettings.inStateDirectory(directory)

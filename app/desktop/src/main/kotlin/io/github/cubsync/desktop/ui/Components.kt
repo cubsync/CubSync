@@ -278,7 +278,7 @@ fun SettingRow(
     ) {
         Column(Modifier.weight(1f)) {
             Text(label, style = CubType.label, color = colors.text)
-            if (hint.isNotEmpty()) Text(hint, style = CubType.meta, color = colors.textFaint)
+            if (hint.isNotEmpty()) Text(hint, style = CubType.meta, color = colors.textDim)
         }
         control()
     }
@@ -312,7 +312,7 @@ fun Toggle(checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Uni
 fun KeyValueRow(key: String, value: String, dim: Boolean = false) {
     val colors = CubTheme.colors
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.Top) {
-        Text(key, style = CubType.meta, color = colors.textFaint, modifier = Modifier.width(96.dp))
+        Text(key, style = CubType.meta, color = colors.textDim, modifier = Modifier.width(96.dp))
         Text(
             value.ifEmpty { "—" },
             style = CubType.body,
@@ -459,7 +459,7 @@ fun EmptyState(text: String, detail: String = "", action: (@Composable () -> Uni
         Text(text, style = CubType.body, color = colors.textDim)
         if (detail.isNotEmpty()) {
             Spacer(Modifier.height(4.dp))
-            Text(detail, style = CubType.meta, color = colors.textFaint)
+            Text(detail, style = CubType.meta, color = colors.textDim)
         }
         if (action != null) {
             Spacer(Modifier.height(10.dp))
