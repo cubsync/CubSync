@@ -251,7 +251,10 @@ private fun NegotiationCard(state: AppState, modifier: Modifier) {
 
         Spacer(Modifier.height(14.dp))
         Kv("本机版本 / 远端版本") {
-            "${BuildInfo.PROTOCOL_VERSION * 100} / ${(peer?.protocolVersion ?: 0) * 100}"
+            // No peer is not version zero: an em dash says "nothing to compare with",
+            // where 0 read as a build from before the protocol existed.
+            val remote = peer?.protocolVersion?.let { "${it * 100}" } ?: DASH
+            "${BuildInfo.PROTOCOL_VERSION * 100} / $remote"
         }
         Kv("比对到的能力位") { "$agreed / $total" }
         Kv("v3 老版本远端") { "仅退出双向模式（清晰提示，不错位）" }
