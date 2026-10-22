@@ -12,6 +12,7 @@ import io.github.cubsync.core.model.Endpoint
 import io.github.cubsync.core.model.FolderPair
 import io.github.cubsync.core.model.SyncConfig
 import io.github.cubsync.core.model.SyncDirection
+import io.github.cubsync.core.util.UtcClock
 import io.github.cubsync.service.AppLog
 import io.github.cubsync.service.DisplayMode
 import io.github.cubsync.service.EndpointId
@@ -29,9 +30,22 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.Paths
+import java.nio.file.attribute.FileTime
 
-/** A folder under the preview's own scratch area, created on first use. */
-private val scratch: Path by lazy { Files.createTempDirectory("cubsync-preview-data-") }
+/**
+ * The preview's own scratch area, at a path that does not change.
+ *
+ * A random directory would be drawn in the breadcrumb, and every run would then be a
+ * different picture — the one thing a baseline cannot be. It is emptied first so a run
+ * sees what it seeded and nothing a previous run left behind.
+ */
+private val scratch: Path by lazy {
+    val dir = Paths.get(System.getProperty("java.io.tmpdir"), "cubsync-preview-data")
+    runCatching { dir.toFile().deleteRecursively() }
+    Files.createDirectories(dir)
+    dir
+}
 
 internal fun previewFolder(name: String): Path {
     val path = scratch.resolve(name)
@@ -42,7 +56,10 @@ internal fun previewFolder(name: String): Path {
 /** Writes a file whose length differs from its neighbours', which is what the list shows. */
 private fun seedFile(directory: Path, name: String, length: Int) {
     Files.createDirectories(directory)
-    Files.write(directory.resolve(name), ByteArray(length))
+    val file = directory.resolve(name)
+    Files.write(file, ByteArray(length))
+    // Fixed, so the 修改时间 column reads the same tomorrow as it does today.
+    Files.setLastModifiedTime(file, FileTime.fromMillis(Preview.NOW - 3_600_000))
 }
 
 /**
@@ -112,12 +129,17 @@ object Preview {
         displayMenu: Boolean = false,
     ): AppState {
         val directory = Files.createTempDirectory("cubsync-preview-")
-        val log = AppLog()
+        val log = AppLog(now = { NOW })
         val desktop = DesktopSettings.inStateDirectory(directory)
-        val service = SyncService(stateDirectory = directory, log = log, settingsStorage = desktop)
+        val service = SyncService(
+            stateDirectory = directory,
+            log = log,
+            settingsStorage = desktop,
+            utcClock = UtcClock { NOW },
+        )
         val server = ServerController(log)
         val scope = CoroutineScope(Dispatchers.Unconfined + SupervisorJob())
-        val state = AppState(service, server, desktop, scope)
+        val state = AppState(service, server, desktop, scope, now = { NOW })
 
         seed()
         seedLog(log)
@@ -153,6 +175,15 @@ object Preview {
         state.displayMenu = displayMenu
         return state
     }
+
+    /**
+     * 2026-10-17 20:00 — the moment every preview is drawn at.
+     *
+     * The window writes times: when a run started, when a file changed, how long ago the
+     * last one finished. Left to the wall clock those are different on every run, and a
+     * baseline that never matches is not a baseline.
+     */
+    const val NOW = 1_792_238_400_000L
 
     /** Releases everything the state owns. */
     fun dispose(state: AppState) {
@@ -198,7 +229,7 @@ object Preview {
 
     /** A run that partly failed, because a run that went perfectly shows fewer states. */
     private fun finishedRun(config: SyncConfig): JobRecord {
-        val now = System.currentTimeMillis()
+        val now = NOW
         val first = listOf(
             JobItem("DCIM/Camera/IMG_20261016_0731.jpg", ActionKind.COPY_LEFT_TO_RIGHT, bytes = 2_400),
             JobItem("DCIM/Camera/IMG_20261016_0730.jpg", ActionKind.COPY_LEFT_TO_RIGHT, bytes = 1_950),

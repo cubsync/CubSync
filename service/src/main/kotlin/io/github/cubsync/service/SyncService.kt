@@ -10,6 +10,8 @@ import io.github.cubsync.core.engine.PairOutcome
 import io.github.cubsync.core.model.FolderPair
 import io.github.cubsync.core.model.SyncConfig
 import io.github.cubsync.core.model.SyncDirection
+import io.github.cubsync.core.util.UtcClock
+import io.github.cubsync.core.util.systemUtcClock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -86,6 +88,13 @@ class SyncService(
      * SharedPreferences — while everything that reads it does not.
      */
     settingsStorage: SettingsStorage = SettingsStorage.memory(),
+    /**
+     * Where a run's timestamps come from.
+     *
+     * Handed to the engine rather than left to the wall clock, so a screenshot test can
+     * decide what "now" is and a picture of a finished run stays the same picture.
+     */
+    val utcClock: UtcClock = systemUtcClock(),
 ) {
 
     /** The settings screen's contents, and the browsing preferences derived from them. */
@@ -117,7 +126,7 @@ class SyncService(
 
     suspend fun run(
         config: SyncConfig,
-        jobId: String = newJobId(),
+        jobId: String = newJobId(Instant.ofEpochMilli(utcClock.nowMs())),
         observer: SyncObserver = SyncObserver.NONE,
         pool: BackendPool? = browsePool,
         /**
@@ -159,6 +168,7 @@ class SyncService(
                 // stopped", so the engine has to read it rather than always continuing.
                 resumeEnabled = settings.resumeEnabled,
                 gate = gate,
+                utcClock = utcClock,
             )
             val result = runner.run(config, jobId)
             log.write(

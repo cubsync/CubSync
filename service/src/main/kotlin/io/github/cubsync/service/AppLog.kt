@@ -28,7 +28,16 @@ data class LogEntry(
  * CLI can print it and the desktop app can render it without either knowing how the
  * other works.
  */
-class AppLog(private val limit: Int = DEFAULT_LIMIT) {
+class AppLog(
+    private val limit: Int = DEFAULT_LIMIT,
+    /**
+     * Where a line's timestamp comes from.
+     *
+     * A parameter rather than a call to the wall clock so a screenshot of the log can be
+     * the same picture tomorrow; the application never passes one.
+     */
+    private val now: () -> Long = System::currentTimeMillis,
+) {
 
     private val lock = Any()
     private val buffer = ArrayDeque<LogEntry>(minOf(limit, 256))
@@ -49,7 +58,7 @@ class AppLog(private val limit: Int = DEFAULT_LIMIT) {
 
     fun write(level: LogLevel, area: String, message: String, detail: String = ""): LogEntry {
         val entry = synchronized(lock) {
-            val created = LogEntry(++sequence, System.currentTimeMillis(), level, area, message, detail)
+            val created = LogEntry(++sequence, now(), level, area, message, detail)
             buffer.addLast(created)
             while (buffer.size > limit) {
                 buffer.removeFirst()

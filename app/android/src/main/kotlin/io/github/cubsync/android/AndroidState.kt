@@ -97,6 +97,8 @@ class AndroidAppState(
     val server: ServerController,
     val scope: CoroutineScope,
     val appDirectory: File,
+    /** Where elapsed times come from; pinned by the screenshot test, untouched by the app. */
+    val now: () -> Long = System::currentTimeMillis,
 ) {
 
     var tab by mutableStateOf(Section.CONNECT)
@@ -630,7 +632,7 @@ class AndroidAppState(
             configName = prepared.name,
             dryRun = dryRun,
             pairs = prepared.pairs.map { it.name.ifEmpty { it.pairId } },
-            startedAtMs = System.currentTimeMillis(),
+            startedAtMs = now(),
         )
         dismissNotice()
         open(Route.Running(jobId))

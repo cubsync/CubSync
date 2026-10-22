@@ -24,6 +24,9 @@ dependencies {
     // The screenshot test composes the real screens off screen, so it needs the
     // same runtime the window uses.
     testImplementation(compose.desktop.currentOs)
+    // The baselines those screenshots are compared against — same check the phone runs,
+    // so the two ends cannot drift apart in how a regression is reported.
+    testImplementation(project(":testing"))
 }
 
 compose.desktop {

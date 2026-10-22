@@ -9,17 +9,23 @@ import io.github.cubsync.core.model.Endpoint
 import io.github.cubsync.core.model.FolderPair
 import io.github.cubsync.core.model.SyncConfig
 import io.github.cubsync.core.model.SyncDirection
+import io.github.cubsync.core.util.UtcClock
 import io.github.cubsync.service.AppLog
 import io.github.cubsync.service.EndpointId
+import io.github.cubsync.service.Format
 import io.github.cubsync.service.Section
 import io.github.cubsync.service.ServerController
 import io.github.cubsync.service.SettingsStorage
 import io.github.cubsync.service.Side
 import io.github.cubsync.service.SyncService
 import io.github.cubsync.service.ThemeMode
+import io.github.cubsync.testing.ScreenshotBaseline
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.Paths
+import java.nio.file.attribute.FileTime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -33,6 +39,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import kotlin.test.assertTrue
 
 /**
  * Every phone screen, composed off screen and written to a PNG.
@@ -52,6 +59,9 @@ class PhoneScreenshotTest {
 
     @get:Rule
     val compose = createAndroidComposeRule<ComponentActivity>()
+
+    /** Screens whose rendering no longer matches the baseline, reported together. */
+    private val drifted = ArrayList<String>()
 
     @Test
     fun every_screen_renders() {
@@ -140,9 +150,16 @@ class PhoneScreenshotTest {
         } finally {
             fixture.close()
         }
+        assertTrue(
+            drifted.isEmpty(),
+            "these screens no longer match the baseline:\n\n" + drifted.joinToString("\n\n"),
+        )
     }
 
-    /** Draw the whole window into a PNG, without whatever toast happens to be up. */
+    /**
+     * Draw the whole window into a PNG, without whatever toast happens to be up, and
+     * compare it with the picture this screen is supposed to be.
+     */
     private fun shot(name: String, fixture: Fixture) {
         fixture.state.dismissNotice()
         compose.waitForIdle()
@@ -160,27 +177,46 @@ class PhoneScreenshotTest {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         decor.draw(Canvas(bitmap))
 
+        val bytes = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, bytes)
+        val png = bytes.toByteArray()
+
         val output = File("build/screenshots-phone").apply { mkdirs() }
-        File(output, "$name.png").outputStream().use {
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
-        }
+        File(output, "$name.png").writeBytes(png)
+
+        // Robolectric supplies its own fonts and its own rasteriser, so these baselines are
+        // one set rather than one per operating system.
+        ScreenshotBaseline.compare(name, png, perOperatingSystem = false)?.let { drifted += it }
     }
 
-    /** A state with real folders in it, so a listing and a run have something to show. */
+    /**
+     * A state with real folders in it, so a listing and a run have something to show.
+     *
+     * Everything a screen writes as a time is pinned to [NOW]: the run's clock, the log's
+     * clock, the file timestamps, and the clock "3 分钟前" is measured against. Without
+     * that the pictures would differ every run, and a baseline that is always different
+     * proves nothing.
+     */
     private class Fixture {
-        val directory: Path = Files.createTempDirectory("cubsync-phone-shot-")
-        val log = AppLog()
+        // A path that does not change: it is drawn in the pane's header, and a random
+        // one would make every run a different picture than the last.
+        val directory: Path = Paths.get(System.getProperty("java.io.tmpdir"), "cubsync-phone-shot")
+            .also { runCatching { it.toFile().deleteRecursively() } }
+            .also { Files.createDirectories(it) }
+        val log = AppLog(now = { NOW })
         val service = SyncService(
             stateDirectory = directory,
             log = log,
             settingsStorage = SettingsStorage.memory(),
+            utcClock = UtcClock { NOW },
         )
         val server = ServerController(log)
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-        val state = AndroidAppState(service, server, scope, directory.toFile())
+        val state = AndroidAppState(service, server, scope, directory.toFile(), now = { NOW })
         val jobId: String
 
         init {
+            Format.clock = { NOW }
             val camera = folder("DCIM/Camera")
             seed(camera, "IMG_20261016_0731.jpg", 2_400)
             seed(camera, "IMG_20261016_0730.jpg", 1_950)
@@ -233,7 +269,7 @@ class PhoneScreenshotTest {
                 configName = "照片库",
                 dryRun = false,
                 pairs = listOf("相机 → 备份", "相册 ↔ DCIM/相册", "视频 ↔ Movies", "文档 ↔ Documents"),
-                startedAtMs = System.currentTimeMillis() - 42_000,
+                startedAtMs = NOW - 42_000,
                 currentPair = "视频 ↔ Movies",
                 finishedPairs = 2,
                 bytes = 2_900_000_000L,
@@ -247,12 +283,21 @@ class PhoneScreenshotTest {
         }
 
         private fun seed(directory: Path, name: String, length: Int) {
-            Files.write(directory.resolve(name), ByteArray(length))
+            val file = directory.resolve(name)
+            Files.write(file, ByteArray(length))
+            // Fixed, so the 修改时间 column reads the same in every run.
+            Files.setLastModifiedTime(file, FileTime.fromMillis(NOW - 3_600_000))
         }
 
         fun close() {
             runCatching { state.close() }
             scope.cancel()
+            Format.clock = System::currentTimeMillis
         }
+    }
+
+    private companion object {
+        /** 2026-10-17 20:00, the moment every screenshot is taken at. */
+        const val NOW = 1_792_238_400_000L
     }
 }

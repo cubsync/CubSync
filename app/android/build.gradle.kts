@@ -146,6 +146,9 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation("androidx.compose.ui:ui-test-junit4")
+    // The baselines the phone's screenshots are compared against. A regression is then
+    // reported the same way on both ends instead of only being seen by whoever looks.
+    testImplementation(project(":testing"))
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
