@@ -85,10 +85,16 @@ quietly move it. Both screenshot tests do the second as well as the first.
 
 The baselines are in the repository, drawn by the tests themselves:
 
-| End | Baselines | Scope |
-|---|---|---|
-| Desktop | `app/desktop/src/test/resources/screenshots/windows/` | Per operating system — text rasterisation differs between them. |
-| Phone | `app/android/src/test/resources/screenshots/phone/` | One set, because Robolectric brings its own fonts and draws the same picture everywhere. |
+| End | Baselines |
+|---|---|
+| Desktop | `app/desktop/src/test/resources/screenshots/<os>/` |
+| Phone | `app/android/src/test/resources/screenshots/phone/<os>/` |
+
+Both are filed per operating system: text goes through the host's rasteriser, and a
+run on Linux is not the same picture as a run on Windows. A machine with no baseline
+for its own system records one and passes, so CI on Linux neither verifies nor lies
+about the Windows baselines. The comparison is only as good as the baseline that
+belongs to the machine running it.
 
 A screen fails when more than 0.1% of its pixels differ by more than 10 per channel.
 The failure names the screen, the share that moved, and the region it moved in, and

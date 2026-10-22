@@ -184,9 +184,9 @@ class PhoneScreenshotTest {
         val output = File("build/screenshots-phone").apply { mkdirs() }
         File(output, "$name.png").writeBytes(png)
 
-        // Robolectric supplies its own fonts and its own rasteriser, so these baselines are
-        // one set rather than one per operating system.
-        ScreenshotBaseline.compare(name, png, perOperatingSystem = false)?.let { drifted += it }
+        // Filed per operating system like the desktop's: Robolectric draws with the host's
+        // text rasteriser, and a picture from Windows is not the picture Linux produces.
+        ScreenshotBaseline.compare(name, png, category = "phone")?.let { drifted += it }
     }
 
     /**

@@ -16,9 +16,10 @@ import javax.imageio.ImageIO
  * rendered by the tests themselves, so a difference means the code changed, not that a
  * designer did.
  *
- * Baselines live under `src/test/resources/screenshots`. The desktop's are filed per
- * operating system because text rasterisation differs between them; the phone's are not,
- * because Robolectric brings its own fonts and draws the same picture everywhere.
+ * Baselines live under `src/test/resources/screenshots`, filed per operating system:
+ * both ends draw text through the platform's rasteriser, and a run on Linux is not the
+ * same picture as a run on Windows. A machine with no baseline for its system records
+ * one instead of failing, so the check is honest about what it did or did not verify.
  *
  * Set `CUBSYNC_SCREENSHOTS=update` to accept the current rendering as the new baseline.
  * A missing baseline is written rather than failed, so a screen that gains coverage is
@@ -45,8 +46,14 @@ object ScreenshotBaseline {
      * asserts on the message, so a regression reads as "transfer.png: 4.2% of pixels moved"
      * plus the three images it left behind, rather than as a number nobody can act on.
      */
-    fun compare(name: String, png: ByteArray, perOperatingSystem: Boolean = true): String? {
-        val dir = if (perOperatingSystem) baselineRoot.resolve(platform()) else baselineRoot.resolve("phone")
+    fun compare(
+        name: String,
+        png: ByteArray,
+        category: String? = null,
+        perOperatingSystem: Boolean = true,
+    ): String? {
+        val dir = (category?.let { baselineRoot.resolve(it) } ?: baselineRoot)
+            .let { if (perOperatingSystem) it.resolve(platform()) else it }
         val baseline = dir.resolve("$name.png")
         Files.createDirectories(dir)
 
