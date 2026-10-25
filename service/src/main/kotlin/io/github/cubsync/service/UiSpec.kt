@@ -178,9 +178,6 @@ object Channels {
     const val USB_ADB_NAME = "USB_ADB"
     const val USB_ADB_ADDRESS = "127.0.0.1:5740"
 
-    /** What tapping the adb row says while the link is still a promise. */
-    const val ADB_RESERVED = "USB-ADB 已留位：协议支持，链路尚未打通，传输目前仍走局域网"
-
     /** The same, for 多链路. */
     const val MULTI_LINK_RESERVED = "多链路已留位：协议支持多链路，传输目前仍走其中一条"
 }
