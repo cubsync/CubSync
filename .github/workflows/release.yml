@@ -256,7 +256,11 @@ jobs:
           # An idempotent create cannot prevent it, because the loser does not get
           # "already exists"; it gets a second release. So this job only waits: the
           # release is created once, by the job that also builds the installer.
-          for attempt in $(seq 1 20); do
+          # Fifteen minutes, not five: the windows job builds the installer *and* the
+          # zip before it creates the release, and on a cold runner that is longer than
+          # the quarter of an hour this waits. v0.3.15 failed here — the draft existed by
+          # the time the timeout fired, and the APK never uploaded.
+          for attempt in $(seq 1 60); do
             if release_exists; then
               break
             fi
