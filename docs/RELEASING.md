@@ -133,3 +133,22 @@ If `Protocol.VERSION` changes:
   meaningful again, and the downgrade path needs a real test.
 - Both ends must be able to keep talking at the lower version, or the release notes
   have to say plainly that they cannot.
+
+## 版本与验证（2026-10-25 定）
+
+**没通过验证的改动，不升版本号。** 版本号是「这一份包给川验证」的标签，不是每次提交的计数器。
+
+| 阶段 | 做法 |
+|---|---|
+| 改一处、要给他看 | 版本号**不动**，改动累积在当前未通过的版本上 |
+| 要重新出包 | 重打**同一个** tag；draft 未 publish 时允许，资产 `--clobber` 覆盖 |
+| 他验证通过 | 才把版本号 +1，写 `docs/releases/v<新版本>.md`，打新 tag 出 draft |
+| draft 已 publish | tag 与资产**冻结**，只能发下一版 |
+
+重打 tag 只对未发布的 draft 有效。已 publish 的版本再重打，等于改历史：别人下载过的东西和仓库对不上。
+
+**每条改动走 PR，不绕过规则。** `main` 上的 `Changes must be made through a pull request` 是给所有人（包括维护者）定的；`Repository admin` 的 bypass 只在修 CI 自身、且 PR 无法验证时用，用过就在提交信息里写一句为什么。
+
+**本地先出包，再等 CI。** `脚本/local-release.py` 两分钟出 `发布/win64/`（含 APK），要验证的永远是这一份；CI 负责正式签名的 draft，不该成为验证的等待点。
+
+**截图基线跟着版本号走。** 状态栏与设置页都画版本号，所以升版本会改动全部桌面基线：先 `CUBSYNC_SCREENSHOTS=update` 收基线，再提交。若是重打同一个版本（版本号没变），基线不该变——变了说明界面真的动了。
