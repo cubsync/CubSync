@@ -92,15 +92,16 @@ fun ConnectScreen(state: AndroidAppState) {
                     "0.0 MB/s"
                 }
 
-                // The design leads with the adb loopback: a channel the protocol promises
-                // and this build has not opened. It is drawn and it is tappable, and tapping
-                // it says which of those two things is true.
+                // The design leads with the adb loopback. The link is opened by the desktop
+                // (`adb forward` runs on the host, not here), so on the phone this row is a
+                // view of the cable rather than a switch: the phone is already serving, and
+                // the switch stays off because nothing on this side turns it on.
                 CardRow(
                     title = Channels.USB_ADB_NAME,
                     detail = "${Channels.USB_ADB_ADDRESS} · $rate",
                     icon = IconPaths.DEVICE,
-                    onClick = { state.notify(Channels.ADB_RESERVED, NoticeKind.INFO) },
-                    trailing = { Toggle(false) { state.notify(Channels.ADB_RESERVED, NoticeKind.INFO) } },
+                    onClick = {},
+                    trailing = { Toggle(false) {} },
                 )
                 for (nic in nics) {
                     CardRow(

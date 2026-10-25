@@ -284,7 +284,9 @@ private fun ChannelsCard(state: AppState, server: ServerState) {
             address = Channels.USB_ADB_ADDRESS,
             rate = if (adbOn) rate else "0.0 MB/s",
             enabled = adbOn,
-            onClick = { state.notify(Channels.ADB_RESERVED, NoticeKind.INFO) },
+            // The link is real now: this row is the `adb forward` it opened, so tapping it
+            // looks for devices instead of apologising for a promise.
+            onClick = { state.refreshAdb() },
         )
         for (nic in nics) {
             ChannelRow(
