@@ -178,6 +178,16 @@ object Channels {
     const val USB_ADB_NAME = "USB_ADB"
     const val USB_ADB_ADDRESS = "127.0.0.1:5740"
 
+    /**
+     * What the phone's adb row says when tapped.
+     *
+     * The row is drawn — the prototype leads with it — but nothing on the phone turns it
+     * on: the cable becomes a channel when the desktop runs `adb forward`, and this end is
+     * already serving on the same port it serves the network on. A switch that did nothing
+     * was worse than a sentence that explains why there is nothing to switch.
+     */
+    const val ADB_FROM_HOST = "USB-ADB 由电脑端经 adb 转发建立，手机上无需开启"
+
     /** The same, for 多链路. */
     const val MULTI_LINK_RESERVED = "多链路已留位：协议支持多链路，传输目前仍走其中一条"
 }

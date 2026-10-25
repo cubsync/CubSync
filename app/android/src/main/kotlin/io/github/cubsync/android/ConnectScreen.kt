@@ -100,8 +100,10 @@ fun ConnectScreen(state: AndroidAppState) {
                     title = Channels.USB_ADB_NAME,
                     detail = "${Channels.USB_ADB_ADDRESS} · $rate",
                     icon = IconPaths.DEVICE,
-                    onClick = {},
-                    trailing = { Toggle(false) {} },
+                    onClick = { state.notify(Channels.ADB_FROM_HOST, NoticeKind.INFO) },
+                    trailing = {
+                        Toggle(false) { state.notify(Channels.ADB_FROM_HOST, NoticeKind.INFO) }
+                    },
                 )
                 for (nic in nics) {
                     CardRow(
