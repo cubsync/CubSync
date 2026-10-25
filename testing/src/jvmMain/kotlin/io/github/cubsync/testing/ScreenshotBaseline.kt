@@ -40,6 +40,17 @@ object ScreenshotBaseline {
         get() = System.getenv("CUBSYNC_SCREENSHOTS")?.equals("update", ignoreCase = true) == true
 
     /**
+     * Whether comparing is worth anything here.
+     *
+     * A baseline belongs to the machine that drew it: the same Windows build on a runner
+     * with a different set of installed fonts moves two percent of the window without a
+     * line of code changing. CI therefore records and does not compare — it proves the
+     * screens compose, and the comparison stays where the baseline was drawn.
+     */
+    private val comparing: Boolean
+        get() = System.getenv("CI").isNullOrEmpty()
+
+    /**
      * Compares the rendering against the baseline, or records it.
      *
      * Returns a failure message, or null when the screen matches. The test that calls this
@@ -57,9 +68,14 @@ object ScreenshotBaseline {
         val baseline = dir.resolve("$name.png")
         Files.createDirectories(dir)
 
-        if (updating || !Files.exists(baseline)) {
+        if (updating || !comparing || !Files.exists(baseline)) {
             Files.write(baseline, png)
-            println("[screenshots] recorded $name -> $baseline")
+            val why = when {
+                updating -> "recording"
+                !comparing -> "recording (CI: a baseline belongs to the machine that drew it)"
+                else -> "first run"
+            }
+            println("[screenshots] $why $name -> $baseline")
             return null
         }
 
