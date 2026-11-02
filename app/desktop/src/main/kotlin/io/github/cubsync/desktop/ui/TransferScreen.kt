@@ -424,31 +424,37 @@ private fun RowLine(
     showMetadata: Boolean,
 ) {
     val colors = CubTheme.colors
+    val multi = state.browsing.multiSelect.collectAsState().value
     var rowOrigin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     Row(
         Modifier
             .fillMaxWidth()
             .height(rowHeight)
             .background(if (selected) colors.selected else Color.Transparent)
-            // 规格 §3.5：单击＝进目录/勾选，**长按＝动作面板**。手机端照此办理，桌面端此前
-            // 只有行尾那颗 ⋮，而规格要求的入口在人按的那一行本身。
-            .combinedClickable(
-                onClick = {
-                    state.browsing.tap(side, entry)
-                    state.touchBrowsing()
-                },
-                onLongClick = {
-                    // Without a position the sheet opens at 0,0 — the top-left corner of the
-                    // window, nowhere near the row that was pressed, which reads as "nothing
-                    // happened". Same offset for a long press and a right click.
-                    state.actionSheetAt = rowOrigin + androidx.compose.ui.geometry.Offset(24f, 28f)
-                    state.actionSheet = io.github.cubsync.desktop.ActionSheet(
-                        side,
-                        entry.relPath,
-                        entry.isDirectory,
-                    )
-                },
-            )
+            // 桌面的点击语义跟着文件管理器走：单击＝选中（勾选）这一行，双击＝进目录。
+            // 多选模式下单击＝切换勾选、不进入，行首出现勾选框。长按/右键＝动作面板。
+            .pointerInput(entry.relPath, multi) {
+                detectTapGestures(
+                    onTap = {
+                        state.browsing.tap(side, entry)
+                        state.touchBrowsing()
+                    },
+                    onDoubleTap = {
+                        if (entry.isDirectory) state.browsing.enter(side, Browsing.name(entry.relPath))
+                    },
+                    onLongPress = {
+                        // Without a position the sheet opens at 0,0 — the top-left corner of
+                        // the window, nowhere near the row that was pressed, which reads as
+                        // "nothing happened". Same offset for a long press and a right click.
+                        state.actionSheetAt = rowOrigin + androidx.compose.ui.geometry.Offset(24f, 28f)
+                        state.actionSheet = io.github.cubsync.desktop.ActionSheet(
+                            side,
+                            entry.relPath,
+                            entry.isDirectory,
+                        )
+                    },
+                )
+            }
             // The screen's own hint says 右键理管, and until now nothing listened for it.
             .onGloballyPositioned { rowOrigin = it.positionInWindow() }
             .onPointerEvent(PointerEventType.Press) { event ->
@@ -462,6 +468,22 @@ private fun RowLine(
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // 多选模式才出现勾选框（原型只在差异档画了它；浏览行出现它是为了让勾选可见，
+        // 记在决策记录里）。点击只切换勾选，不选中、不进入。
+        if (multi) {
+            Box(
+                Modifier
+                    .size(15.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .border(1.5.dp, if (selected) colors.accent else colors.textFaint, RoundedCornerShape(4.dp))
+                    .background(if (selected) colors.accent else Color.Transparent)
+                    .clickable { state.browsing.toggle(side, entry.relPath) },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (selected) CubIcon(io.github.cubsync.service.IconPaths.CHECK, size = 11, tint = Color.White)
+            }
+            Spacer(Modifier.width(8.dp))
+        }
         // `.drow .ico`: folder, image, video or document, before the name.
         CubIcon(
             fileIcon(Browsing.name(entry.relPath), entry.isDirectory),
@@ -1093,7 +1115,13 @@ private fun PaneMenuCard(state: AppState, side: Side) {
             }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
                 QuietButton("全选这一栏") { state.browsing.selectAll(side) }
+                QuietButton("反选") { state.browsing.invertSelection(side) }
                 QuietButton("清空勾选") { state.browsing.clearSelection(side) }
+            }
+            if (multi) {
+                Row(modifier = Modifier.padding(top = 6.dp)) {
+                    QuietButton("退出选择模式") { state.browsing.exitMultiSelect() }
+                }
             }
         }
 

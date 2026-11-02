@@ -367,6 +367,19 @@ class BrowserSession(
         clearSelection(Side.RIGHT)
     }
 
+    /** 反选：这一栏里没勾的全部勾上，勾过的全部拿掉。 */
+    fun invertSelection(side: Side) {
+        val state = current(side)
+        val all = state.entries.map { it.relPath }.toSet()
+        set(side, state.copy(selection = all - state.selection))
+    }
+
+    /** 退出多选：关掉模式并清空勾选，回到单击进目录、双击传送的常规态。 */
+    fun exitMultiSelect() {
+        _multi.value = false
+        clearAllSelections()
+    }
+
     /** How many rows are marked across both panes — the count the sub-row shows. */
     val selectedCount: Int
         get() = current(Side.LEFT).selection.size + current(Side.RIGHT).selection.size
