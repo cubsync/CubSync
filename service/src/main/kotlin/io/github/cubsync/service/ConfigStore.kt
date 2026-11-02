@@ -94,8 +94,32 @@ class ConfigStore(private val base: Path) {
         const val EXPORT_EXTENSION: String = ".cubcfg"
         const val EXTENSION: String = ".json"
 
-        fun defaultBase(): Path =
-            Paths.get(System.getProperty("user.home"), ".cubsync").toAbsolutePath().normalize()
+        /**
+         * Where the state lives, the way VS Code's portable mode decides it.
+         *
+         * A `data` folder next to the launcher means portable: the state rides with the
+         * package, so the whole folder can move to another machine and remember itself.
+         * The green zip ships with an empty `data`, so it is always portable. Without
+         * one — an installer put us under Program Files — the state goes to
+         * `%APPDATA%\CubSync`, the place Windows applications keep theirs.
+         */
+        fun defaultBase(): Path {
+            val appDir = runCatching {
+                // In a jpackage image the JRE sits in `runtime/` next to the launcher,
+                // so java.home's parent is the application folder.
+                Paths.get(System.getProperty("java.home")).parent
+            }.getOrNull()
+            val portable = appDir?.resolve("data")
+            if (portable != null && Files.isDirectory(portable)) {
+                return portable.toAbsolutePath().normalize()
+            }
+            val appdata = System.getenv("APPDATA")
+            return if (!appdata.isNullOrBlank()) {
+                Paths.get(appdata, "CubSync").toAbsolutePath().normalize()
+            } else {
+                Paths.get(System.getProperty("user.home"), ".cubsync").toAbsolutePath().normalize()
+            }
+        }
 
         fun at(configured: String?): ConfigStore =
             ConfigStore(if (configured.isNullOrBlank()) defaultBase() else Paths.get(configured).toAbsolutePath().normalize())
