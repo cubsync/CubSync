@@ -103,12 +103,20 @@ class FolderBrowser(private val pool: BackendPool, private val log: AppLog = App
             }
             for (meta in files) {
                 try {
+                    // The log is the running story of a transfer: a line when a file starts,
+                    // a line when it lands, a line when it dies. The summary below is the
+                    // ending, not the whole book — without these, a long transfer looks
+                    // frozen because nothing has arrived since it began.
+                    log.info("browse", "copying ${meta.relPath}")
                     bytes += copyFile(source, sourceRoot, target, targetRoot, meta, control, onProgress)
                     copied++
+                    log.info("browse", "copied ${meta.relPath}")
                 } catch (stop: RunCancelled) {
+                    log.info("browse", "cancelled at ${meta.relPath}")
                     cancelled = true
                     break
                 } catch (failure: Throwable) {
+                    log.error("browse", "failed ${meta.relPath}", failure.message ?: failure::class.simpleName.orEmpty())
                     failures.add("${meta.relPath}: ${failure.message ?: failure::class.simpleName}")
                 }
             }
