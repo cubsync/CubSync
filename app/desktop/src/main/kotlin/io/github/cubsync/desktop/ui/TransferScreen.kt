@@ -1142,29 +1142,62 @@ private fun ActionSheetCard(state: AppState, side: Side, name: String, isDirecto
             Spacer(Modifier.height(6.dp))
         }
 
-        Action("传送 ▸ 对侧", "把这一项送到另一栏") {
+        // 菜单项不挂说明：说明在 hover 到某一项时浮在卡片底部，像系统右键菜单的
+        // 状态栏那样。要解释的看 hover，熟练的只看动作名。
+        var hoverHint by remember { mutableStateOf<String?>(null) }
+
+        if (state.browsing.current(side).isSelected(name)) {
+            Action("取消选择", "从勾选里拿掉这一项", onHover = { hoverHint = it }) {
+                state.browsing.toggle(side, name)
+                state.actionSheet = null
+            }
+        } else {
+            Action("选择", "勾上这一项并进入多选", onHover = { hoverHint = it }) {
+                if (!state.browsing.multiSelect.value) state.browsing.toggleMultiSelect()
+                state.browsing.toggle(side, name)
+                state.actionSheet = null
+            }
+        }
+        Action("传送 ▸ 对侧", "把这一项送到另一栏", onHover = { hoverHint = it }) {
             state.browsing.select(side, listOf(name))
             state.transfer(side)
             state.actionSheet = null
         }
-        Action("收藏", "把当前目录加进收藏夹") { state.toggleFavourite(side); state.actionSheet = null }
-        Action("过滤", "按名字或后缀排除") {
+        Action("收藏", "把当前目录加进收藏夹", onHover = { hoverHint = it }) { state.toggleFavourite(side); state.actionSheet = null }
+        Action("过滤", "按名字或后缀排除", onHover = { hoverHint = it }) {
             state.notify("过滤器在同步配置的「过滤」里设置，这样两侧规则一致", NoticeKind.INFO)
             state.actionSheet = null
         }
-        Action("重命名", "改成别的名字") { state.renaming = name }
-        Action("详情", "大小、时间、类型") { state.detailOf = side to name }
-        Action(if (isDirectory) "删除目录" else "删除", "进${Words.TRASH}，不是直接销毁", danger = true) {
+        Action("重命名", "改成别的名字", onHover = { hoverHint = it }) { state.renaming = name }
+        Action("详情", "大小、时间、类型", onHover = { hoverHint = it }) { state.detailOf = side to name }
+        Action(if (isDirectory) "删除目录" else "删除", "进${Words.TRASH}，不是直接销毁", danger = true, onHover = { hoverHint = it }) {
             state.browsing.select(side, listOf(name))
             state.deleteSelection(side)
             state.actionSheet = null
         }
+
+        hoverHint?.let { hint ->
+            Spacer(Modifier.height(4.dp))
+            Text(hint, style = CubType.meta, color = colors.textFaint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
-private fun Action(label: String, hint: String, danger: Boolean = false, onClick: () -> Unit) {
-    ListLine(title = label, detail = hint, tint = if (danger) CubTheme.colors.danger else null, onClick = onClick)
+private fun Action(
+    label: String,
+    hint: String,
+    danger: Boolean = false,
+    onHover: (String?) -> Unit,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier.onPointerEvent(PointerEventType.Enter) { onHover(hint) }
+            .onPointerEvent(PointerEventType.Exit) { onHover(null) },
+    ) {
+        ListLine(title = label, tint = if (danger) CubTheme.colors.danger else null, onClick = onClick)
+    }
 }
 
 /** 详情: what the file is, without opening it. */
