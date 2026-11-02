@@ -438,6 +438,10 @@ private fun RowLine(
                     state.touchBrowsing()
                 },
                 onLongClick = {
+                    // Without a position the sheet opens at 0,0 — the top-left corner of the
+                    // window, nowhere near the row that was pressed, which reads as "nothing
+                    // happened". Same offset for a long press and a right click.
+                    state.actionSheetAt = rowOrigin + androidx.compose.ui.geometry.Offset(24f, 28f)
                     state.actionSheet = io.github.cubsync.desktop.ActionSheet(
                         side,
                         entry.relPath,
@@ -722,6 +726,15 @@ private fun TransferBar(state: AppState) {
     val colors = CubTheme.colors
     val running = state.running
     val progress by state.browsing.transferProgress.collectAsState()
+    // 速率没有从引擎来：`TransferProgress` 只有"已传/总量"。起点按这块屏幕第一次看到进度时
+    // 记，进度每推进一块都会重组，所以这个值跟着走。半秒以内不给数，免得第一块就是天文数字。
+    val startedAt = remember(progress != null) { if (progress != null) state.now() else 0L }
+    val elapsedMs = if (progress != null && startedAt > 0) state.now() - startedAt else 0L
+    val rateText = if (progress != null && elapsedMs >= 500) {
+        Format.rate(progress!!.doneBytes, elapsedMs)
+    } else {
+        null
+    }
 
     Column(Modifier.fillMaxWidth()) {
         HorizontalDivider(color = colors.outline)
@@ -756,7 +769,7 @@ private fun TransferBar(state: AppState) {
                 }
                 Text(
                     when {
-                        progress != null -> progressLine(progress!!)
+                        progress != null -> progressLine(progress!!, rateText)
                         running != null -> Format.duration(state.now() - running.startedAtMs)
                         else -> "选中文件后点中间的 → / ← 发起传输"
                     },
@@ -808,8 +821,11 @@ private fun TransferBar(state: AppState) {
 }
 
 /** `已传 / 总量 · 速率`, the line the prototype puts under the name. */
-private fun progressLine(progress: io.github.cubsync.service.TransferProgress): String =
-    "${Format.bytes(progress.doneBytes)} / ${Format.bytes(progress.totalBytes)} · ${progress.totalFiles} 项"
+private fun progressLine(progress: io.github.cubsync.service.TransferProgress, rate: String?): String =
+    buildString {
+        append("${Format.bytes(progress.doneBytes)} / ${Format.bytes(progress.totalBytes)} · ${progress.totalFiles} 项")
+        if (rate != null) append(" · $rate")
+    }
 
 // --------------------------------------------------------------------- overlays
 
@@ -1059,6 +1075,25 @@ private fun PaneMenuCard(state: AppState, side: Side) {
                 }
                 Spacer(Modifier.width(8.dp))
                 Text(if (prefs.foldersFirst) "文件夹排在前面" else "按所选排序统一排列", style = CubType.meta, color = colors.textFaint)
+            }
+        }
+
+        Block("选择") {
+            // 桌面此前没有开多选的地方：`BrowserSession.tap` 在非多选时把文件夹当"进入"，
+            // 于是这一端永远勾不上一个文件夹。手机的多选在「更多」里，这里放进每栏的 ⋮。
+            val multi = state.browsing.multiSelect.collectAsState().value
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Toggle(multi) { state.browsing.toggleMultiSelect() }
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (multi) "单击行＝勾选，文件夹也能勾" else "单击目录＝进入，单击文件＝勾选",
+                    style = CubType.meta,
+                    color = colors.textFaint,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
+                QuietButton("全选这一栏") { state.browsing.selectAll(side) }
+                QuietButton("清空勾选") { state.browsing.clearSelection(side) }
             }
         }
 
