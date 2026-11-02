@@ -45,6 +45,15 @@ data class TransferProgress(
  */
 class FolderBrowser(private val pool: BackendPool, private val log: AppLog = AppLog()) {
 
+    /**
+     * Files that failed in *this session*, keyed by backend and path.
+     *
+     * Resume is allowed only for these: a staging file nobody here remembers — after an
+     * app restart, or for a different file that happens to share the name — must be
+     * written over from zero, or the new transfer would continue the old one's bytes.
+     */
+    private val resumable = mutableSetOf<String>()
+
     /** The entries directly inside [path] on one side. */
     suspend fun list(backendId: String, path: String): List<FileMeta> {
         val backend = pool.resolve(backendId)
@@ -102,20 +111,25 @@ class FolderBrowser(private val pool: BackendPool, private val log: AppLog = App
                     .onFailure { failures.add("${meta.relPath}: ${it.message}") }
             }
             for (meta in files) {
+                val resumeKey = toBackendId + "|" + meta.relPath
                 try {
+                    val mayResume = resumeKey in resumable
+                    if (mayResume) log.info("browse", "resuming " + meta.relPath)
                     // The log is the running story of a transfer: a line when a file starts,
                     // a line when it lands, a line when it dies. The summary below is the
                     // ending, not the whole book — without these, a long transfer looks
                     // frozen because nothing has arrived since it began.
                     log.info("browse", "copying ${meta.relPath}")
-                    bytes += copyFile(source, sourceRoot, target, targetRoot, meta, control, onProgress)
+                    bytes += copyFile(source, sourceRoot, target, targetRoot, meta, control, onProgress, mayResume)
                     copied++
+                    resumable.remove(resumeKey)
                     log.info("browse", "copied ${meta.relPath}")
                 } catch (stop: RunCancelled) {
                     log.info("browse", "cancelled at ${meta.relPath}")
                     cancelled = true
                     break
                 } catch (failure: Throwable) {
+                    resumable.add(resumeKey)
                     log.error("browse", "failed ${meta.relPath}", failure.message ?: failure::class.simpleName.orEmpty())
                     failures.add("${meta.relPath}: ${failure.message ?: failure::class.simpleName}")
                 }
@@ -144,15 +158,26 @@ class FolderBrowser(private val pool: BackendPool, private val log: AppLog = App
         meta: FileMeta,
         control: PauseGate,
         onProgress: (Long) -> Unit,
+        resume: Boolean,
     ): Long {
-        val reader = source.openRead(sourceRoot, meta.relPath, offset = 0, length = meta.size)
+        // The writer opens first: with resume the target reports how many bytes it
+        // already has (its staging file's length — the backend keeps one exactly for
+        // this), and the reader starts there. No staging means offset zero, an
+        // ordinary copy.
+        val writer = target.openWrite(
+            root = targetRoot,
+            relPath = meta.relPath,
+            size = meta.size,
+            mtimeMs = meta.mtimeMs,
+            resume = resume,
+        )
+        val resumeFrom = writer.startOffset.coerceIn(0, meta.size)
         try {
-            val writer = target.openWrite(
-                root = targetRoot,
-                relPath = meta.relPath,
-                size = meta.size,
-                mtimeMs = meta.mtimeMs,
-                resume = false,
+            val reader = source.openRead(
+                sourceRoot,
+                meta.relPath,
+                offset = resumeFrom,
+                length = meta.size - resumeFrom,
             )
             try {
                 var written = 0L
@@ -169,10 +194,10 @@ class FolderBrowser(private val pool: BackendPool, private val log: AppLog = App
                 runCatching { writer.abort() }
                 throw failure
             } finally {
-                runCatching { writer.close() }
+                runCatching { reader.close() }
             }
         } finally {
-            runCatching { reader.close() }
+            runCatching { writer.close() }
         }
     }
 
