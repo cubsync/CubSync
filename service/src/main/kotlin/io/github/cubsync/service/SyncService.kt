@@ -97,33 +97,6 @@ class SyncService(
     val utcClock: UtcClock = systemUtcClock(),
 ) {
 
-    init {
-        migrateLegacyState()
-    }
-
-    /**
-     * The state used to live in `~/.cubsync` before the portable layout existed.
-     * If the new home is empty and the old one has anything, the old one moves —
-     * once, and only when there is nothing to overwrite.
-     */
-    private fun migrateLegacyState() {
-        val legacy = java.nio.file.Paths.get(System.getProperty("user.home"), ".cubsync")
-        if (!java.nio.file.Files.isDirectory(legacy)) return
-        if (legacy.toAbsolutePath().normalize() == stateDirectory.toAbsolutePath().normalize()) return
-        val hasAnything = java.nio.file.Files.list(legacy).use { it.findFirst().isPresent }
-        val fresh = !java.nio.file.Files.isDirectory(stateDirectory) ||
-            java.nio.file.Files.list(stateDirectory).use { it.findFirst().isEmpty }
-        if (hasAnything && fresh) {
-            java.nio.file.Files.createDirectories(stateDirectory.parent)
-            runCatching {
-                java.nio.file.Files.move(legacy, stateDirectory)
-                log.info("setup", "state moved from $legacy to $stateDirectory")
-            }.onFailure {
-                log.error("setup", "could not move state from $legacy", it.message.orEmpty())
-            }
-        }
-    }
-
     /** The settings screen's contents, and the browsing preferences derived from them. */
     val settings: AppSettings = AppSettings(settingsStorage)
 

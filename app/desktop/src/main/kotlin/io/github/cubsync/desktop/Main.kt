@@ -46,11 +46,27 @@ import javax.swing.JFrame
  * screen from quietly starting a second job.
  */
 fun main(arguments: Array<String>) {
+    val log = AppLog()
     val requested = argument(arguments, "--state-dir") ?: AppState.defaultStateDirectory()
     val stateDirectory = Paths.get(requested).toAbsolutePath().normalize()
+    // The state used to live in `~/.cubsync`. It moves here before anything writes
+    // to the new home, item by item — the old folder's *contents*, not the folder —
+    // and only when the new home is empty, so nothing fresh is ever overwritten.
+    runCatching {
+        val legacy = Paths.get(System.getProperty("user.home"), ".cubsync").toAbsolutePath().normalize()
+        if (legacy != stateDirectory && Files.isDirectory(legacy) &&
+            (!Files.isDirectory(stateDirectory) || Files.list(stateDirectory).use { it.findFirst().isEmpty })
+        ) {
+            Files.createDirectories(stateDirectory.parent)
+            Files.list(legacy).use { stream ->
+                stream.forEach { child -> Files.move(child, stateDirectory.resolve(child.fileName)) }
+            }
+            Files.delete(legacy)
+            log.info("setup", "state moved from $legacy to $stateDirectory")
+        }
+    }.onFailure { log.error("setup", "could not move legacy state", it.message.orEmpty()) }
     runCatching { Files.createDirectories(stateDirectory) }
 
-    val log = AppLog()
     val desktop = DesktopSettings.inStateDirectory(stateDirectory)
     val service = SyncService(stateDirectory = stateDirectory, log = log, settingsStorage = desktop)
     val server = ServerController(log)
