@@ -37,8 +37,8 @@ import io.github.cubsync.core.model.SyncDirection
 import io.github.cubsync.desktop.AppState
 import io.github.cubsync.desktop.CubTheme
 import io.github.cubsync.desktop.CubType
-import io.github.cubsync.desktop.NoticeKind
-import io.github.cubsync.desktop.SyncLayer
+import io.github.cubsync.service.NoticeKind
+import io.github.cubsync.service.SyncLayer
 import io.github.cubsync.desktop.pickDirectory
 import io.github.cubsync.service.Format
 import io.github.cubsync.service.PairPreview

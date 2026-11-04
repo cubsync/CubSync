@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.cubsync.service.Format
 import io.github.cubsync.service.Channels
+import io.github.cubsync.service.NoticeKind
 import io.github.cubsync.service.IconPaths
 import io.github.cubsync.service.PathTools
 import io.github.cubsync.service.Peers

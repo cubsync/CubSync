@@ -27,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import io.github.cubsync.service.Format
 import io.github.cubsync.service.IconPaths
 import io.github.cubsync.service.JobDetails
+import io.github.cubsync.service.JobsSegment
+import io.github.cubsync.service.NoticeKind
 import io.github.cubsync.service.JobFileLine
 import io.github.cubsync.service.JobRecord
 import io.github.cubsync.service.LogLevel

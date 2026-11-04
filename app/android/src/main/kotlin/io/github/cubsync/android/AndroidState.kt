@@ -11,6 +11,7 @@ import io.github.cubsync.core.model.FolderPair
 import io.github.cubsync.core.model.Ids
 import io.github.cubsync.core.model.SyncConfig
 import io.github.cubsync.core.protocol.Protocol
+import io.github.cubsync.service.ActionSheet
 import io.github.cubsync.service.AppSettings
 import io.github.cubsync.service.DrawerModel
 import io.github.cubsync.service.EndpointId
@@ -19,11 +20,15 @@ import io.github.cubsync.service.Format
 import io.github.cubsync.service.JobDetails
 import io.github.cubsync.service.JobDetailsFactory
 import io.github.cubsync.service.JobRecord
+import io.github.cubsync.service.JobsSegment
 import io.github.cubsync.service.LogEntry
 import io.github.cubsync.service.LogLevel
+import io.github.cubsync.service.Notice
+import io.github.cubsync.service.NoticeKind
 import io.github.cubsync.service.PathTools
 import io.github.cubsync.service.PeerSession
 import io.github.cubsync.service.Peers
+import io.github.cubsync.service.RunningJob
 import io.github.cubsync.service.RunMode
 import io.github.cubsync.service.Section
 import io.github.cubsync.service.ServerController
@@ -37,32 +42,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.io.File
-
-enum class NoticeKind { INFO, SUCCESS, WARNING, ERROR }
-
-data class Notice(val text: String, val kind: NoticeKind, val atMs: Long = System.currentTimeMillis())
-
-/** Which half of the jobs tab is showing. On a phone the log lives inside the job. */
-enum class JobsSegment(val label: String) { JOBS("作业"), LOGS("日志") }
-
-/** A run that is in flight. */
-data class RunningJob(
-    val jobId: String,
-    val configName: String,
-    val dryRun: Boolean,
-    val pairs: List<String>,
-    val startedAtMs: Long,
-    val currentPair: String = "",
-    val finishedPairs: Int = 0,
-    val bytes: Long = 0,
-) {
-    val pairCount: Int get() = pairs.size
-
-    /** Whole pairs only: the engine reports a pair when it is done, not while it runs. */
-    val fraction: Float get() = if (pairCount == 0) 0f else finishedPairs.toFloat() / pairCount
-
-    val label: String get() = if (dryRun) "试运行" else "同步中"
-}
 
 /**
  * Where the phone is.
@@ -81,9 +60,6 @@ sealed interface Route {
     data class Job(val jobId: String) : Route
     data class PickFolder(val side: Side) : Route
 }
-
-/** A row's long-press panel. */
-data class ActionSheet(val side: Side, val name: String, val isDirectory: Boolean)
 
 /**
  * Everything the phone is showing.
@@ -631,7 +607,8 @@ class AndroidAppState(
             jobId = jobId,
             configName = prepared.name,
             dryRun = dryRun,
-            pairs = prepared.pairs.map { it.name.ifEmpty { it.pairId } },
+            pairCount = prepared.pairs.size,
+            pairNames = prepared.pairs.map { it.name.ifEmpty { it.pairId } },
             startedAtMs = now(),
         )
         dismissNotice()

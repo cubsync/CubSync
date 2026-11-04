@@ -12,6 +12,8 @@ import io.github.cubsync.core.model.SyncDirection
 import io.github.cubsync.core.util.UtcClock
 import io.github.cubsync.service.AppLog
 import io.github.cubsync.service.EndpointId
+import io.github.cubsync.service.JobsSegment
+import io.github.cubsync.service.RunningJob
 import io.github.cubsync.service.Format
 import io.github.cubsync.service.Section
 import io.github.cubsync.service.ServerController
@@ -268,7 +270,8 @@ class PhoneScreenshotTest {
                 jobId = jobId,
                 configName = "照片库",
                 dryRun = false,
-                pairs = listOf("相机 → 备份", "相册 ↔ DCIM/相册", "视频 ↔ Movies", "文档 ↔ Documents"),
+                pairCount = 4,
+                pairNames = listOf("相机 → 备份", "相册 ↔ DCIM/相册", "视频 ↔ Movies", "文档 ↔ Documents"),
                 startedAtMs = NOW - 42_000,
                 currentPair = "视频 ↔ Movies",
                 finishedPairs = 2,

@@ -56,9 +56,11 @@ import io.github.cubsync.core.spi.FileMeta
 import io.github.cubsync.desktop.AppState
 import io.github.cubsync.desktop.CubTheme
 import io.github.cubsync.desktop.CubType
-import io.github.cubsync.desktop.NoticeKind
+import io.github.cubsync.service.NoticeKind
 import io.github.cubsync.desktop.copyToClipboard
 import io.github.cubsync.desktop.openDirectory
+import io.github.cubsync.service.ActionSheet
+import io.github.cubsync.service.PaneMenu
 import io.github.cubsync.service.Browsing
 import io.github.cubsync.service.Columns
 import io.github.cubsync.service.CompareMark
@@ -280,7 +282,7 @@ private fun PaneHeader(state: AppState, side: Side, pane: PaneState, active: Boo
                 tint = if (starred) colors.accent else null,
             ) { state.toggleFavourite(side) }
             IconButton(IconPaths.MORE, size = 26, mark = 16, stroke = 3.4f) {
-                state.overlay.paneMenu = io.github.cubsync.desktop.PaneMenu(side)
+                state.overlay.paneMenu = PaneMenu(side)
             }
         }
         Breadcrumbs(state, side, pane)
@@ -447,7 +449,7 @@ private fun RowLine(
                         // the window, nowhere near the row that was pressed, which reads as
                         // "nothing happened". Same offset for a long press and a right click.
                         state.overlay.actionSheetAt = rowOrigin + androidx.compose.ui.geometry.Offset(24f, 28f)
-                        state.overlay.actionSheet = io.github.cubsync.desktop.ActionSheet(
+                        state.overlay.actionSheet = ActionSheet(
                             side,
                             entry.relPath,
                             entry.isDirectory,
@@ -462,7 +464,7 @@ private fun RowLine(
                     // Where the pointer is, not the middle of the window: a context menu
                     // that opens far from the thing it is about makes the person look for it.
                     state.overlay.actionSheetAt = rowOrigin + event.changes.first().position
-                    state.overlay.actionSheet = io.github.cubsync.desktop.ActionSheet(side, entry.relPath, entry.isDirectory)
+                    state.overlay.actionSheet = ActionSheet(side, entry.relPath, entry.isDirectory)
                 }
             }
             .padding(horizontal = 10.dp),
@@ -544,7 +546,7 @@ private fun GridList(state: AppState, side: Side, pane: PaneState, columns: Int,
                     }
                     .onPointerEvent(PointerEventType.Press) { event ->
                         if (event.buttons.isSecondaryPressed) {
-                            state.overlay.actionSheet = io.github.cubsync.desktop.ActionSheet(side, entry.relPath, entry.isDirectory)
+                            state.overlay.actionSheet = ActionSheet(side, entry.relPath, entry.isDirectory)
                         }
                     }
                     .padding(8.dp),
@@ -625,7 +627,7 @@ private fun ComparePane(state: AppState, side: Side, pane: PaneState, density: I
                                         state.touchBrowsing()
                                     },
                                     onLongClick = {
-                                        state.overlay.actionSheet = io.github.cubsync.desktop.ActionSheet(
+                                        state.overlay.actionSheet = ActionSheet(
                                             side,
                                             line.name,
                                             entry.isDirectory,

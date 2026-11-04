@@ -38,8 +38,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.github.cubsync.service.ActionSheet
 import io.github.cubsync.service.Format
 import io.github.cubsync.service.IconPaths
+import io.github.cubsync.service.JobsSegment
+import io.github.cubsync.service.NoticeKind
 import io.github.cubsync.service.Section
 import io.github.cubsync.service.Words
 import kotlinx.coroutines.delay
@@ -660,7 +663,7 @@ fun RunningScreen(state: AndroidAppState, jobId: String) {
 
         Panel(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
             Text("按文件夹对", style = CubType.rowTitle, color = colors.text)
-            for ((index, name) in running.pairs.withIndex()) {
+            for ((index, name) in running.pairNames.withIndex()) {
                 val done = index < running.finishedPairs
                 val active = name == running.currentPair && !done
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import io.github.cubsync.service.Accent
 import io.github.cubsync.service.AppSettings
+import io.github.cubsync.service.NoticeKind
 import io.github.cubsync.service.Buffering
 import io.github.cubsync.service.BuildInfo
 import io.github.cubsync.service.Columns

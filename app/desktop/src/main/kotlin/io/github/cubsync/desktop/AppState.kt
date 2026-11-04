@@ -11,25 +11,33 @@ import io.github.cubsync.core.model.FolderPair
 import io.github.cubsync.core.model.Ids
 import io.github.cubsync.core.model.SyncConfig
 import io.github.cubsync.core.protocol.Protocol
+import io.github.cubsync.service.ActionSheet
 import io.github.cubsync.service.AppSettings
 import io.github.cubsync.service.ConfigStore
 import io.github.cubsync.service.DisplayMode
 import io.github.cubsync.service.DrawerModel
 import io.github.cubsync.service.EndpointId
+import io.github.cubsync.service.FavDialog
 import io.github.cubsync.service.Favorite
 import io.github.cubsync.service.Format
 import io.github.cubsync.service.JobDetails
 import io.github.cubsync.service.JobDetailsFactory
 import io.github.cubsync.service.JobRecord
+import io.github.cubsync.service.JobsSegment
 import io.github.cubsync.service.LogEntry
 import io.github.cubsync.service.LogLevel
+import io.github.cubsync.service.Notice
+import io.github.cubsync.service.NoticeKind
+import io.github.cubsync.service.PaneMenu
 import io.github.cubsync.service.PathTools
 import io.github.cubsync.service.PeerSession
+import io.github.cubsync.service.RunningJob
 import io.github.cubsync.service.Scope
 import io.github.cubsync.service.Section
 import io.github.cubsync.service.ServerController
 import io.github.cubsync.service.ServerState
 import io.github.cubsync.service.Side
+import io.github.cubsync.service.SyncLayer
 import io.github.cubsync.service.SyncObserver
 import io.github.cubsync.service.SyncPreview
 import io.github.cubsync.service.state.ConnectState
@@ -40,46 +48,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-enum class NoticeKind { INFO, SUCCESS, WARNING, ERROR }
-
-data class Notice(val text: String, val kind: NoticeKind, val atMs: Long = System.currentTimeMillis())
-
-/** Which layer of the sync section is open. The desktop puts them side by side. */
-enum class SyncLayer { LIST, DETAIL, PREVIEW }
-
-/** The two halves of the jobs section. On the desktop the log also has its own entry. */
-enum class JobsSegment(val label: String) { JOBS("作业"), LOGS("日志") }
-
-/** A run that is in flight, as the window needs to show it. */
-data class RunningJob(
-    val jobId: String,
-    val configName: String,
-    val dryRun: Boolean,
-    val pairCount: Int,
-    val startedAtMs: Long,
-    val finishedPairs: Int = 0,
-    val currentPair: String = "",
-    val bytes: Long = 0,
-) {
-    val label: String get() = if (dryRun) "试运行" else "同步中"
-
-    /** Whole pairs finished, which is the only progress the engine reports. */
-    val percent: Int get() = if (pairCount <= 0) 0 else finishedPairs * 100 / pairCount
-}
-
-/** Which pane's ⋮ menu is open, if any. */
-data class PaneMenu(val side: Side)
-
-/** The long-press action panel for one row. */
-data class ActionSheet(val side: Side, val name: String, val isDirectory: Boolean)
-/** The four favourite dialogs: add, new group, edit one, and the drawer settings. */
-sealed interface FavDialog {
-    data object AddPath : FavDialog
-    data object NewGroup : FavDialog
-    data class Edit(val favourite: Favorite) : FavDialog
-    data object Settings : FavDialog
-}
 
 /**
  * Everything the window is showing.

@@ -36,6 +36,7 @@ import io.github.cubsync.core.model.SyncConfig
 import io.github.cubsync.core.model.SyncDirection
 import io.github.cubsync.service.Format
 import io.github.cubsync.service.IconPaths
+import io.github.cubsync.service.NoticeKind
 import io.github.cubsync.service.PathTools
 import io.github.cubsync.service.Words
 import io.github.cubsync.service.policySentence

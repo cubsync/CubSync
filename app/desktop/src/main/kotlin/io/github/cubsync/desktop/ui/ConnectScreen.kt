@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.dp
 import io.github.cubsync.desktop.AppState
 import io.github.cubsync.desktop.CubTheme
 import io.github.cubsync.desktop.CubType
-import io.github.cubsync.desktop.NoticeKind
+import io.github.cubsync.service.NoticeKind
 import io.github.cubsync.desktop.copyToClipboard
 import io.github.cubsync.desktop.pickDirectory
 import io.github.cubsync.service.BuildInfo

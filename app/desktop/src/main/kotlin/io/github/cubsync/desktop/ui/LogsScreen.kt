@@ -41,6 +41,6 @@ fun LogsHeadActions(state: AppState) {
             "${java.time.Instant.ofEpochMilli(entry.atMs)} ${entry.level} ${entry.area} ${entry.message}"
         }
         io.github.cubsync.desktop.copyToClipboard(text)
-        state.notify("日志已复制到剪贴板", io.github.cubsync.desktop.NoticeKind.SUCCESS)
+        state.notify("日志已复制到剪贴板", io.github.cubsync.service.NoticeKind.SUCCESS)
     }
 }

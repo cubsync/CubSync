@@ -40,13 +40,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.cubsync.desktop.AppState
-import io.github.cubsync.desktop.FavDialog
+import io.github.cubsync.service.FavDialog
 import io.github.cubsync.desktop.CubTheme
 import io.github.cubsync.desktop.CubType
-import io.github.cubsync.desktop.Notice
+import io.github.cubsync.service.Notice
 import io.github.cubsync.service.Favorite
 import io.github.cubsync.service.PathTools
-import io.github.cubsync.desktop.NoticeKind
+import io.github.cubsync.service.NoticeKind
 import io.github.cubsync.service.BuildInfo
 import io.github.cubsync.service.EndpointId
 import io.github.cubsync.service.Format

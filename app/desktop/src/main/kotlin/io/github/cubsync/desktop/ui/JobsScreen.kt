@@ -27,8 +27,8 @@ import androidx.compose.ui.unit.dp
 import io.github.cubsync.desktop.AppState
 import io.github.cubsync.desktop.CubTheme
 import io.github.cubsync.desktop.CubType
-import io.github.cubsync.desktop.NoticeKind
-import io.github.cubsync.desktop.JobsSegment
+import io.github.cubsync.service.NoticeKind
+import io.github.cubsync.service.JobsSegment
 import io.github.cubsync.service.Format
 import io.github.cubsync.service.JobDetails
 import io.github.cubsync.service.JobFileLine

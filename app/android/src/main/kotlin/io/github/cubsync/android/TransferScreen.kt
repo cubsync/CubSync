@@ -53,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.cubsync.core.spi.FileMeta
+import io.github.cubsync.service.ActionSheet
 import io.github.cubsync.service.Browsing
 import io.github.cubsync.service.Columns
 import io.github.cubsync.service.CompareMark
@@ -61,6 +62,7 @@ import io.github.cubsync.service.DisplayMode
 import io.github.cubsync.service.EndpointId
 import io.github.cubsync.service.Section
 import io.github.cubsync.service.Format
+import io.github.cubsync.service.NoticeKind
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.shape.RoundedCornerShape

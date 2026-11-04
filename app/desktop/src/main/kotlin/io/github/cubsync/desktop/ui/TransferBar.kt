@@ -55,7 +55,7 @@ import io.github.cubsync.core.spi.FileMeta
 import io.github.cubsync.desktop.AppState
 import io.github.cubsync.desktop.CubTheme
 import io.github.cubsync.desktop.CubType
-import io.github.cubsync.desktop.NoticeKind
+import io.github.cubsync.service.NoticeKind
 import io.github.cubsync.desktop.copyToClipboard
 import io.github.cubsync.desktop.openDirectory
 import io.github.cubsync.service.Browsing
