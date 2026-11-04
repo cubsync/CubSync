@@ -101,7 +101,7 @@ fun CubAndroidApp(state: AndroidAppState) {
             state.sharedSheet -> SharedRootsSheet(state)
         }
         Overlays(state)
-        state.favouriteMenu?.let { FavouriteSheet(state, it) }
+        state.favourites.favouriteMenu?.let { FavouriteSheet(state, it) }
         state.historySide?.let { HistorySheet(state, it) }
         if (state.drawerOpen) Drawer(state)
 
@@ -307,8 +307,8 @@ fun FavouriteSheet(state: AndroidAppState, favourite: Favorite) {
     var group by remember(favourite.key) { mutableStateOf(favourite.groupName) }
     var newGroup by remember { mutableStateOf("") }
 
-    BottomSheet(onClose = { state.favouriteMenu = null }) {
-        SheetHeader(favourite.label.ifEmpty { favourite.path }) { state.favouriteMenu = null }
+    BottomSheet(onClose = { state.favourites.favouriteMenu = null }) {
+        SheetHeader(favourite.label.ifEmpty { favourite.path }) { state.favourites.favouriteMenu = null }
         Text(favourite.path, style = CubType.mono, color = colors.textFaint, maxLines = 2)
         Spacer(Modifier.height(8.dp))
 
@@ -347,7 +347,7 @@ fun FavouriteSheet(state: AndroidAppState, favourite: Favorite) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PrimaryButton("保存") {
                 state.renameFavourite(favourite, label, group)
-                state.favouriteMenu = null
+                state.favourites.favouriteMenu = null
             }
             QuietButton("上移") { state.moveFavourite(favourite, -1) }
             QuietButton("下移") { state.moveFavourite(favourite, +1) }
@@ -355,7 +355,7 @@ fun FavouriteSheet(state: AndroidAppState, favourite: Favorite) {
         Spacer(Modifier.height(6.dp))
         ListRow("取消收藏", favourite.path, leadingIcon = IconPaths.CLOSE) {
             state.removeFavourite(favourite)
-            state.favouriteMenu = null
+            state.favourites.favouriteMenu = null
         }
         Spacer(Modifier.height(6.dp))
     }
@@ -453,7 +453,7 @@ private fun Drawer(state: AndroidAppState) {
                             modifier = Modifier.padding(horizontal = 8.dp),
                             // A long press is the phone's right click: rename, regroup,
                             // move, remove — the same menu the desktop's right click opens.
-                            onLongClick = { state.favouriteMenu = item },
+                            onLongClick = { state.favourites.favouriteMenu = item },
                             onClick = { state.openFavourite(item) },
                         )
                     }

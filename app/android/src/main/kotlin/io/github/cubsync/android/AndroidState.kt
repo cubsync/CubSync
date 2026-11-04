@@ -21,8 +21,6 @@ import io.github.cubsync.service.JobDetails
 import io.github.cubsync.service.JobDetailsFactory
 import io.github.cubsync.service.JobRecord
 import io.github.cubsync.service.JobsSegment
-import io.github.cubsync.service.LogEntry
-import io.github.cubsync.service.LogLevel
 import io.github.cubsync.service.Notice
 import io.github.cubsync.service.NoticeKind
 import io.github.cubsync.service.PathTools
@@ -38,6 +36,8 @@ import io.github.cubsync.service.SyncObserver
 import io.github.cubsync.service.SyncPreview
 import io.github.cubsync.service.SyncService
 import io.github.cubsync.service.Words
+import io.github.cubsync.service.state.FavouriteState
+import io.github.cubsync.service.state.LogState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -76,6 +76,15 @@ class AndroidAppState(
     /** Where elapsed times come from; pinned by the screenshot test, untouched by the app. */
     val now: () -> Long = System::currentTimeMillis,
 ) {
+    // 与桌面共享的域状态：
+    //  - log        → io.github.cubsync.service.state.LogState
+    //  - favourites → io.github.cubsync.service.state.FavouriteState（手机只读 favouriteMenu）
+    //
+    // 留待 M5：SyncState 未共享——手机用 route 表达二级页（对应桌面的 syncLayer），
+    // 没有 syncSearch/selectedJobId，且 selectedJobId 由 route(Job/Config) 携带；
+    // ConnectState 未共享——手机是服务端，没有 adb forward，连接语义不同；
+    // OverlayState 未共享——手机的抽屉/菜单/动作面板字段（moreSheet/connectSheet/
+    // sharedSheet/showSoloLocal/showSoloRemote）与桌面的 paneMenu/displayMenu 差异太大。
 
     var tab by mutableStateOf(Section.CONNECT)
     var route by mutableStateOf<Route>(Route.Tabs)
@@ -88,8 +97,8 @@ class AndroidAppState(
     var jobs by mutableStateOf<List<JobRecord>>(emptyList())
     var jobsSegment by mutableStateOf(JobsSegment.JOBS)
 
-    var logs by mutableStateOf<List<LogEntry>>(emptyList())
-    var logMinimumLevel by mutableStateOf(LogLevel.INFO)
+    /** 日志域的状态住在共享的 [LogState]，与桌面读同一份字段。 */
+    val log = LogState()
 
     var peers by mutableStateOf<List<PeerSession>>(emptyList())
     var peerError by mutableStateOf<String?>(null)
@@ -145,10 +154,10 @@ class AndroidAppState(
     init {
         reloadConfigs()
         reloadJobs()
-        logs = service.log.entries()
+        log.logs = service.log.entries()
         logSubscription = service.log.subscribe { entry ->
-            val next = logs + entry
-            logs = if (next.size > LOG_LIMIT) next.takeLast(LOG_LIMIT) else next
+            val next = log.logs + entry
+            log.logs = if (next.size > LOG_LIMIT) next.takeLast(LOG_LIMIT) else next
         }
         peerDraft = service.settings.lastPeer
 
@@ -499,8 +508,8 @@ class AndroidAppState(
         touch()
     }
 
-    /** The drawer row whose menu is open. */
-    var favouriteMenu by mutableStateOf<Favorite?>(null)
+    /** 收藏夹域的状态住在共享的 [FavouriteState]；手机只用其中的 favouriteMenu。 */
+    val favourites = FavouriteState()
 
     /** The pane whose 展开 list is open. */
     var historySide by mutableStateOf<Side?>(null)
@@ -900,7 +909,7 @@ class AndroidAppState(
 
     fun clearLogs() {
         service.log.clear()
-        logs = emptyList()
+        log.logs = emptyList()
     }
 
     fun statusLine(): String {

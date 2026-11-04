@@ -235,15 +235,15 @@ private fun FileList(
 fun LogsBody(state: AndroidAppState, modifier: Modifier = Modifier) {
     val colors = CubTheme.colors
     var area by remember { mutableStateOf("") }
-    val areas = state.logs.map { it.area }.distinct().sorted()
+    val areas = state.log.logs.map { it.area }.distinct().sorted()
 
     Column(modifier) {
         Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Segmented(
                 options = LogLevel.entries.toList(),
-                selected = state.logMinimumLevel,
+                selected = state.log.logMinimumLevel,
                 label = { Format.level(it) },
-                onSelect = { state.logMinimumLevel = it },
+                onSelect = { state.log.logMinimumLevel = it },
             )
             Spacer(Modifier.weight(1f))
             QuietButton("清空") { state.clearLogs() }
@@ -269,8 +269,8 @@ fun LogsBody(state: AndroidAppState, modifier: Modifier = Modifier) {
             }
         }
 
-        val shown = state.logs
-            .filter { it.level >= state.logMinimumLevel }
+        val shown = state.log.logs
+            .filter { it.level >= state.log.logMinimumLevel }
             .filter { area.isEmpty() || it.area == area }
 
         Panel(Modifier.weight(1f).fillMaxWidth()) {
