@@ -235,7 +235,7 @@ private fun Rail(state: AppState, server: ServerState, folded: Boolean, onFold: 
         if (!folded) {
             RailLabel("任务")
         }
-        RailItem(state, Section.JOBS, folded, badge = state.jobs.size)
+        RailItem(state, Section.JOBS, folded, badge = state.sync.jobs.size)
         RailItem(state, Section.LOGS, folded)
         if (!folded) {
             RailLabel("其他")
@@ -406,8 +406,8 @@ fun ScreenHead(state: AppState, server: ServerState, actions: @Composable () -> 
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             actions()
-            if (state.running != null) {
-                Chip("${state.running?.label}「${state.running?.configName}」", tone = colors.warning)
+            if (state.sync.running != null) {
+                Chip("${state.sync.running?.label}「${state.sync.running?.configName}」", tone = colors.warning)
                 QuietButton("取消") { state.cancelRun() }
             }
         }
@@ -445,7 +445,7 @@ private fun HeadActions(state: AppState) {
 @Composable
 private fun StatusBar(state: AppState, server: ServerState) {
     val colors = CubTheme.colors
-    val running = state.running
+    val running = state.sync.running
     val elapsed = if (running != null) state.now() - running.startedAtMs else 0
     val rate = if (running != null && elapsed > 0) Format.rate(running.bytes, elapsed) else DASH
 

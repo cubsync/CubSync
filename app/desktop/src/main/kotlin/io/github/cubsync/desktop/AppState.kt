@@ -86,6 +86,24 @@ data class ActionSheet(val side: Side, val name: String, val isDirectory: Boolea
  * both ends read the same ones, so this class cannot own them; it can only say when they
  * changed.
  */
+/**
+ * 同步页 + 作业页的界面状态：配置列表、正在跑的作业、试运行预览。
+ * 之前摊在 AppState，抽出来让"同步/作业"这一域有自己的名字，UI 读 `state.sync.xxx`。
+ */
+class SyncState {
+    var configs by mutableStateOf<List<SyncConfig>>(emptyList())
+    var selectedConfigId by mutableStateOf<String?>(null)
+    var syncLayer by mutableStateOf(SyncLayer.LIST)
+    var syncSearch by mutableStateOf("")
+    var preview by mutableStateOf<SyncPreview?>(null)
+    var previewing by mutableStateOf(false)
+    var jobs by mutableStateOf<List<JobRecord>>(emptyList())
+    var selectedJobId by mutableStateOf<String?>(null)
+    var jobsSegment by mutableStateOf(JobsSegment.JOBS)
+    var running by mutableStateOf<RunningJob?>(null)
+    var runPaused by mutableStateOf(false)
+}
+
 class AppState(
     val service: SyncService,
     val server: ServerController,
@@ -98,16 +116,10 @@ class AppState(
     /** 连接域的状态都住在 [ConnectState]，UI 读 `state.connect.xxx`。 */
     val connect = ConnectState()
 
-    var configs by mutableStateOf<List<SyncConfig>>(emptyList())
-    var selectedConfigId by mutableStateOf<String?>(null)
-    var syncLayer by mutableStateOf(SyncLayer.LIST)
-    var syncSearch by mutableStateOf("")
-    var preview by mutableStateOf<SyncPreview?>(null)
-    var previewing by mutableStateOf(false)
+    /** 同步/作业域的状态住在 [SyncState]，UI 读 `state.sync.xxx`。 */
+    val sync = SyncState()
 
-    var jobs by mutableStateOf<List<JobRecord>>(emptyList())
-    var selectedJobId by mutableStateOf<String?>(null)
-    var jobsSegment by mutableStateOf(JobsSegment.JOBS)
+
 
     var logs by mutableStateOf<List<LogEntry>>(emptyList())
     var logMinimumLevel by mutableStateOf(LogLevel.INFO)
@@ -118,7 +130,6 @@ class AppState(
 
 
 
-    var running by mutableStateOf<RunningJob?>(null)
     var notice by mutableStateOf<Notice?>(null)
 
 
@@ -167,7 +178,7 @@ class AppState(
         logs = service.log.entries()
         logSubscription = service.log.subscribe { entry ->
             // The log arrives from whichever thread wrote it. Appending to a snapshot
-            // list is safe from any thread, and the list is bounded so a long-running
+            // list is safe from any thread, and the list is bounded so a long-sync.running
             // window cannot grow without limit.
             val next = logs + entry
             logs = if (next.size > LOG_LIMIT) next.takeLast(LOG_LIMIT) else next
@@ -221,28 +232,28 @@ class AppState(
     }
 
     fun selectConfig(configId: String?) {
-        selectedConfigId = configId
-        if (configId != null) syncLayer = SyncLayer.DETAIL
+        sync.selectedConfigId = configId
+        if (configId != null) sync.syncLayer = SyncLayer.DETAIL
     }
 
     fun selectJob(jobId: String?) {
-        selectedJobId = jobId
+        sync.selectedJobId = jobId
     }
 
     val selectedConfig: SyncConfig?
-        get() = selectedConfigId?.let { id -> configs.firstOrNull { it.configId == id } }
+        get() = sync.selectedConfigId?.let { id -> sync.configs.firstOrNull { it.configId == id } }
 
     val selectedJob: JobRecord?
-        get() = selectedJobId?.let { id -> jobs.firstOrNull { it.jobId == id } }
+        get() = sync.selectedJobId?.let { id -> sync.jobs.firstOrNull { it.jobId == id } }
 
     /** The job detail for the selected run, built once per frame from the same factory. */
     val selectedJobDetail: JobDetails?
         get() = selectedJob?.let { JobDetailsFactory.of(it, service.log) }
 
     fun matchingConfigs(): List<SyncConfig> {
-        val needle = syncSearch.trim()
-        if (needle.isEmpty()) return configs
-        return configs.filter { it.name.contains(needle, ignoreCase = true) }
+        val needle = sync.syncSearch.trim()
+        if (needle.isEmpty()) return sync.configs
+        return sync.configs.filter { it.name.contains(needle, ignoreCase = true) }
     }
 
     // ------------------------------------------------------------------ messages
@@ -272,18 +283,18 @@ class AppState(
     // -------------------------------------------------------------- configurations
 
     fun reloadConfigs() {
-        configs = service.configs.list()
-        if (selectedConfigId != null && configs.none { it.configId == selectedConfigId }) {
-            selectedConfigId = configs.firstOrNull()?.configId
+        sync.configs = service.configs.list()
+        if (sync.selectedConfigId != null && sync.configs.none { it.configId == sync.selectedConfigId }) {
+            sync.selectedConfigId = sync.configs.firstOrNull()?.configId
         }
-        if (selectedConfigId == null && connect.section == Section.SYNC) {
-            selectedConfigId = configs.firstOrNull()?.configId
+        if (sync.selectedConfigId == null && connect.section == Section.SYNC) {
+            sync.selectedConfigId = sync.configs.firstOrNull()?.configId
         }
     }
 
     fun reloadJobs() {
-        jobs = service.history.all()
-        if (selectedJobId != null && jobs.none { it.jobId == selectedJobId }) selectedJobId = null
+        sync.jobs = service.history.all()
+        if (sync.selectedJobId != null && sync.jobs.none { it.jobId == sync.selectedJobId }) sync.selectedJobId = null
     }
 
     /**
@@ -302,7 +313,7 @@ class AppState(
 
     private fun newConfigName(): String {
         val base = "新建同步"
-        val taken = configs.map { it.name }.toSet()
+        val taken = sync.configs.map { it.name }.toSet()
         return PathTools.uniqueName(taken, base)
     }
 
@@ -310,7 +321,7 @@ class AppState(
     fun duplicateConfig(config: SyncConfig) {
         val copy = config.copy(
             configId = Ids.newConfigId(),
-            name = PathTools.uniqueName(configs.map { it.name }.toSet(), "${config.name} 副本"),
+            name = PathTools.uniqueName(sync.configs.map { it.name }.toSet(), "${config.name} 副本"),
         )
         saveConfig(copy)
     }
@@ -319,7 +330,7 @@ class AppState(
         runCatching { service.configs.save(config) }
             .onSuccess {
                 reloadConfigs()
-                selectedConfigId = config.configId
+                sync.selectedConfigId = config.configId
                 notify("已保存「${config.name}」", NoticeKind.SUCCESS)
             }
             .onFailure { notify("保存失败：${it.message}", NoticeKind.ERROR) }
@@ -357,8 +368,8 @@ class AppState(
                     if (clash) imported.copy(configId = Ids.newConfigId()) else imported,
                 )
                 reloadConfigs()
-                selectedConfigId = service.configs.load(saved).configId
-                syncLayer = SyncLayer.DETAIL
+                sync.selectedConfigId = service.configs.load(saved).configId
+                sync.syncLayer = SyncLayer.DETAIL
                 notify(
                     if (clash) "导入了一个同名配置，已另存为新配置" else "已导入「${imported.name}」",
                     NoticeKind.SUCCESS,
@@ -606,8 +617,8 @@ class AppState(
     // ----------------------------------------------------------------------- runs
 
     fun runConfig(config: SyncConfig, dryRun: Boolean) {
-        if (running != null) {
-            notify("已经有一个${running?.label ?: "任务"}在进行中", NoticeKind.WARNING)
+        if (sync.running != null) {
+            notify("已经有一个${sync.running?.label ?: "任务"}在进行中", NoticeKind.WARNING)
             return
         }
         if (config.pairs.isEmpty()) {
@@ -617,7 +628,7 @@ class AppState(
 
         val jobId = SyncService.newJobId()
         val prepared = config.copy(dryRun = dryRun)
-        running = RunningJob(
+        sync.running = RunningJob(
             jobId = jobId,
             configName = prepared.name,
             dryRun = dryRun,
@@ -628,13 +639,13 @@ class AppState(
 
         val gate = io.github.cubsync.core.engine.PauseGate()
         runGate = gate
-        runPaused = false
+        sync.runPaused = false
         runTask = scope.launch {
             try {
                 val result = service.run(prepared, jobId = jobId, observer = WindowObserver(), gate = gate)
                 reloadJobs()
-                selectedJobId = result.jobId
-                jobsSegment = JobsSegment.JOBS
+                sync.selectedJobId = result.jobId
+                sync.jobsSegment = JobsSegment.JOBS
                 goTo(Section.JOBS)
                 notify(summaryLine(result), toneFor(result.status))
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
@@ -642,32 +653,30 @@ class AppState(
             } catch (failure: Throwable) {
                 notify("运行失败：${failure.message ?: failure::class.simpleName}", NoticeKind.ERROR)
             } finally {
-                running = null
+                sync.running = null
                 runTask = null
             }
         }
     }
 
     /** 暂停 / 继续 the run in flight. Pauses between blocks; nothing is torn down. */
-    var runPaused by mutableStateOf(false)
-        private set
 
     private var runGate: io.github.cubsync.core.engine.PauseGate? = null
 
     fun pauseRun() {
         runGate?.pause()
-        runPaused = true
+        sync.runPaused = true
     }
 
     fun resumeRun() {
         runGate?.resume()
-        runPaused = false
+        sync.runPaused = false
     }
 
     fun cancelRun() {
         val task = runTask ?: return
-        running = null
-        runPaused = false
+        sync.running = null
+        sync.runPaused = false
         task.cancel()
     }
 
@@ -677,15 +686,15 @@ class AppState(
             notify("这个配置还没有文件夹对", NoticeKind.WARNING)
             return
         }
-        previewing = true
-        syncLayer = SyncLayer.PREVIEW
+        sync.previewing = true
+        sync.syncLayer = SyncLayer.PREVIEW
         scope.launch {
             try {
-                preview = service.preview(config)
+                sync.preview = service.preview(config)
             } catch (failure: Throwable) {
                 notify("预览失败：${failure.message ?: failure::class.simpleName}", NoticeKind.ERROR)
             } finally {
-                previewing = false
+                sync.previewing = false
             }
         }
     }
@@ -705,15 +714,15 @@ class AppState(
 
     private inner class WindowObserver : SyncObserver {
         override fun onPairStarted(pair: FolderPair) {
-            running = running?.copy(currentPair = pair.name.ifEmpty { pair.pairId })
+            sync.running = sync.running?.copy(currentPair = pair.name.ifEmpty { pair.pairId })
         }
 
         override fun onPairFinished(outcome: PairOutcome) {
-            running = running?.copy(finishedPairs = (running?.finishedPairs ?: 0) + 1, bytes = 0)
+            sync.running = sync.running?.copy(finishedPairs = (sync.running?.finishedPairs ?: 0) + 1, bytes = 0)
         }
 
         override fun onBytesTransferred(total: Long) {
-            running = running?.copy(bytes = total)
+            sync.running = sync.running?.copy(bytes = total)
         }
     }
 
@@ -910,7 +919,7 @@ class AppState(
         val parts = mutableListOf<String>()
         parts += if (server.running) "共享中 :${server.port}" else "未共享"
         parts += if (connect.peers.isEmpty()) "未连接${Words.REMOTE}" else "已连接 ${connect.peers.size} 台设备"
-        running?.let { parts += "${it.label}「${it.configName}」" }
+        sync.running?.let { parts += "${it.label}「${it.configName}」" }
         return parts.joinToString("  ·  ")
     }
 

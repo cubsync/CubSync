@@ -234,8 +234,8 @@ private fun AboutPanel(state: AppState) {
         KeyValueRow("版本", BuildInfo.VERSION)
         KeyValueRow("协议", "v${BuildInfo.PROTOCOL_VERSION}")
         KeyValueRow("状态目录", state.stateDirectory)
-        KeyValueRow("配置数量", "${state.configs.size} 个")
-        KeyValueRow("作业记录", "${state.jobs.size} 条")
+        KeyValueRow("配置数量", "${state.sync.configs.size} 个")
+        KeyValueRow("作业记录", "${state.sync.jobs.size} 条")
 
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

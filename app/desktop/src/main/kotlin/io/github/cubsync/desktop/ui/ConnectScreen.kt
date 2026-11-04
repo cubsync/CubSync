@@ -267,13 +267,13 @@ private fun NegotiationCard(state: AppState, modifier: Modifier) {
 private fun ChannelsCard(state: AppState, server: ServerState) {
     val colors = CubTheme.colors
     val selected = state.liveSettings.channelNics
-    val nics = remember(state.settingsRevision, state.running) {
+    val nics = remember(state.settingsRevision, state.sync.running) {
         val real = Peers.localNics()
         val chosen = if (selected.isEmpty()) real.map { it.name } else selected
         real.filter { it.name in chosen }
     }
     val adbOn = selected.contains(Channels.USB_ADB_NAME)
-    val rate = state.running?.let {
+    val rate = state.sync.running?.let {
         val elapsed = state.now() - it.startedAtMs
         if (elapsed > 0) Format.rate(it.bytes, elapsed) else DASH
     } ?: DASH

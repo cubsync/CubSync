@@ -45,7 +45,7 @@ import io.github.cubsync.service.Words
  */
 @Composable
 fun JobsScreen(state: AppState, showLogs: Boolean) {
-    if (state.selectedJobId != null) {
+    if (state.sync.selectedJobId != null) {
         JobDetailScreen(state, showLogs)
     } else {
         JobListScreen(state, showLogs)
@@ -62,41 +62,41 @@ private fun JobListScreen(state: AppState, showLogs: Boolean) {
             Row(Modifier.padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Segmented(
                     options = JobsSegment.entries.toList(),
-                    selected = state.jobsSegment,
+                    selected = state.sync.jobsSegment,
                     label = { it.label },
-                    onSelect = { state.jobsSegment = it },
+                    onSelect = { state.sync.jobsSegment = it },
                 )
             }
         }
-        if (showLogs && state.jobsSegment == JobsSegment.LOGS) {
+        if (showLogs && state.sync.jobsSegment == JobsSegment.LOGS) {
             LogsBody(state, Modifier.fillMaxSize())
             return@Column
         }
 
         Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Chip("${state.jobs.size} 次运行", tone = colors.accent)
+            Chip("${state.sync.jobs.size} 次运行", tone = colors.accent)
             Spacer(Modifier.weight(1f))
-            state.running?.let {
+            state.sync.running?.let {
                 Chip("${it.label}「${it.configName}」· ${it.finishedPairs}/${it.pairCount} 对", tone = colors.warning)
                 Spacer(Modifier.width(6.dp))
                 QuietButton("取消", danger = true) { state.cancelRun() }
             }
         }
 
-        if (state.jobs.isEmpty()) {
+        if (state.sync.jobs.isEmpty()) {
             EmptyState("还没有跑过同步", "在同步页选一个配置，试运行一次会立刻出现在这里。")
             return@Column
         }
 
         Panel(Modifier.fillMaxSize(), title = "已完成", subtitle = "点开任一条看明细与当次日志") {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                for (job in state.jobs) {
+                for (job in state.sync.jobs) {
                     val detail = detailsOf(state, job)
                     ListLine(
                         title = "${job.configName}  ·  ${Format.clockTime(job.result.startedAtMs)}",
                         detail = "${detail.headline} · ${detail.summary} · ${Format.ago(job.result.finishedAtMs)}",
                         tint = toneColor(detail.tone),
-                        onClick = { state.selectedJobId = job.jobId },
+                        onClick = { state.sync.selectedJobId = job.jobId },
                         trailing = {
                             if (job.result.stats.failures > 0) Chip("${job.result.stats.failures} 项失败", tone = colors.danger)
                             else if (job.dryRun) Chip("试运行", tone = colors.textDim)
@@ -123,7 +123,7 @@ private fun detailsOf(state: AppState, job: io.github.cubsync.service.JobRecord)
 private fun JobDetailScreen(state: AppState, showLogs: Boolean) {
     val colors = CubTheme.colors
     val job = state.selectedJob ?: run {
-        state.selectedJobId = null
+        state.sync.selectedJobId = null
         return
     }
     val detail = detailsOf(state, job)
@@ -132,7 +132,7 @@ private fun JobDetailScreen(state: AppState, showLogs: Boolean) {
 
     Column(Modifier.fillMaxSize().padding(14.dp)) {
         Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            QuietButton("← 返回") { state.selectedJobId = null }
+            QuietButton("← 返回") { state.sync.selectedJobId = null }
             Spacer(Modifier.width(8.dp))
             Text(detail.title, style = CubType.cardTitle, color = colors.text)
             Spacer(Modifier.weight(1f))
@@ -187,7 +187,7 @@ private fun JobDetailScreen(state: AppState, showLogs: Boolean) {
                 subtitle = "${detail.logs.size} 行",
                 actions = {
                     QuietButton("在日志页看全部 →") {
-                        if (showLogs) state.jobsSegment = JobsSegment.LOGS else state.goTo(Section.LOGS)
+                        if (showLogs) state.sync.jobsSegment = JobsSegment.LOGS else state.goTo(Section.LOGS)
                     }
                 },
             ) {
@@ -210,11 +210,11 @@ private fun JobDetailScreen(state: AppState, showLogs: Boolean) {
 
         // ⑤ the actions, which depend on how the run ended
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            val config = state.configs.firstOrNull { it.configId == job.configId }
+            val config = state.sync.configs.firstOrNull { it.configId == job.configId }
             when {
-                state.running != null -> {
-                    QuietButton(if (state.runPaused) "继续" else "暂停") {
-                        if (state.runPaused) state.resumeRun() else state.pauseRun()
+                state.sync.running != null -> {
+                    QuietButton(if (state.sync.runPaused) "继续" else "暂停") {
+                        if (state.sync.runPaused) state.resumeRun() else state.pauseRun()
                     }
                     QuietButton("取消", danger = true) { state.cancelRun() }
                 }

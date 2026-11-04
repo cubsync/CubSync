@@ -108,26 +108,26 @@ class AppStateTest {
         fixture.state.saveConfig(fixture.state.newConfigDraft())
         fixture.state.saveConfig(fixture.state.newConfigDraft())
 
-        assertEquals(2, fixture.state.configs.size)
-        assertEquals(2, fixture.state.configs.map { it.name }.toSet().size)
+        assertEquals(2, fixture.state.sync.configs.size)
+        assertEquals(2, fixture.state.sync.configs.map { it.name }.toSet().size)
     }
 
     @Test
     fun saving_selects_the_configuration_and_deleting_clears_the_selection() = withFixture { fixture ->
         val config = fixture.state.newConfigDraft()
         fixture.state.saveConfig(config)
-        assertEquals(config.configId, fixture.state.selectedConfigId)
+        assertEquals(config.configId, fixture.state.sync.selectedConfigId)
 
         fixture.state.deleteConfig(config.configId)
-        assertTrue(fixture.state.configs.isEmpty())
-        assertNull(fixture.state.selectedConfigId)
+        assertTrue(fixture.state.sync.configs.isEmpty())
+        assertNull(fixture.state.sync.selectedConfigId)
     }
 
     @Test
     fun a_run_has_to_have_something_to_do() = withFixture { fixture ->
         fixture.state.runConfig(fixture.state.newConfigDraft(), dryRun = false)
 
-        assertNull(fixture.state.running)
+        assertNull(fixture.state.sync.running)
         assertNotNull(fixture.state.notice)
         assertTrue(fixture.state.notice!!.text.contains("文件夹对"))
     }
@@ -146,9 +146,9 @@ class AppStateTest {
 
         fixture.state.runConfig(config, dryRun = false)
 
-        await("the run to finish") { fixture.state.jobs.isNotEmpty() }
+        await("the run to finish") { fixture.state.sync.jobs.isNotEmpty() }
         assertEquals(Section.JOBS, fixture.state.connect.section)
-        assertEquals(1, fixture.state.jobs.first().result.stats.copiedFiles)
+        assertEquals(1, fixture.state.sync.jobs.first().result.stats.copiedFiles)
         assertEquals("holiday", right.resolve("holiday.txt").toFile().readText())
     }
 
@@ -164,8 +164,8 @@ class AppStateTest {
 
         fixture.state.previewConfig(config)
 
-        await("the preview to finish") { fixture.state.preview != null && !fixture.state.previewing }
-        assertTrue(fixture.state.jobs.isEmpty(), "a preview is not a run and must not appear in the history")
+        await("the preview to finish") { fixture.state.sync.preview != null && !fixture.state.sync.previewing }
+        assertTrue(fixture.state.sync.jobs.isEmpty(), "a preview is not a run and must not appear in the history")
         assertTrue(!right.resolve("holiday.txt").toFile().exists(), "a preview must not write anything")
     }
 

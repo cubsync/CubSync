@@ -66,7 +66,7 @@ fun SyncScreen(state: AppState) {
                     action = { PrimaryButton("新建") { state.saveConfig(state.newConfigDraft()) } },
                 )
 
-                state.syncLayer == SyncLayer.PREVIEW -> PreviewPanel(state)
+                state.sync.syncLayer == SyncLayer.PREVIEW -> PreviewPanel(state)
                 else -> ConfigDetail(state, config)
             }
         }
@@ -106,8 +106,8 @@ private fun ConfigList(state: AppState, modifier: Modifier) {
         },
     ) {
         Field(
-            value = state.syncSearch,
-            onValueChange = { state.syncSearch = it },
+            value = state.sync.syncSearch,
+            onValueChange = { state.sync.syncSearch = it },
             modifier = Modifier.fillMaxWidth(),
             placeholder = "搜索配置…",
             style = CubType.meta,
@@ -115,8 +115,8 @@ private fun ConfigList(state: AppState, modifier: Modifier) {
         Spacer(Modifier.height(8.dp))
 
         for (config in state.matchingConfigs()) {
-            val selected = config.configId == state.selectedConfigId
-            val last = state.jobs.firstOrNull { it.configId == config.configId }
+            val selected = config.configId == state.sync.selectedConfigId
+            val last = state.sync.jobs.firstOrNull { it.configId == config.configId }
             ListLine(
                 title = config.name,
                 detail = buildString {
@@ -124,7 +124,7 @@ private fun ConfigList(state: AppState, modifier: Modifier) {
                     append(if (last != null) " · ${Format.ago(last.result.finishedAtMs)}" else " · 从未运行")
                 },
                 selected = selected,
-                onClick = { state.selectConfig(config.configId); state.syncLayer = SyncLayer.DETAIL },
+                onClick = { state.selectConfig(config.configId); state.sync.syncLayer = SyncLayer.DETAIL },
                 trailing = {
                     QuietButton("导出") { state.exportConfig(config) }
                     QuietButton("删除", danger = true) { state.deleteConfig(config.configId) }
@@ -396,12 +396,12 @@ private fun PreviewPanel(state: AppState) {
         Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("预览", style = CubType.cardTitle, color = colors.text)
             Spacer(Modifier.weight(1f))
-            QuietButton("返回详情") { state.syncLayer = SyncLayer.DETAIL }
+            QuietButton("返回详情") { state.sync.syncLayer = SyncLayer.DETAIL }
         }
 
-        val preview = state.preview
+        val preview = state.sync.preview
         when {
-            state.previewing -> EmptyState("正在比较…", "这一遍只读，不写任何东西。")
+            state.sync.previewing -> EmptyState("正在比较…", "这一遍只读，不写任何东西。")
             preview == null -> EmptyState("还没有预览", "点「预览」先看看会发生什么。")
             else -> {
                 val totals = preview.totals

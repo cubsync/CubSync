@@ -158,7 +158,7 @@ object Preview {
         val record = finishedRun(config)
         service.history.add(record)
         state.reloadJobs()
-        if (jobDetail) state.selectedJobId = record.jobId
+        if (jobDetail) state.sync.selectedJobId = record.jobId
 
         service.settings.rememberPeer(KnownPeer("Redmi-Note-Pro", "192.168.1.20", 43917))
         service.settings.favourites = listOf(

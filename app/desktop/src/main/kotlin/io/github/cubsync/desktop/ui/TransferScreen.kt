@@ -746,7 +746,7 @@ private fun TransferArrow(state: AppState, left: PaneState, right: PaneState, bu
 @Composable
 private fun TransferBar(state: AppState) {
     val colors = CubTheme.colors
-    val running = state.running
+    val running = state.sync.running
     val progress by state.browsing.transferProgress.collectAsState()
     // 速率没有从引擎来：`TransferProgress` 只有"已传/总量"。起点按这块屏幕第一次看到进度时
     // 记，进度每推进一块都会重组，所以这个值跟着走。半秒以内不给数，免得第一块就是天文数字。
