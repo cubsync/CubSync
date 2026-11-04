@@ -95,7 +95,8 @@ class AppState(
     val now: () -> Long = System::currentTimeMillis,
 ) {
 
-    var section by mutableStateOf(Section.CONNECT)
+    /** 连接域的状态都住在 [ConnectState]，UI 读 `state.connect.xxx`。 */
+    val connect = ConnectState()
 
     var configs by mutableStateOf<List<SyncConfig>>(emptyList())
     var selectedConfigId by mutableStateOf<String?>(null)
@@ -114,24 +115,12 @@ class AppState(
     /** The log page's filter box, which the heading draws and the body reads. */
     var logQuery by mutableStateOf("")
 
-    var peers by mutableStateOf<List<PeerSession>>(emptyList())
-    var peerError by mutableStateOf<String?>(null)
 
-    /** The address box's two halves, kept apart so a port is optional and a colon is not. */
-    var peerHost by mutableStateOf("")
-    var peerPortText by mutableStateOf("")
-    var peerDraft by mutableStateOf("")
-    var connecting by mutableStateOf(false)
 
-    /** USB: what adb can see, and the last thing it said. */
-    var adbDevices by mutableStateOf<List<io.github.cubsync.service.Adb.Device>>(emptyList())
-    var adbNote by mutableStateOf<String?>(null)
 
     var running by mutableStateOf<RunningJob?>(null)
     var notice by mutableStateOf<Notice?>(null)
 
-    /** Roots the server editor is holding before it is started. */
-    var rootDraft by mutableStateOf<List<String>>(emptyList())
 
     // ---------------------------------------------------------------- transfer page
 
@@ -183,16 +172,16 @@ class AppState(
             val next = logs + entry
             logs = if (next.size > LOG_LIMIT) next.takeLast(LOG_LIMIT) else next
         }
-        peerDraft = service.settings.lastPeer
-        service.settings.lastPeer.substringBeforeLast(':').takeIf { it.isNotEmpty() }?.let { peerHost = it }
-        service.settings.lastPeer.substringAfterLast(':', "").toIntOrNull()?.let { peerPortText = it.toString() }
+        connect.peerDraft = service.settings.lastPeer
+        service.settings.lastPeer.substringBeforeLast(':').takeIf { it.isNotEmpty() }?.let { connect.peerHost = it }
+        service.settings.lastPeer.substringAfterLast(':', "").toIntOrNull()?.let { connect.peerPortText = it.toString() }
         // A server with nothing shared cannot be started, so the first run seeds the list
         // with the one folder every machine has. 添加文件夹 changes it afterwards; the
         // point is that 启动服务端 works before anybody has been taught where to click.
         if (service.settings.sharedRoots.isEmpty()) {
             localRoots().firstOrNull()?.let { service.settings.sharedRoots = listOf(it) }
         }
-        rootDraft = service.settings.sharedRoots
+        connect.rootDraft = service.settings.sharedRoots
     }
 
     fun close() {
@@ -207,13 +196,13 @@ class AppState(
     fun changeSettings(change: (AppSettings) -> Unit) {
         change(service.settings)
         settingsRevision++
-        if (section == Section.TRANSFER) service.browsing.resort()
+        if (connect.section == Section.TRANSFER) service.browsing.resort()
     }
 
     // ---------------------------------------------------------------- navigation
 
     fun goTo(target: Section) {
-        section = target
+        connect.section = target
         if (target == Section.TRANSFER) openSomethingToLookAt()
     }
 
@@ -287,7 +276,7 @@ class AppState(
         if (selectedConfigId != null && configs.none { it.configId == selectedConfigId }) {
             selectedConfigId = configs.firstOrNull()?.configId
         }
-        if (selectedConfigId == null && section == Section.SYNC) {
+        if (selectedConfigId == null && connect.section == Section.SYNC) {
             selectedConfigId = configs.firstOrNull()?.configId
         }
     }
@@ -476,10 +465,10 @@ class AppState(
         notify("已取消收藏 ${favourite.path}", NoticeKind.INFO)
     }
 
-    fun renameFavourite(favourite: Favorite, label: String, group: String) {
-        service.settings.updateFavourite(favourite, label = label, group = group)
+    fun updateFavourite(favourite: Favorite, label: String, group: String, path: String) {
+        service.settings.updateFavourite(favourite, label = label, group = group, path = path)
         settingsRevision++
-        notify("已保存「${label.ifEmpty { favourite.path }}」", NoticeKind.SUCCESS)
+        notify("已保存「${label.ifEmpty { path }}」", NoticeKind.SUCCESS)
     }
 
     fun addFavouriteGroup(name: String) {
@@ -600,7 +589,7 @@ class AppState(
      * is the peer that is connected, if there is one.
      */
     fun newPairDraft(existing: List<FolderPair>): FolderPair {
-        val peer = peers.firstOrNull()
+        val peer = connect.peers.firstOrNull()
         return FolderPair(
             pairId = Ids.newPairId(),
             order = existing.size,
@@ -735,8 +724,8 @@ class AppState(
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val found = io.github.cubsync.service.Adb.devices()
             withContext(kotlinx.coroutines.Dispatchers.Main) {
-                adbDevices = found
-                adbNote = when {
+                connect.adbDevices = found
+                connect.adbNote = when {
                     !io.github.cubsync.service.Adb.available() -> "没有找到 adb：装好 platform-tools 并加进 PATH"
                     found.isEmpty() -> "没有已连接的 USB 设备"
                     else -> null
@@ -754,17 +743,17 @@ class AppState(
      */
     fun connectUsb(serial: String?, port: Int) {
         val target = if (port <= 0) io.github.cubsync.core.protocol.Protocol.DEFAULT_PORT else port
-        connecting = true
-        peerError = null
+        connect.connecting = true
+        connect.peerError = null
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val failure = io.github.cubsync.service.Adb.forward(target, target, serial)
             withContext(kotlinx.coroutines.Dispatchers.Main) {
-                connecting = false
+                connect.connecting = false
                 if (failure != null) {
-                    adbNote = failure
-                    peerError = failure
+                    connect.adbNote = failure
+                    connect.peerError = failure
                 } else {
-                    adbNote = "已转发 tcp:$target → 设备 tcp:$target"
+                    connect.adbNote = "已转发 tcp:$target → 设备 tcp:$target"
                     connectPeer("127.0.0.1:$target")
                 }
             }
@@ -773,16 +762,16 @@ class AppState(
 
     /** The address box: a host, and a port that defaults to the protocol's. */
     fun connectPeerAddress() {
-        val host = peerHost.trim()
+        val host = connect.peerHost.trim()
         if (host.isEmpty()) {
-            peerError = "先填地址"
+            connect.peerError = "先填地址"
             return
         }
-        val port = peerPortText.trim().let {
+        val port = connect.peerPortText.trim().let {
             if (it.isEmpty()) io.github.cubsync.core.protocol.Protocol.DEFAULT_PORT else it.toIntOrNull()
         }
         if (port == null || port !in 1..65535) {
-            peerError = "端口要填 1–65535，留空就用默认 ${io.github.cubsync.core.protocol.Protocol.DEFAULT_PORT}"
+            connect.peerError = "端口要填 1–65535，留空就用默认 ${io.github.cubsync.core.protocol.Protocol.DEFAULT_PORT}"
             return
         }
         connectPeer("$host:$port")
@@ -791,20 +780,20 @@ class AppState(
     fun connectPeer(spec: String) {
         val text = spec.trim()
         if (text.isEmpty()) {
-            peerError = "先填 HOST:PORT"
+            connect.peerError = "先填 HOST:PORT"
             return
         }
         val endpoint = EndpointId.parseOrNull(text)?.takeIf { !it.isLocal }
         if (endpoint == null) {
-            peerError = "「$text」看起来不是 HOST:PORT"
+            connect.peerError = "「$text」看起来不是 HOST:PORT"
             return
         }
-        peerError = null
-        connecting = true
+        connect.peerError = null
+        connect.connecting = true
         scope.launch {
             try {
                 val session = service.connect(endpoint.host!!, endpoint.port!!)
-                peers = peers.filterNot { it.backendId == session.backendId } + session
+                connect.peers = connect.peers.filterNot { it.backendId == session.backendId } + session
                 service.settings.lastPeer = text
                 settingsRevision++
                 // The far end just said which folders it offers; the right pane opens on one
@@ -817,34 +806,34 @@ class AppState(
                     NoticeKind.SUCCESS,
                 )
             } catch (failure: Throwable) {
-                peerError = failure.message ?: "连接失败"
-                notify("连接失败：$peerError", NoticeKind.ERROR)
+                connect.peerError = failure.message ?: "连接失败"
+                notify("连接失败：$connect.peerError", NoticeKind.ERROR)
             } finally {
-                connecting = false
+                connect.connecting = false
             }
         }
     }
 
     fun disconnectPeer(backendId: String) {
         service.disconnect(backendId)
-        peers = peers.filterNot { it.backendId == backendId }
+        connect.peers = connect.peers.filterNot { it.backendId == backendId }
     }
 
-    fun peerFor(backendId: String): PeerSession? = peers.firstOrNull { it.backendId == backendId }
+    fun peerFor(backendId: String): PeerSession? = connect.peers.firstOrNull { it.backendId == backendId }
 
-    /** Re-reads what the peers expose; the button on the connect screen says 刷新设备. */
+    /** Re-reads what the connect.peers expose; the button on the connect screen says 刷新设备. */
     fun refreshPeers() {
-        val current = peers
+        val current = connect.peers
         if (current.isEmpty()) {
             notify("还没有连上任何设备", NoticeKind.INFO)
             return
         }
         scope.launch {
-            peers = current.mapNotNull { session ->
+            connect.peers = current.mapNotNull { session ->
                 runCatching { service.browsePool.probe(session.host, session.port) }
                     .getOrElse { null }
             }
-            notify("已刷新 ${peers.size} 台设备", NoticeKind.INFO)
+            notify("已刷新 ${connect.peers.size} 台设备", NoticeKind.INFO)
         }
     }
 
@@ -856,8 +845,8 @@ class AppState(
         val clean = path.trim()
         if (clean.isEmpty()) return
         val absolute = PathTools.normalizeRoot(PathTools.absolute(clean))
-        if (rootDraft.any { it == absolute }) return
-        rootDraft = rootDraft + absolute
+        if (connect.rootDraft.any { it == absolute }) return
+        connect.rootDraft = connect.rootDraft + absolute
         rememberServer()
     }
 
@@ -878,13 +867,13 @@ class AppState(
     }
 
     fun removeRoot(path: String) {
-        rootDraft = rootDraft.filterNot { it == path }
+        connect.rootDraft = connect.rootDraft.filterNot { it == path }
         rememberServer()
     }
 
     fun startServer(port: Int, nodeName: String) {
         val state = server.start(
-            roots = rootDraft,
+            roots = connect.rootDraft,
             port = if (port <= 0) Protocol.DEFAULT_PORT else port,
             nodeName = nodeName,
         )
@@ -905,7 +894,7 @@ class AppState(
     }
 
     private fun rememberServer() {
-        service.settings.sharedRoots = rootDraft
+        service.settings.sharedRoots = connect.rootDraft
         settingsRevision++
     }
 
@@ -920,7 +909,7 @@ class AppState(
     fun statusLine(server: ServerState = serverState): String {
         val parts = mutableListOf<String>()
         parts += if (server.running) "共享中 :${server.port}" else "未共享"
-        parts += if (peers.isEmpty()) "未连接${Words.REMOTE}" else "已连接 ${peers.size} 台设备"
+        parts += if (connect.peers.isEmpty()) "未连接${Words.REMOTE}" else "已连接 ${connect.peers.size} 台设备"
         running?.let { parts += "${it.label}「${it.configName}」" }
         return parts.joinToString("  ·  ")
     }

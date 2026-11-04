@@ -167,7 +167,7 @@ object Preview {
         service.settings.serverNodeName = "DESKTOP-AU4"
         service.settings.sharedRoots = listOf(previewFolder("Backup").toString())
 
-        state.section = section
+        state.connect.section = section
         state.changeSettings { it.theme = if (dark) ThemeMode.DARK else ThemeMode.LIGHT }
         val left = previewFolder("DCIM/Camera")
         val right = previewFolder("Mirror")

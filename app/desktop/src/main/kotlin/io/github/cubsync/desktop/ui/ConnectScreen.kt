@@ -127,10 +127,10 @@ private fun LinkCard(state: AppState, modifier: Modifier) {
                 QuietButton("刷新") { state.refreshAdb() }
             }
             Spacer(Modifier.height(6.dp))
-            val ready = state.adbDevices.filter { it.ready }
+            val ready = state.connect.adbDevices.filter { it.ready }
             if (ready.isEmpty()) {
                 Text(
-                    state.adbNote ?: "没有已连接的 USB 设备",
+                    state.connect.adbNote ?: "没有已连接的 USB 设备",
                     style = CubType.body,
                     color = colors.textFaint,
                 )
@@ -141,14 +141,14 @@ private fun LinkCard(state: AppState, modifier: Modifier) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(device.label, style = CubType.body, color = colors.text, modifier = Modifier.weight(1f))
-                    QuietButton(if (state.connecting) "连接中…" else "连接并协商") {
+                    QuietButton(if (state.connect.connecting) "连接中…" else "连接并协商") {
                         // The phone's port, not this machine's: empty means the protocol
                         // default, which is what a phone shares on unless it was changed.
-                        state.connectUsb(device.serial, state.peerPortText.toIntOrNull() ?: 0)
+                        state.connectUsb(device.serial, state.connect.peerPortText.toIntOrNull() ?: 0)
                     }
                 }
             }
-            state.adbNote?.takeIf { ready.isNotEmpty() }?.let {
+            state.connect.adbNote?.takeIf { ready.isNotEmpty() }?.let {
                 Spacer(Modifier.height(4.dp))
                 Text(it, style = CubType.tiny, color = colors.textFaint)
             }
@@ -163,25 +163,25 @@ private fun LinkCard(state: AppState, modifier: Modifier) {
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Field(
-                    value = state.peerHost,
-                    onValueChange = { state.peerHost = it },
+                    value = state.connect.peerHost,
+                    onValueChange = { state.connect.peerHost = it },
                     modifier = Modifier.weight(2f),
                     placeholder = "192.168.1.20",
                     onSubmit = { state.connectPeerAddress() },
                 )
                 Field(
-                    value = state.peerPortText,
-                    onValueChange = { state.peerPortText = it },
+                    value = state.connect.peerPortText,
+                    onValueChange = { state.connect.peerPortText = it },
                     modifier = Modifier.weight(1f),
                     placeholder = "端口（默认 ${settings.sharePort}）",
                     onSubmit = { state.connectPeerAddress() },
                 )
             }
             Spacer(Modifier.height(8.dp))
-            PrimaryButton(if (state.connecting) "连接中…" else "连接并协商") { state.connectPeerAddress() }
+            PrimaryButton(if (state.connect.connecting) "连接中…" else "连接并协商") { state.connectPeerAddress() }
         }
 
-        state.peerError?.let {
+        state.connect.peerError?.let {
             Spacer(Modifier.height(6.dp))
             Text(it, style = CubType.tiny, color = colors.danger)
         }
@@ -193,7 +193,7 @@ private fun LinkCard(state: AppState, modifier: Modifier) {
 @Composable
 private fun NegotiationCard(state: AppState, modifier: Modifier) {
     val colors = CubTheme.colors
-    val peer = state.peers.firstOrNull()
+    val peer = state.connect.peers.firstOrNull()
     val negotiated = peer?.capabilities ?: 0L
     val agreed = CapabilityNames.agreedCount(negotiated)
     val total = CapabilityNames.ROWS.count { !CapabilityNames.reserved(it) }
@@ -292,7 +292,7 @@ private fun ChannelsCard(state: AppState, server: ServerState) {
             ChannelRow(
                 name = nic.name,
                 address = nic.address,
-                rate = if (state.peers.isEmpty()) "0.0 MB/s" else rate,
+                rate = if (state.connect.peers.isEmpty()) "0.0 MB/s" else rate,
                 enabled = true,
                 onClick = { state.toggleChannelNic(nic.name) },
             )
@@ -372,10 +372,10 @@ private fun ServerCard(state: AppState, server: ServerState) {
                 if (picked != null) state.addRoot(picked)
             }
             Spacer(Modifier.width(6.dp))
-            Text("${state.rootDraft.size} 个", style = CubType.tiny, color = colors.textFaint)
+            Text("${state.connect.rootDraft.size} 个", style = CubType.tiny, color = colors.textFaint)
         }
 
-        for (root in state.rootDraft) {
+        for (root in state.connect.rootDraft) {
             Row(
                 Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,

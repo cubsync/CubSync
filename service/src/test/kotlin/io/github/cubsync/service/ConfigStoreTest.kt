@@ -148,8 +148,11 @@ class ConfigStoreTest {
     }
 
     @Test
-    fun the_default_state_directory_is_under_the_user_home() {
-        val base = ConfigStore.defaultBase().toString()
-        assertTrue(base.endsWith(".cubsync"), base)
+    fun the_default_state_directory_is_absolute_and_normalised() {
+        // 便携（exe 旁 data）或 %APPDATA%/CubSync 或 Unix 兜底 ~/.cubsync，取决于
+        // 平台和是否有 data 目录；跨平台不绑定具体位置，只验证不变量。
+        val base = ConfigStore.defaultBase()
+        assertTrue(base.isAbsolute, base.toString())
+        assertEquals(base, base.normalize())
     }
 }

@@ -89,16 +89,16 @@ class AppStateTest {
 
     @Test
     fun the_window_starts_on_the_connect_screen() = withFixture { fixture ->
-        assertEquals(Section.CONNECT, fixture.state.section)
+        assertEquals(Section.CONNECT, fixture.state.connect.section)
         assertTrue(fixture.state.statusLine(ServerState()).startsWith("未共享"))
     }
 
     @Test
     fun going_to_a_screen_changes_which_one_is_open() = withFixture { fixture ->
         fixture.state.goTo(Section.TRANSFER)
-        assertEquals(Section.TRANSFER, fixture.state.section)
+        assertEquals(Section.TRANSFER, fixture.state.connect.section)
         fixture.state.goTo(Section.SETTINGS)
-        assertEquals(Section.SETTINGS, fixture.state.section)
+        assertEquals(Section.SETTINGS, fixture.state.connect.section)
     }
 
     // ------------------------------------------------------------ configurations
@@ -147,7 +147,7 @@ class AppStateTest {
         fixture.state.runConfig(config, dryRun = false)
 
         await("the run to finish") { fixture.state.jobs.isNotEmpty() }
-        assertEquals(Section.JOBS, fixture.state.section)
+        assertEquals(Section.JOBS, fixture.state.connect.section)
         assertEquals(1, fixture.state.jobs.first().result.stats.copiedFiles)
         assertEquals("holiday", right.resolve("holiday.txt").toFile().readText())
     }
@@ -333,13 +333,13 @@ class AppStateTest {
         // is not running looks like — as opposed to an unroutable address, which hangs.
         fixture.state.connectPeer("127.0.0.1:1")
 
-        await("the refusal") { fixture.state.peerError != null }
-        assertTrue(fixture.state.peers.isEmpty())
+        await("the refusal") { fixture.state.connect.peerError != null }
+        assertTrue(fixture.state.connect.peers.isEmpty())
     }
 
     @Test
     fun a_malformed_address_is_rejected_without_a_connection_attempt() = withFixture { fixture ->
         fixture.state.connectPeer("not an address")
-        assertEquals("「not an address」看起来不是 HOST:PORT", fixture.state.peerError)
+        assertEquals("「not an address」看起来不是 HOST:PORT", fixture.state.connect.peerError)
     }
 }

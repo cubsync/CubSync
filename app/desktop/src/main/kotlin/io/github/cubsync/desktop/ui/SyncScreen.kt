@@ -333,10 +333,10 @@ private fun PeerFolderPicker(state: AppState, pair: FolderPair, onPick: (String,
         if (open) {
             FloatingCard(Modifier.padding(top = 30.dp), width = 300) {
                 FloatingHeader("远端可访问的目录", onClose = { open = false })
-                if (state.peers.isEmpty()) {
+                if (state.connect.peers.isEmpty()) {
                     Text("先到连接页连上一台设备。", style = CubType.meta, color = CubTheme.colors.textFaint)
                 }
-                for (peer in state.peers) {
+                for (peer in state.connect.peers) {
                     GroupLabel(peer.nodeName)
                     for (root in peer.roots) {
                         ListLine(root, peer.host, onClick = { onPick(root, peer.backendId); open = false })

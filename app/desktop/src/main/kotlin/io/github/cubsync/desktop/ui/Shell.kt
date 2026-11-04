@@ -86,7 +86,7 @@ fun CubApp(state: AppState, chrome: WindowChrome) {
             Column(Modifier.fillMaxSize()) {
                 ScreenHead(state, server) { HeadActions(state) }
                 Box(Modifier.fillMaxSize()) {
-                    when (state.section) {
+                    when (state.connect.section) {
                         Section.CONNECT -> ConnectScreen(state, server)
                         Section.TRANSFER -> TransferScreen(state)
                         Section.SYNC -> SyncScreen(state)
@@ -344,7 +344,7 @@ private fun RailLabel(text: String) {
 @Composable
 private fun RailItem(state: AppState, section: Section, folded: Boolean, badge: Int = 0) {
     val colors = CubTheme.colors
-    val selected = state.section == section
+    val selected = state.connect.section == section
     Row(
         Modifier
             .fillMaxWidth()
@@ -401,8 +401,8 @@ fun ScreenHead(state: AppState, server: ServerState, actions: @Composable () -> 
         verticalAlignment = Alignment.Bottom,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(state.section.heading, style = CubType.screenTitle, color = colors.text)
-            Text(state.section.hint, style = CubType.screenHint, color = colors.textDim)
+            Text(state.connect.section.heading, style = CubType.screenTitle, color = colors.text)
+            Text(state.connect.section.hint, style = CubType.screenHint, color = colors.textDim)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             actions()
@@ -425,10 +425,10 @@ fun ScreenHead(state: AppState, server: ServerState, actions: @Composable () -> 
  */
 @Composable
 private fun HeadActions(state: AppState) {
-    when (state.section) {
+    when (state.connect.section) {
         Section.CONNECT -> {
             QuietButton("刷新设备") { state.refreshPeers() }
-            PrimaryButton("连接", enabled = !state.connecting) { state.connectPeer(state.peerDraft) }
+            PrimaryButton("连接", enabled = !state.connect.connecting) { state.connectPeer(state.connect.peerDraft) }
         }
 
         Section.TRANSFER -> TransferHeadActions(state)
@@ -459,10 +459,10 @@ private fun StatusBar(state: AppState, server: ServerState) {
         horizontalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Pulse(if (state.peers.isEmpty() && !server.running) colors.textFaint else colors.success)
+            Pulse(if (state.connect.peers.isEmpty() && !server.running) colors.textFaint else colors.success)
             Spacer(Modifier.width(6.dp))
             Text(
-                if (state.peers.isEmpty()) Words.UNCONNECTED else "已连接 · ${state.peers.size} 通道",
+                if (state.connect.peers.isEmpty()) Words.UNCONNECTED else "已连接 · ${state.connect.peers.size} 通道",
                 style = CubType.status,
                 color = colors.textDim,
             )
@@ -708,14 +708,22 @@ private fun FavouriteOverlays(state: AppState) {
                     mutableStateOf(favourite.label.ifEmpty { PathTools.leafName(favourite.path) })
                 }
                 var group by remember { mutableStateOf(favourite.groupName) }
+                var path by remember { mutableStateOf(favourite.path) }
                 FavouriteDialogCard("编辑收藏", onClose = { closeAll() }) {
-                    Text(favourite.path, style = CubType.monoSmall, color = colors.textFaint, maxLines = 2)
+                    // 名字和路径都可以改：名字是抽屉里显示什么，路径是点了去哪。
                     Field(
                         value = label,
                         onValueChange = { label = it },
                         modifier = Modifier.fillMaxWidth(),
                         placeholder = "名称",
                         style = CubType.meta,
+                    )
+                    Field(
+                        value = path,
+                        onValueChange = { path = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = "路径",
+                        style = CubType.monoSmall,
                     )
                     Text("分组", style = CubType.meta, color = colors.textFaint)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -727,7 +735,7 @@ private fun FavouriteOverlays(state: AppState) {
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         PrimaryButton("保存") {
-                            state.renameFavourite(favourite, label, group)
+                            state.updateFavourite(favourite, label, group, path)
                             closeAll()
                         }
                         QuietButton("取消") { closeAll() }

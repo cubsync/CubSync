@@ -416,9 +416,16 @@ class AppSettings(private val storage: SettingsStorage = SettingsStorage.memory(
         favourites = favourites.map { if (it.groupName == name) it.copy(groupName = "") else it }
     }
 
-    fun updateFavourite(favorite: Favorite, label: String = favorite.label, group: String = favorite.groupName) {
+    fun updateFavourite(
+        favorite: Favorite,
+        label: String = favorite.label,
+        group: String = favorite.groupName,
+        path: String = favorite.path,
+    ) {
         favourites = favourites.map {
-            if (it.key == favorite.key) it.copy(label = label.trim(), groupName = group) else it
+            // Matched by the *old* key on purpose: a changed path changes the key, and the
+            // row is found by the identity it had when the dialog opened.
+            if (it.key == favorite.key) it.copy(label = label.trim(), groupName = group, path = path.trim()) else it
         }
         if (group.isNotEmpty() && group !in favouriteGroups) favouriteGroups = favouriteGroups + group
     }
