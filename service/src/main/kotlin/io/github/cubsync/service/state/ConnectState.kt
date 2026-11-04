@@ -1,11 +1,12 @@
-package io.github.cubsync.desktop
+package io.github.cubsync.service.state
+
+import io.github.cubsync.service.Adb
+import io.github.cubsync.service.PeerSession
+import io.github.cubsync.service.Section
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import io.github.cubsync.service.Adb
-import io.github.cubsync.service.PeerSession
-import io.github.cubsync.service.Section
 
 /**
  * 连接页的界面状态：连到谁、连没连上、地址框里填了什么、USB 上插着什么。

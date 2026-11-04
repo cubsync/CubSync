@@ -32,6 +32,10 @@ dependencies {
     api(project(":backends:lan"))
     api(libs.kotlinx.coroutines.core)
 
+    // compose runtime is the state primitive (mutableStateOf), not UI — the shared
+    // domain state classes live here so both the desktop and the phone read the same one.
+    api("org.jetbrains.compose.runtime:runtime:1.8.2")
+
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(project(":testing"))

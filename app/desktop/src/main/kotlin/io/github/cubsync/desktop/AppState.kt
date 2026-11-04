@@ -32,6 +32,7 @@ import io.github.cubsync.service.ServerState
 import io.github.cubsync.service.Side
 import io.github.cubsync.service.SyncObserver
 import io.github.cubsync.service.SyncPreview
+import io.github.cubsync.service.state.ConnectState
 import io.github.cubsync.service.SyncService
 import io.github.cubsync.service.Words
 import kotlinx.coroutines.CoroutineScope
