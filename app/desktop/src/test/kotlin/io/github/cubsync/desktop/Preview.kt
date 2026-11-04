@@ -178,7 +178,7 @@ object Preview {
             state.setDisplayMode(Side.RIGHT, view)
         }
         state.browsing.select(Side.LEFT, listOf("IMG_20261016_0731.jpg", "IMG_20261016_0730.jpg"))
-        state.displayMenu = displayMenu
+        state.overlay.displayMenu = displayMenu
         return state
     }
 

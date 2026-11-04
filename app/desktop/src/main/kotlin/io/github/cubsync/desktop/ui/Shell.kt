@@ -487,7 +487,7 @@ private fun StatusBar(state: AppState, server: ServerState) {
 /** A short-lived message above the status bar. */
 @Composable
 private fun NoticeBar(state: AppState) {
-    val notice = state.notice ?: return
+    val notice = state.overlay.notice ?: return
     val colors = CubTheme.colors
     val tone = colourFor(notice, colors)
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {

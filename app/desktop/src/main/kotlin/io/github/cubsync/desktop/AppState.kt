@@ -115,6 +115,26 @@ class LogState {
     var logQuery by mutableStateOf("")
 }
 
+/**
+ * 弹层/覆盖层的界面状态：通知、抽屉、菜单、动作面板、重命名、详情卡。
+ * 之前摊在 AppState，抽出来让"正在弹什么"这一域有自己的名字。
+ */
+class OverlayState {
+    var notice by mutableStateOf<Notice?>(null)
+    var drawerOpen by mutableStateOf(false)
+    var displayBarOpen by mutableStateOf(false)
+    var paneMenu by mutableStateOf<PaneMenu?>(null)
+    var displayMenu by mutableStateOf(false)
+    var historyMenu by mutableStateOf<Side?>(null)
+    var actionSheet by mutableStateOf<ActionSheet?>(null)
+    var actionSheetAt by mutableStateOf(androidx.compose.ui.geometry.Offset.Zero)
+    var screenOrigin by mutableStateOf(androidx.compose.ui.geometry.Offset.Zero)
+    var editingAddress by mutableStateOf<Side?>(null)
+    var renaming by mutableStateOf<String?>(null)
+    var detailOf by mutableStateOf<Pair<Side, String>?>(null)
+    var nameCounter by mutableStateOf(0)
+}
+
 class AppState(
     val service: SyncService,
     val server: ServerController,
@@ -133,6 +153,8 @@ class AppState(
     /** 日志域的状态住在 [LogState]，UI 读 `state.log.xxx`。 */
     val log = LogState()
 
+    /** 弹层/覆盖层状态住在 [OverlayState]，UI 读 `state.overlay.xxx`。 */
+    val overlay = OverlayState()
 
 
 
@@ -140,31 +162,19 @@ class AppState(
 
 
 
-    var notice by mutableStateOf<Notice?>(null)
+
 
 
     // ---------------------------------------------------------------- transfer page
 
-    var drawerOpen by mutableStateOf(false)
-    var displayBarOpen by mutableStateOf(false)
-    var paneMenu by mutableStateOf<PaneMenu?>(null)
 
     /** The 显示方式 drop-down on the transfer heading. */
-    var displayMenu by mutableStateOf(false)
 
     /** 展开: the paths this pane has been to, listed beside the star. */
-    var historyMenu by mutableStateOf<Side?>(null)
-    var actionSheet by mutableStateOf<ActionSheet?>(null)
 
     /** Where the context menu was asked for, in window coordinates. */
-    var actionSheetAt by mutableStateOf(androidx.compose.ui.geometry.Offset.Zero)
 
     /** The transfer screen's top-left corner, so a pointer can be turned into an offset. */
-    var screenOrigin by mutableStateOf(androidx.compose.ui.geometry.Offset.Zero)
-    var editingAddress by mutableStateOf<Side?>(null)
-    var renaming by mutableStateOf<String?>(null)
-    var detailOf by mutableStateOf<Pair<Side, String>?>(null)
-    var nameCounter by mutableStateOf(0)
 
     private var runTask: Job? = null
     private var logSubscription: AutoCloseable? = null
@@ -269,25 +279,25 @@ class AppState(
     // ------------------------------------------------------------------ messages
 
     /**
-     * Shows a notice for four seconds.
+     * Shows a overlay.notice for four seconds.
      *
      * It used to stay until it was clicked, which meant a window could hold a sentence from
-     * ten minutes ago — the person who wrote it had already read it. A newer notice cancels
+     * ten minutes ago — the person who wrote it had already read it. A newer overlay.notice cancels
      * the older timer, so the last thing said is the thing that stays.
      */
     private var noticeJob: Job? = null
 
     fun notify(text: String, kind: NoticeKind = NoticeKind.INFO) {
-        notice = Notice(text, kind)
+        overlay.notice = Notice(text, kind)
         noticeJob?.cancel()
         noticeJob = scope.launch {
             delay(4_000)
-            if (notice?.text == text) notice = null
+            if (overlay.notice?.text == text) overlay.notice = null
         }
     }
 
     fun dismissNotice() {
-        notice = null
+        overlay.notice = null
     }
 
     // -------------------------------------------------------------- configurations
@@ -565,7 +575,7 @@ class AppState(
             if (error == null) notify("已重命名为 $to", NoticeKind.SUCCESS) else notify(error, NoticeKind.ERROR)
             touchBrowsing()
         }
-        renaming = null
+        overlay.renaming = null
     }
 
     fun deleteSelection(side: Side) {

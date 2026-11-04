@@ -128,8 +128,8 @@ class AppStateTest {
         fixture.state.runConfig(fixture.state.newConfigDraft(), dryRun = false)
 
         assertNull(fixture.state.sync.running)
-        assertNotNull(fixture.state.notice)
-        assertTrue(fixture.state.notice!!.text.contains("文件夹对"))
+        assertNotNull(fixture.state.overlay.notice)
+        assertTrue(fixture.state.overlay.notice!!.text.contains("文件夹对"))
     }
 
     // ------------------------------------------------------------------------ runs
@@ -244,7 +244,7 @@ class AppStateTest {
         } catch (failure: AssertionError) {
             // The notice says why, which is the difference between a failing test that
             // explains itself and one that has to be reproduced by hand.
-            throw AssertionError("${failure.message}; notice was: ${fixture.state.notice?.text}", failure)
+            throw AssertionError("${failure.message}; notice was: ${fixture.state.overlay.notice?.text}", failure)
         }
     }
 

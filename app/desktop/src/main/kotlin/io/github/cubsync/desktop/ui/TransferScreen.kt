@@ -111,7 +111,7 @@ fun TransferScreen(state: AppState) {
     Box(
         Modifier
             .fillMaxSize()
-            .onGloballyPositioned { state.screenOrigin = it.positionInWindow() },
+            .onGloballyPositioned { state.overlay.screenOrigin = it.positionInWindow() },
     ) {
     Column(Modifier.fillMaxSize()) {
         // The prototype's transfer screen has no sub-row and no standing display bar: the
@@ -155,7 +155,7 @@ fun TransferHeadActions(state: AppState) {
     // their parameters in a drop-down. There is no standing display bar — that was added
     // here and is gone, because the design keeps this control in one place.
     val active = state.browsing.prefsOf(state.liveSettings.activeSide)
-    QuietButton("显示方式：${active.displayMode.label} ▾") { state.displayMenu = true }
+    QuietButton("显示方式：${active.displayMode.label} ▾") { state.overlay.displayMenu = true }
     QuietButton(Words.NEW_FOLDER) { state.newFolder(state.liveSettings.activeSide) }
     QuietButton("同步…") { state.goTo(Section.SYNC) }
 }
@@ -272,7 +272,7 @@ private fun PaneHeader(state: AppState, side: Side, pane: PaneState, active: Boo
             val starred = state.service.settings.isFavourite(pane.backendId, pane.path)
             // Tighter, and one more button: 展开 lists the paths this pane has been to, so a
             // folder three levels up is one click instead of three.
-            IconButton(IconPaths.CLOCK, size = 26, mark = 15) { state.historyMenu = side }
+            IconButton(IconPaths.CLOCK, size = 26, mark = 15) { state.overlay.historyMenu = side }
             IconButton(
                 IconPaths.STAR,
                 size = 26,
@@ -280,7 +280,7 @@ private fun PaneHeader(state: AppState, side: Side, pane: PaneState, active: Boo
                 tint = if (starred) colors.accent else null,
             ) { state.toggleFavourite(side) }
             IconButton(IconPaths.MORE, size = 26, mark = 16, stroke = 3.4f) {
-                state.paneMenu = io.github.cubsync.desktop.PaneMenu(side)
+                state.overlay.paneMenu = io.github.cubsync.desktop.PaneMenu(side)
             }
         }
         Breadcrumbs(state, side, pane)
@@ -446,8 +446,8 @@ private fun RowLine(
                         // Without a position the sheet opens at 0,0 — the top-left corner of
                         // the window, nowhere near the row that was pressed, which reads as
                         // "nothing happened". Same offset for a long press and a right click.
-                        state.actionSheetAt = rowOrigin + androidx.compose.ui.geometry.Offset(24f, 28f)
-                        state.actionSheet = io.github.cubsync.desktop.ActionSheet(
+                        state.overlay.actionSheetAt = rowOrigin + androidx.compose.ui.geometry.Offset(24f, 28f)
+                        state.overlay.actionSheet = io.github.cubsync.desktop.ActionSheet(
                             side,
                             entry.relPath,
                             entry.isDirectory,
@@ -461,8 +461,8 @@ private fun RowLine(
                 if (event.buttons.isSecondaryPressed) {
                     // Where the pointer is, not the middle of the window: a context menu
                     // that opens far from the thing it is about makes the person look for it.
-                    state.actionSheetAt = rowOrigin + event.changes.first().position
-                    state.actionSheet = io.github.cubsync.desktop.ActionSheet(side, entry.relPath, entry.isDirectory)
+                    state.overlay.actionSheetAt = rowOrigin + event.changes.first().position
+                    state.overlay.actionSheet = io.github.cubsync.desktop.ActionSheet(side, entry.relPath, entry.isDirectory)
                 }
             }
             .padding(horizontal = 10.dp),
@@ -544,7 +544,7 @@ private fun GridList(state: AppState, side: Side, pane: PaneState, columns: Int,
                     }
                     .onPointerEvent(PointerEventType.Press) { event ->
                         if (event.buttons.isSecondaryPressed) {
-                            state.actionSheet = io.github.cubsync.desktop.ActionSheet(side, entry.relPath, entry.isDirectory)
+                            state.overlay.actionSheet = io.github.cubsync.desktop.ActionSheet(side, entry.relPath, entry.isDirectory)
                         }
                     }
                     .padding(8.dp),
@@ -625,7 +625,7 @@ private fun ComparePane(state: AppState, side: Side, pane: PaneState, density: I
                                         state.touchBrowsing()
                                     },
                                     onLongClick = {
-                                        state.actionSheet = io.github.cubsync.desktop.ActionSheet(
+                                        state.overlay.actionSheet = io.github.cubsync.desktop.ActionSheet(
                                             side,
                                             line.name,
                                             entry.isDirectory,
@@ -859,22 +859,22 @@ private fun progressLine(progress: io.github.cubsync.service.TransferProgress, r
  */
 @Composable
 private fun Overlays(state: AppState) {
-    val paneMenu = state.paneMenu
-    val sheet = state.actionSheet
-    val detail = state.detailOf
-    val displayMenu = state.displayMenu
-    val history = state.historyMenu
+    val paneMenu = state.overlay.paneMenu
+    val sheet = state.overlay.actionSheet
+    val detail = state.overlay.detailOf
+    val displayMenu = state.overlay.displayMenu
+    val history = state.overlay.historyMenu
 
     if (paneMenu == null && sheet == null && detail == null && !displayMenu && history == null) return
 
     Box(Modifier.fillMaxSize()) {
         Scrim {
-            state.paneMenu = null
-            state.actionSheet = null
-            state.detailOf = null
-            state.renaming = null
-            state.displayMenu = false
-            state.historyMenu = null
+            state.overlay.paneMenu = null
+            state.overlay.actionSheet = null
+            state.overlay.detailOf = null
+            state.overlay.renaming = null
+            state.overlay.displayMenu = false
+            state.overlay.historyMenu = null
         }
         if (displayMenu) {
             // Under the button that opened it: the heading's 显示方式 sits at the top-right
@@ -896,7 +896,7 @@ private fun Overlays(state: AppState) {
             }
         }
         if (sheet != null) {
-            val at = state.actionSheetAt - state.screenOrigin
+            val at = state.overlay.actionSheetAt - state.overlay.screenOrigin
             Box(
                 Modifier.offset {
                     androidx.compose.ui.unit.IntOffset(
@@ -918,7 +918,7 @@ private fun HistoryCard(state: AppState, side: Side) {
     val recent = state.browsing.recent(side).filter { it != state.browsing.current(side).path }
     FloatingCard(width = 340) {
         FloatingHeader("展开 · ${if (side == Side.LEFT) Words.LOCAL_PANE else Words.REMOTE_PANE}") {
-            state.historyMenu = null
+            state.overlay.historyMenu = null
         }
         Block("打开过的路径") {
             if (recent.isEmpty()) {
@@ -931,7 +931,7 @@ private fun HistoryCard(state: AppState, side: Side) {
                         .clip(RoundedCornerShape(6.dp))
                         .clickable {
                             state.openPane(side, path, state.browsing.current(side).backendId)
-                            state.historyMenu = null
+                            state.overlay.historyMenu = null
                         }
                         .padding(horizontal = 8.dp, vertical = 5.dp),
                 ) {
@@ -965,7 +965,7 @@ private fun DisplayModeMenuCard(state: AppState) {
     val paneName = if (side == Side.LEFT) Words.LOCAL_PANE else Words.REMOTE_PANE
 
     FloatingCard(width = 330) {
-        FloatingHeader("显示方式 · 作用于$paneName（高亮那栏）") { state.displayMenu = false }
+        FloatingHeader("显示方式 · 作用于$paneName（高亮那栏）") { state.overlay.displayMenu = false }
 
         Block("") {
             for (mode in DisplayMode.entries) {
@@ -1071,7 +1071,7 @@ private fun PaneMenuCard(state: AppState, side: Side) {
     val pane = state.browsing.current(side)
 
     FloatingCard(width = 300) {
-        FloatingHeader(if (side == Side.LEFT) Words.LOCAL_PANE else Words.REMOTE_PANE, onClose = { state.paneMenu = null })
+        FloatingHeader(if (side == Side.LEFT) Words.LOCAL_PANE else Words.REMOTE_PANE, onClose = { state.overlay.paneMenu = null })
 
         // §3.4: 排序, 文件夹优先, 作用范围 — and nothing else. The address has its own box
         // above the list and the display mode has the heading's menu.
@@ -1159,9 +1159,9 @@ private fun ActionSheetCard(state: AppState, side: Side, name: String, isDirecto
     var renameTo by remember(name) { mutableStateOf(name) }
 
     FloatingCard(width = 320) {
-        FloatingHeader(Browsing.name(name), onClose = { state.actionSheet = null; state.renaming = null })
+        FloatingHeader(Browsing.name(name), onClose = { state.overlay.actionSheet = null; state.overlay.renaming = null })
 
-        if (state.renaming == name) {
+        if (state.overlay.renaming == name) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Field(renameTo, { renameTo = it }, Modifier.weight(1f), onSubmit = { state.rename(side, name, renameTo) })
                 Spacer(Modifier.width(6.dp))
@@ -1177,31 +1177,31 @@ private fun ActionSheetCard(state: AppState, side: Side, name: String, isDirecto
         if (state.browsing.current(side).isSelected(name)) {
             Action("取消选择", "从勾选里拿掉这一项", onHover = { hoverHint = it }) {
                 state.browsing.toggle(side, name)
-                state.actionSheet = null
+                state.overlay.actionSheet = null
             }
         } else {
             Action("选择", "勾上这一项并进入多选", onHover = { hoverHint = it }) {
                 if (!state.browsing.multiSelect.value) state.browsing.toggleMultiSelect()
                 state.browsing.toggle(side, name)
-                state.actionSheet = null
+                state.overlay.actionSheet = null
             }
         }
         Action("传送 ▸ 对侧", "把这一项送到另一栏", onHover = { hoverHint = it }) {
             state.browsing.select(side, listOf(name))
             state.transfer(side)
-            state.actionSheet = null
+            state.overlay.actionSheet = null
         }
-        Action("收藏", "把当前目录加进收藏夹", onHover = { hoverHint = it }) { state.toggleFavourite(side); state.actionSheet = null }
+        Action("收藏", "把当前目录加进收藏夹", onHover = { hoverHint = it }) { state.toggleFavourite(side); state.overlay.actionSheet = null }
         Action("过滤", "按名字或后缀排除", onHover = { hoverHint = it }) {
             state.notify("过滤器在同步配置的「过滤」里设置，这样两侧规则一致", NoticeKind.INFO)
-            state.actionSheet = null
+            state.overlay.actionSheet = null
         }
-        Action("重命名", "改成别的名字", onHover = { hoverHint = it }) { state.renaming = name }
-        Action("详情", "大小、时间、类型", onHover = { hoverHint = it }) { state.detailOf = side to name }
+        Action("重命名", "改成别的名字", onHover = { hoverHint = it }) { state.overlay.renaming = name }
+        Action("详情", "大小、时间、类型", onHover = { hoverHint = it }) { state.overlay.detailOf = side to name }
         Action(if (isDirectory) "删除目录" else "删除", "进${Words.TRASH}，不是直接销毁", danger = true, onHover = { hoverHint = it }) {
             state.browsing.select(side, listOf(name))
             state.deleteSelection(side)
-            state.actionSheet = null
+            state.overlay.actionSheet = null
         }
 
         hoverHint?.let { hint ->
@@ -1234,7 +1234,7 @@ private fun DetailCard(state: AppState, side: Side, name: String) {
     val pane = state.browsing.current(side)
     val entry = pane.entries.firstOrNull { it.relPath == name }
     FloatingCard(width = 340) {
-        FloatingHeader("详情", onClose = { state.detailOf = null })
+        FloatingHeader("详情", onClose = { state.overlay.detailOf = null })
         KeyValueRow("名称", Browsing.name(name))
         KeyValueRow("位置", pane.path)
         KeyValueRow("类型", if (entry?.isDirectory == true) "文件夹" else "文件")
