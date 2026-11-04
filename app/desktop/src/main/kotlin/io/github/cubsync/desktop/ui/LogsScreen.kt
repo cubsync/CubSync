@@ -29,8 +29,8 @@ fun LogsScreen(state: AppState) {
 @Composable
 fun LogsHeadActions(state: AppState) {
     Field(
-        value = state.logQuery,
-        onValueChange = { state.logQuery = it },
+        value = state.log.logQuery,
+        onValueChange = { state.log.logQuery = it },
         modifier = Modifier.width(180.dp),
         placeholder = "过滤…",
         style = CubType.meta,

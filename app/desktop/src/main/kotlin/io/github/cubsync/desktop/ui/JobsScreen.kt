@@ -323,16 +323,16 @@ private fun exportReport(state: AppState, detail: JobDetails) {
 fun LogsBody(state: AppState, modifier: Modifier = Modifier) {
     val colors = CubTheme.colors
     val levels = io.github.cubsync.service.LogLevel.entries.toList()
-    val areas = state.logs.map { it.area }.distinct().sorted()
+    val areas = state.log.logs.map { it.area }.distinct().sorted()
     var area by remember { mutableStateOf("") }
 
     Column(modifier) {
         Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Segmented(
                 options = levels,
-                selected = state.logMinimumLevel,
+                selected = state.log.logMinimumLevel,
                 label = { Format.level(it) },
-                onSelect = { state.logMinimumLevel = it },
+                onSelect = { state.log.logMinimumLevel = it },
             )
             Spacer(Modifier.width(10.dp))
             Segmented(
@@ -342,14 +342,14 @@ fun LogsBody(state: AppState, modifier: Modifier = Modifier) {
                 onSelect = { area = it },
             )
             Spacer(Modifier.weight(1f))
-            Chip("${state.logs.size} 行", tone = colors.textDim)
+            Chip("${state.log.logs.size} 行", tone = colors.textDim)
             Spacer(Modifier.width(8.dp))
             QuietButton("清空") { state.clearLogs() }
         }
 
-        val needle = state.logQuery.trim()
-        val shown = state.logs
-            .filter { it.level >= state.logMinimumLevel }
+        val needle = state.log.logQuery.trim()
+        val shown = state.log.logs
+            .filter { it.level >= state.log.logMinimumLevel }
             .filter { area.isEmpty() || it.area == area }
             .filter {
                 needle.isEmpty() ||

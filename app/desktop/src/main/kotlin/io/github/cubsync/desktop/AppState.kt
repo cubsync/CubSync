@@ -104,6 +104,17 @@ class SyncState {
     var runPaused by mutableStateOf(false)
 }
 
+/**
+ * 日志页的界面状态：日志行、最低级别过滤、搜索框。
+ */
+class LogState {
+    var logs by mutableStateOf<List<LogEntry>>(emptyList())
+    var logMinimumLevel by mutableStateOf(LogLevel.INFO)
+
+    /** The log page's filter box, which the heading draws and the body reads. */
+    var logQuery by mutableStateOf("")
+}
+
 class AppState(
     val service: SyncService,
     val server: ServerController,
@@ -119,13 +130,12 @@ class AppState(
     /** 同步/作业域的状态住在 [SyncState]，UI 读 `state.sync.xxx`。 */
     val sync = SyncState()
 
+    /** 日志域的状态住在 [LogState]，UI 读 `state.log.xxx`。 */
+    val log = LogState()
 
 
-    var logs by mutableStateOf<List<LogEntry>>(emptyList())
-    var logMinimumLevel by mutableStateOf(LogLevel.INFO)
 
-    /** The log page's filter box, which the heading draws and the body reads. */
-    var logQuery by mutableStateOf("")
+
 
 
 
@@ -175,13 +185,13 @@ class AppState(
     init {
         reloadConfigs()
         reloadJobs()
-        logs = service.log.entries()
+        log.logs = service.log.entries()
         logSubscription = service.log.subscribe { entry ->
             // The log arrives from whichever thread wrote it. Appending to a snapshot
             // list is safe from any thread, and the list is bounded so a long-sync.running
             // window cannot grow without limit.
-            val next = logs + entry
-            logs = if (next.size > LOG_LIMIT) next.takeLast(LOG_LIMIT) else next
+            val next = log.logs + entry
+            log.logs = if (next.size > LOG_LIMIT) next.takeLast(LOG_LIMIT) else next
         }
         connect.peerDraft = service.settings.lastPeer
         service.settings.lastPeer.substringBeforeLast(':').takeIf { it.isNotEmpty() }?.let { connect.peerHost = it }
@@ -911,7 +921,7 @@ class AppState(
 
     fun clearLogs() {
         service.log.clear()
-        logs = emptyList()
+        log.logs = emptyList()
     }
 
     /** What the status strip under the title says. */
