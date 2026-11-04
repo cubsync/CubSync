@@ -41,6 +41,10 @@ import io.github.cubsync.service.SyncLayer
 import io.github.cubsync.service.SyncObserver
 import io.github.cubsync.service.SyncPreview
 import io.github.cubsync.service.state.ConnectState
+import io.github.cubsync.service.state.FavouriteState
+import io.github.cubsync.service.state.LogState
+import io.github.cubsync.service.state.OverlayState
+import io.github.cubsync.service.state.SyncState
 import io.github.cubsync.service.SyncService
 import io.github.cubsync.service.Words
 import kotlinx.coroutines.CoroutineScope
@@ -62,67 +66,6 @@ import kotlinx.coroutines.withContext
  * both ends read the same ones, so this class cannot own them; it can only say when they
  * changed.
  */
-/**
- * 同步页 + 作业页的界面状态：配置列表、正在跑的作业、试运行预览。
- * 之前摊在 AppState，抽出来让"同步/作业"这一域有自己的名字，UI 读 `state.sync.xxx`。
- */
-class SyncState {
-    var configs by mutableStateOf<List<SyncConfig>>(emptyList())
-    var selectedConfigId by mutableStateOf<String?>(null)
-    var syncLayer by mutableStateOf(SyncLayer.LIST)
-    var syncSearch by mutableStateOf("")
-    var preview by mutableStateOf<SyncPreview?>(null)
-    var previewing by mutableStateOf(false)
-    var jobs by mutableStateOf<List<JobRecord>>(emptyList())
-    var selectedJobId by mutableStateOf<String?>(null)
-    var jobsSegment by mutableStateOf(JobsSegment.JOBS)
-    var running by mutableStateOf<RunningJob?>(null)
-    var runPaused by mutableStateOf(false)
-}
-
-/**
- * 日志页的界面状态：日志行、最低级别过滤、搜索框。
- */
-class LogState {
-    var logs by mutableStateOf<List<LogEntry>>(emptyList())
-    var logMinimumLevel by mutableStateOf(LogLevel.INFO)
-
-    /** The log page's filter box, which the heading draws and the body reads. */
-    var logQuery by mutableStateOf("")
-}
-
-/**
- * 弹层/覆盖层的界面状态：通知、抽屉、菜单、动作面板、重命名、详情卡。
- * 之前摊在 AppState，抽出来让"正在弹什么"这一域有自己的名字。
- */
-class OverlayState {
-    var notice by mutableStateOf<Notice?>(null)
-    var drawerOpen by mutableStateOf(false)
-    var displayBarOpen by mutableStateOf(false)
-    var paneMenu by mutableStateOf<PaneMenu?>(null)
-    var displayMenu by mutableStateOf(false)
-    var historyMenu by mutableStateOf<Side?>(null)
-    var actionSheet by mutableStateOf<ActionSheet?>(null)
-    var actionSheetAt by mutableStateOf(androidx.compose.ui.geometry.Offset.Zero)
-    var screenOrigin by mutableStateOf(androidx.compose.ui.geometry.Offset.Zero)
-    var editingAddress by mutableStateOf<Side?>(null)
-    var renaming by mutableStateOf<String?>(null)
-    var detailOf by mutableStateOf<Pair<Side, String>?>(null)
-    var nameCounter by mutableStateOf(0)
-}
-
-/**
- * 收藏夹（侧边抽屉）的界面状态：正在编辑哪条、菜单开在哪、排序开关。
- */
-class FavouriteState {
-    var favouriteDraft by mutableStateOf<String?>(null)
-    var favouriteMenu by mutableStateOf<Favorite?>(null)
-    var favouriteMenuAt by mutableStateOf(androidx.compose.ui.geometry.Offset.Zero)
-    var favouriteDialog by mutableStateOf<FavDialog?>(null)
-    var favouriteHeaderMenu by mutableStateOf(false)
-    var favouriteSorting by mutableStateOf(false)
-}
-
 class AppState(
     val service: SyncService,
     val server: ServerController,

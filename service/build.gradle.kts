@@ -35,6 +35,9 @@ dependencies {
     // compose runtime is the state primitive (mutableStateOf), not UI — the shared
     // domain state classes live here so both the desktop and the phone read the same one.
     api("org.jetbrains.compose.runtime:runtime:1.8.2")
+    // Offset (a pure geometry value, no drawing) is what the overlay/favourite state
+    // stores for where a menu opened; ui-geometry carries it without the rest of the UI.
+    api("org.jetbrains.compose.ui:ui-geometry:1.8.2")
 
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)
