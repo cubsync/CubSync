@@ -72,6 +72,13 @@ data class PaneMenu(val side: Side)
 
 /** The long-press action panel for one row. */
 data class ActionSheet(val side: Side, val name: String, val isDirectory: Boolean)
+/** The four favourite dialogs: add, new group, edit one, and the drawer settings. */
+sealed interface FavDialog {
+    data object AddPath : FavDialog
+    data object NewGroup : FavDialog
+    data class Edit(val favourite: Favorite) : FavDialog
+    data object Settings : FavDialog
+}
 
 /**
  * Everything the window is showing.
@@ -135,6 +142,18 @@ class OverlayState {
     var nameCounter by mutableStateOf(0)
 }
 
+/**
+ * 收藏夹（侧边抽屉）的界面状态：正在编辑哪条、菜单开在哪、排序开关。
+ */
+class FavouriteState {
+    var favouriteDraft by mutableStateOf<String?>(null)
+    var favouriteMenu by mutableStateOf<Favorite?>(null)
+    var favouriteMenuAt by mutableStateOf(androidx.compose.ui.geometry.Offset.Zero)
+    var favouriteDialog by mutableStateOf<FavDialog?>(null)
+    var favouriteHeaderMenu by mutableStateOf(false)
+    var favouriteSorting by mutableStateOf(false)
+}
+
 class AppState(
     val service: SyncService,
     val server: ServerController,
@@ -155,6 +174,9 @@ class AppState(
 
     /** 弹层/覆盖层状态住在 [OverlayState]，UI 读 `state.overlay.xxx`。 */
     val overlay = OverlayState()
+
+    /** 收藏夹状态住在 [FavouriteState]，UI 读 `state.favourites.xxx`。 */
+    val favourites = FavouriteState()
 
 
 
@@ -450,27 +472,15 @@ class AppState(
     }
 
     /** 收藏夹's `+`: a folder added by address, not only the one a pane happens to show. */
-    var favouriteDraft by mutableStateOf<String?>(null)
 
     /** Which favourite's context menu is open, and where it opened. */
-    var favouriteMenu by mutableStateOf<Favorite?>(null)
-    var favouriteMenuAt by mutableStateOf(androidx.compose.ui.geometry.Offset.Zero)
 
     /** The 收藏夹 dialogs: add a path, a new group, editing one row, or the panel settings. */
-    sealed interface FavDialog {
-        data object AddPath : FavDialog
-        data object NewGroup : FavDialog
-        data class Edit(val favourite: Favorite) : FavDialog
-        data object Settings : FavDialog
-    }
 
-    var favouriteDialog by mutableStateOf<FavDialog?>(null)
 
     /** 收藏夹's own ⋮: add a path, a group, an account, or open its settings. */
-    var favouriteHeaderMenu by mutableStateOf(false)
 
     /** 排序模式: rows become draggable and the star is out of the way. */
-    var favouriteSorting by mutableStateOf(false)
 
     fun addFavourite(path: String) {
         val clean = io.github.cubsync.service.PathTools.normalizeRoot(path.trim())
@@ -486,7 +496,7 @@ class AppState(
             service.settings.toggleFavourite(Favorite(device, backendId, clean))
         }
         settingsRevision++
-        favouriteDraft = null
+        favourites.favouriteDraft = null
         notify("已收藏 $clean", NoticeKind.SUCCESS)
     }
 

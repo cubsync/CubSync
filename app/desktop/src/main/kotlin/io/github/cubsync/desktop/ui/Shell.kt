@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.cubsync.desktop.AppState
+import io.github.cubsync.desktop.FavDialog
 import io.github.cubsync.desktop.CubTheme
 import io.github.cubsync.desktop.CubType
 import io.github.cubsync.desktop.Notice
@@ -256,14 +257,14 @@ private fun Rail(state: AppState, server: ServerState, folded: Boolean, onFold: 
                     IconPaths.SORT,
                     size = 26,
                     mark = 14,
-                    selected = state.favouriteSorting,
-                    tint = if (state.favouriteSorting) Color.White else null,
+                    selected = state.favourites.favouriteSorting,
+                    tint = if (state.favourites.favouriteSorting) Color.White else null,
                 ) {
-                    state.favouriteSorting = !state.favouriteSorting
+                    state.favourites.favouriteSorting = !state.favourites.favouriteSorting
                 }
                 IconButton(IconPaths.MORE, size = 24, mark = 15, stroke = 3.4f) {
-                    state.favouriteDialog = null
-                    state.favouriteHeaderMenu = true
+                    state.favourites.favouriteDialog = null
+                    state.favourites.favouriteHeaderMenu = true
                 }
             }
 
@@ -294,7 +295,7 @@ private fun Rail(state: AppState, server: ServerState, folded: Boolean, onFold: 
                     }
                     for (item in items) {
                         val index = favourites.indexOfFirst { it.key == item.key }.coerceAtLeast(flat)
-                        FavouriteRow(state, item, index, showPath, state.favouriteSorting)
+                        FavouriteRow(state, item, index, showPath, state.favourites.favouriteSorting)
                         flat++
                     }
                 }
@@ -568,8 +569,8 @@ private fun FavouriteRow(
                         if (event.type == androidx.compose.ui.input.pointer.PointerEventType.Press &&
                             event.buttons.isSecondaryPressed
                         ) {
-                            state.favouriteMenuAt = origin
-                            state.favouriteMenu = favourite
+                            state.favourites.favouriteMenuAt = origin
+                            state.favourites.favouriteMenu = favourite
                         }
                     }
                 }
@@ -607,28 +608,28 @@ private fun FavouriteRow(
 @Composable
 private fun FavouriteOverlays(state: AppState) {
     val colors = CubTheme.colors
-    val menu = state.favouriteMenu
-    val dialog = state.favouriteDialog
-    val headerMenu = state.favouriteHeaderMenu
+    val menu = state.favourites.favouriteMenu
+    val dialog = state.favourites.favouriteDialog
+    val headerMenu = state.favourites.favouriteHeaderMenu
     if (menu == null && dialog == null && !headerMenu) return
 
     fun closeAll() {
-        state.favouriteMenu = null
-        state.favouriteDialog = null
-        state.favouriteHeaderMenu = false
+        state.favourites.favouriteMenu = null
+        state.favourites.favouriteDialog = null
+        state.favourites.favouriteHeaderMenu = false
     }
 
     Box(Modifier.fillMaxSize()) {
         Scrim { closeAll() }
 
         if (menu != null) {
-            val at = state.favouriteMenuAt
+            val at = state.favourites.favouriteMenuAt
             Box(Modifier.offset { androidx.compose.ui.unit.IntOffset(at.x.toInt(), at.y.toInt()) }) {
                 FloatingCard(width = 230) {
                     MenuLine("打开") { state.openFavourite(menu); closeAll() }
                     MenuLine("编辑…") {
-                        state.favouriteDialog = AppState.FavDialog.Edit(menu)
-                        state.favouriteMenu = null
+                        state.favourites.favouriteDialog = FavDialog.Edit(menu)
+                        state.favourites.favouriteMenu = null
                     }
                     MenuLine("上移") { state.moveFavourite(menu, -1) }
                     MenuLine("下移") { state.moveFavourite(menu, +1) }
@@ -645,24 +646,24 @@ private fun FavouriteOverlays(state: AppState) {
                 FloatingCard(width = 300) {
                     FloatingHeader("收藏夹", onClose = { closeAll() })
                     MenuLine("添加路径…") {
-                        state.favouriteDialog = AppState.FavDialog.AddPath
-                        state.favouriteHeaderMenu = false
+                        state.favourites.favouriteDialog = FavDialog.AddPath
+                        state.favourites.favouriteHeaderMenu = false
                     }
                     MenuLine("新建分组…") {
-                        state.favouriteDialog = AppState.FavDialog.NewGroup
-                        state.favouriteHeaderMenu = false
+                        state.favourites.favouriteDialog = FavDialog.NewGroup
+                        state.favourites.favouriteHeaderMenu = false
                     }
                     MenuLine("添加账户…（远端协议，尚未实现）", enabled = false) {}
                     MenuLine("收藏夹设置…") {
-                        state.favouriteDialog = AppState.FavDialog.Settings
-                        state.favouriteHeaderMenu = false
+                        state.favourites.favouriteDialog = FavDialog.Settings
+                        state.favourites.favouriteHeaderMenu = false
                     }
                 }
             }
         }
 
         when (dialog) {
-            is AppState.FavDialog.AddPath -> {
+            is FavDialog.AddPath -> {
                 var text by remember { mutableStateOf("") }
                 FavouriteDialogCard("添加路径", onClose = { closeAll() }) {
                     Field(
@@ -682,7 +683,7 @@ private fun FavouriteOverlays(state: AppState) {
                 }
             }
 
-            is AppState.FavDialog.NewGroup -> {
+            is FavDialog.NewGroup -> {
                 var text by remember { mutableStateOf("") }
                 FavouriteDialogCard("新建分组", onClose = { closeAll() }) {
                     Field(
@@ -702,7 +703,7 @@ private fun FavouriteOverlays(state: AppState) {
                 }
             }
 
-            is AppState.FavDialog.Edit -> {
+            is FavDialog.Edit -> {
                 val favourite = dialog.favourite
                 var label by remember {
                     mutableStateOf(favourite.label.ifEmpty { PathTools.leafName(favourite.path) })
@@ -743,7 +744,7 @@ private fun FavouriteOverlays(state: AppState) {
                 }
             }
 
-            is AppState.FavDialog.Settings -> {
+            is FavDialog.Settings -> {
                 val settings = state.liveSettings
                 FavouriteDialogCard("收藏夹设置", onClose = { closeAll() }) {
                     SettingRow("在名称下显示路径", "一行放不下时省略") {
